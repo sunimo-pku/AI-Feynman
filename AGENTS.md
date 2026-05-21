@@ -256,7 +256,7 @@ git push origin main
 - **手写板必须 `RepaintBoundary`**：左侧 SSE / 对话区每来一个 delta 都会触发整页 rebuild，若画布与对话同层 paint，会肉眼可见地断笔、粘滞。所有讲题相关的 `HandCanvas` 都要包一层 `RepaintBoundary`，并通过 `AnimatedBuilder` 单独监听 Controller。
 - **平板防误触**：`Listener` 的 `onPointerDown` 默认会收所有手指事件，孩子写字时手掌一压就会爆出十几条副笔画。需要在 State 里记 `_activePointer`，第二根手指出现时直接忽略。
 - **`Wrap(children: const [...])` 内部组件必须 const-constructible**：`AppPalette.*` 已声明为 `const Color`，新增标签/Pill 类型时也要写 `const` 构造函数，否则一改 home 就会全屏触发 lint 报错。
-- **公式渲染 V1 用 Unicode 占位**：尚未引入 `flutter_math_fork`，所有 `\sqrt{...}` / `\frac{a}{b}` / `\cdot` 等 token 由 `widgets/formula_text.dart` 转 Unicode。**真正接入流式 LLM 之前必须替换为原生 Canvas KaTeX，否则 16.x 章节中复杂分式会丢括号、丢上下标。**
+- **公式渲染已切到原生 Canvas KaTeX**：`widgets/formula_text.dart` 基于 `flutter_math_fork` 渲染 `$...$` / `\(...\)` / `\[...\]`。新增讲题、回放、家长端文本时继续用 `FormulaText`，不要退回 Unicode 占位或裸 `Text`。
 
 ### 第四轮 · 学生语义输入闭环
 
@@ -673,6 +673,33 @@ git push origin main
   一致。`dart test` 直接跑 flutter 测试会报 `Could not find package test`,
   正解仍是用 `/opt/flutter/bin/flutter test`。预热完成后单次 ≤ 5s,
   CI 也可以缓存 `~/.pub-cache` + `~/.flutter` 避免重复下载。
+
+### 第十一轮 · 全量收口（流式 / 回放 / 游戏化）
+
+- **LLM 流式 NDJSON 必须逐行容错**：Kimi 流式主路径输出
+  `turn_start/delta/turn_done/round_meta`；任何一行解析失败或整流无有效事件，
+  只能切 `stream_fallback`，不能让 `/lecture/live` 直接断开。
+- **本地学习数据 key 必须带 namespace**：`guest`、`userA`、`userB` 分别写
+  `ai_feynman.section_progress.v1.<namespace>` 与
+  `ai_feynman.lecture_reviews.v1.<namespace>`；logout 只是切回 guest，不删旧账号桶。
+- **回放时间轴不要等视频编码**：Round 11 验收底线是「音频片段 + 笔迹 timeline +
+  气泡 timeline」可播放；MP4 合成失败时必须保留过程回放入口。
+- **排行榜周结算要幂等**：`LeaderboardSnapshot` 以
+  `(scope, section_id, week_id, student_id)` 唯一；脚本或启动补偿重复跑不能插重复名次。
+- **晶石流水必须先校验余额再扣减**：`CrystalWallet.balance + amount < 0` 要返回 400；
+  禁止出现负余额，也禁止任何充值/打赏入口。
+- **商业 OCR/HWR 失败只能降级 source，不阻塞讲题**：`/ocr/ink mode=hwr`
+  没 key 或供应商失败时回 `reference_step/template`，响应仍带 `confidence/source`
+  供 debug 面板和日志核对。
+
+### 第十二轮 · V2 产品闭环与 App 接线
+
+- **回放上传必须吞失败**：`ReplayService.finishAndUpload()` 只服务家长端回看，失败不能影响学生完成态、进度写入或下一题。调试看 `ai_feynman.replay` 日志。
+- **流式 ASR 接线要标明 mode**：有 `VOLC_ASR_STREAM_*` 时走 `asr_mode=stream`，未配置时必须显式 `asr_mode=window_fallback`，不能静默伪装成流式。
+- **商城皮肤是本地 prefs + 画笔渲染联动**：兑换 `pen-gold` 后写 `UserCosmeticsPrefs`，讲题页 `HandCanvas` 订阅并立即变成金色粗笔；不要只扣晶石不改白板。
+- **全册题库以 JSON 为准**：`data/questions/pep-junior-math-questions.json` 由 `scripts/generate_section_questions.py` 生成并同步到 Flutter asset；当前口径是 90 个小节 × 基础/巩固/挑战 3 题，非 16 章用 `quality=generated_seed` 标记，后续逐章教研校对。
+- **题图 SVG 要走 asset 引用**：JSON 只写 `image.asset / image.alt`，SVG 文件放 `assets/questions/diagrams/` 并在 `pubspec.yaml` 声明目录；Flutter 端用 direct dependency `flutter_svg` 渲染，不能指望 `Image.asset` 直接显示 SVG。
+- **Python 生成 LaTeX 的 f-string 要转义花括号**：例如 `rf"$\\sqrt{{x-4}}$"`，否则 `{x-4}` 会被当成 Python 表达式导致生成脚本运行时报 `NameError`。
 
 ---
 

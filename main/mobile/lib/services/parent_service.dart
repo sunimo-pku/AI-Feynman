@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../data/parent_models.dart';
+import '../data/round12_models.dart';
 import 'auth_service.dart';
 
 /// 家长端 HTTP 客户端封装（第十轮）。
@@ -20,20 +21,85 @@ class ParentService {
   final http.Client _client;
   final Duration _timeout;
 
-  Future<ParentDashboardPayload> fetchDashboard() async {
-    final body = await _get('/parent/dashboard');
+  Future<ParentDashboardPayload> fetchDashboard({int? studentId}) async {
+    final body = await _get('/parent/dashboard', studentId: studentId);
     return ParentDashboardPayload.fromJson(body);
   }
 
-  Future<ParentPosterPayload> fetchPoster() async {
-    final body = await _get('/parent/poster');
+  Future<ParentPosterPayload> fetchPoster({int? studentId}) async {
+    final body = await _get('/parent/poster', studentId: studentId);
     return ParentPosterPayload.fromJson(body);
   }
 
-  Future<List<ParentReviewCard>> fetchReviews({String? sectionId, int limit = 20}) async {
+  Future<List<ParentChild>> fetchChildren() async {
+    final body = await _get('/parent/children');
+    final raw = body['children'];
+    return raw is List
+        ? raw
+            .whereType<Map<String, dynamic>>()
+            .map(ParentChild.fromJson)
+            .toList(growable: false)
+        : const <ParentChild>[];
+  }
+
+  Future<ParentChild> bindChild({
+    required String username,
+    required String nickname,
+  }) async {
+    final uri = ApiConfig.uri('/parent/children/bind');
+    final resp = await _client
+        .post(
+          uri,
+          headers: AuthService.instance.authHeaders(),
+          body: utf8.encode(jsonEncode({
+            'username': username,
+            'nickname': nickname,
+          })),
+        )
+        .timeout(_timeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw ParentApiException(
+        userMessage: '绑定孩子失败（HTTP ${resp.statusCode}）。',
+        statusCode: resp.statusCode,
+      );
+    }
+    final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+    if (decoded is! Map<String, dynamic>) {
+      throw const ParentApiException(userMessage: '绑定孩子返回格式不符合契约。');
+    }
+    return ParentChild.fromJson({...decoded, 'active': false});
+  }
+
+  Future<void> updateProfile({
+    required String displayName,
+    required String grade,
+  }) async {
+    final uri = ApiConfig.uri('/learning/profile');
+    final resp = await _client
+        .patch(
+          uri,
+          headers: AuthService.instance.authHeaders(),
+          body: utf8.encode(jsonEncode({
+            'displayName': displayName,
+            'grade': grade,
+          })),
+        )
+        .timeout(_timeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw ParentApiException(
+        userMessage: '保存资料失败（HTTP ${resp.statusCode}）。',
+        statusCode: resp.statusCode,
+      );
+    }
+  }
+
+  Future<List<ParentReviewCard>> fetchReviews({String? sectionId, int? studentId, int limit = 20}) async {
     final params = <String, String>{'limit': '$limit'};
     if (sectionId != null && sectionId.isNotEmpty) {
       params['sectionId'] = sectionId;
+    }
+    if (studentId != null && studentId > 0) {
+      params['studentId'] = '$studentId';
     }
     final uri = ApiConfig.uri('/parent/reviews').replace(queryParameters: params);
     final raw = await _getJson(uri);
@@ -48,8 +114,11 @@ class ParentService {
         .toList(growable: false);
   }
 
-  Future<Map<String, dynamic>> _get(String path) async {
-    final body = await _getJson(ApiConfig.uri(path));
+  Future<Map<String, dynamic>> _get(String path, {int? studentId}) async {
+    final uri = studentId == null || studentId <= 0
+        ? ApiConfig.uri(path)
+        : ApiConfig.uri(path).replace(queryParameters: {'studentId': '$studentId'});
+    final body = await _getJson(uri);
     if (body is! Map<String, dynamic>) {
       throw const ParentApiException(
         userMessage: '后端返回格式不符合契约。',

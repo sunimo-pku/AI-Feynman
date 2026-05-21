@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/lecture_models.dart';
@@ -14,13 +16,17 @@ import '../services/auth_service.dart';
 import '../services/learning_sync_service.dart';
 import '../services/lecture_service.dart';
 import '../services/live_lecture_service.dart';
+import '../services/ocr_service.dart';
 import '../services/progress_repository.dart';
+import '../services/replay_service.dart';
 import '../services/review_repository.dart';
+import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
 import '../widgets/agent_message_bubble.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
 import '../widgets/realtime_audio_panel.dart';
+import 'privacy_notice_page.dart';
 
 /// 讲题页：左侧多 Agent 对话区，右侧手写板（横屏），手机竖屏降级为上下布局。
 ///
@@ -73,6 +79,8 @@ const bool _kShowLegacyTextInputByDefault = bool.fromEnvironment(
   'LIVE_FALLBACK_TEXTINPUT',
   defaultValue: false,
 );
+
+const bool _debugOcr = bool.fromEnvironment('DEBUG_OCR');
 
 /// 实时讲题阶段的本地状态：
 ///   * `idle`：尚未点击「开始讲题」；
@@ -176,6 +184,7 @@ class _LecturePageState extends State<LecturePage> {
   // —— 第九轮：实时双工讲题相关状态 ————————————————————————————————————
   final AudioStreamService _audioService = AudioStreamService();
   final LiveLectureService _liveService = LiveLectureService();
+  final ReplayService _replayService = ReplayService();
 
   _LiveStatus _liveStatus = _LiveStatus.idle;
   String? _liveFailureReason;
@@ -185,7 +194,11 @@ class _LecturePageState extends State<LecturePage> {
   bool _ttsPlaying = false;
   Timer? _inkSnapshotDebounce;
   Timer? _interruptCooldownTimer;
+  Timer? _stuckHintTimer;
+  Timer? _wrapUpTimer;
+  Timer? _voiceDebounceTimer;
   bool _interruptOnCooldown = false;
+  bool _stuckHintShownForPause = false;
 
   late final StreamSubscription _liveEventsSub;
   late final StreamSubscription _liveErrorsSub;
@@ -207,12 +220,16 @@ class _LecturePageState extends State<LecturePage> {
     // 第八轮：优先用 widget.initialQuestionId 定位（来自回顾页「再讲这题」）,
     // 命中失败时回落 widget.initialQuestionIndex，再不行回落第 1 题。
     _questionIndex = _resolveInitialQuestionIndex();
+    if (widget.initialQuestionId == null && widget.initialQuestionIndex == null) {
+      _questionIndex = _recommendedInitialQuestionIndex();
+    }
     _question = _questions.isEmpty
         ? repo.questionForSection(widget.section.id)
         : _questions[_questionIndex];
     _turns.add(_introTurn());
     _canvasController.addListener(_onCanvasChanged);
     _wireLiveServices();
+    UserCosmeticsPrefs.instance.load();
   }
 
   /// 把 [_audioService] 与 [_liveService] 的所有事件流串到 setState 上。
@@ -248,6 +265,17 @@ class _LecturePageState extends State<LecturePage> {
     return raw % _questions.length;
   }
 
+  int _recommendedInitialQuestionIndex() {
+    if (_questions.isEmpty) return 0;
+    final mastery =
+        ProgressRepository.instance.progressFor(widget.section.id).masteryScore;
+    final preferred = mastery >= 60 ? 3 : (mastery >= 30 ? 2 : 1);
+    for (var i = 0; i < _questions.length; i++) {
+      if (_questions[i].difficulty >= preferred) return i;
+    }
+    return 0;
+  }
+
   @override
   void dispose() {
     _canvasController.removeListener(_onCanvasChanged);
@@ -261,11 +289,16 @@ class _LecturePageState extends State<LecturePage> {
       c.dispose();
     }
     _lectureService.close();
+    unawaited(_replayService.finishAndUpload());
+    _replayService.close();
     // 第九轮：实时讲题资源全部释放。subscription cancel 顺序不重要，但
     // _liveService / _audioService 的 dispose 必须 await 才能真正关闭
     // WS 句柄；这里走 unawaited，因为 dispose 不能是 async。
     _inkSnapshotDebounce?.cancel();
     _interruptCooldownTimer?.cancel();
+    _stuckHintTimer?.cancel();
+    _wrapUpTimer?.cancel();
+    _voiceDebounceTimer?.cancel();
     unawaited(_liveEventsSub.cancel());
     unawaited(_liveErrorsSub.cancel());
     unawaited(_liveConnSub.cancel());
@@ -285,6 +318,9 @@ class _LecturePageState extends State<LecturePage> {
   ///   * 出现新 stepId 时不在这里建 controller，留给 [_ensureStepControllers]
   ///     在 build 阶段 lazy 创建，避免在 listener 里 setState 抖动。
   void _onCanvasChanged() {
+    _stuckHintTimer?.cancel();
+    _wrapUpTimer?.cancel();
+    _stuckHintShownForPause = false;
     if (_canvasController.isEmpty) {
       for (final c in _stepPlainControllers.values) {
         if (c.text.isNotEmpty) c.clear();
@@ -308,32 +344,36 @@ class _LecturePageState extends State<LecturePage> {
 
   void _scheduleInkSnapshot() {
     _inkSnapshotDebounce?.cancel();
-    _inkSnapshotDebounce = Timer(const Duration(milliseconds: 480), () {
+    _inkSnapshotDebounce = Timer(const Duration(milliseconds: 480), () async {
       if (!mounted) return;
       if (!_liveService.isConnected) return;
       final stepInfos = _canvasController.collectStepInfos();
       if (stepInfos.isEmpty) return;
-      final steps = stepInfos
-          .map((info) => {
-                'stepId': info.stepId,
-                'strokeCount': info.strokeCount,
-                'boundingBox': {
-                  'x': info.bounds.left.isFinite ? info.bounds.left : 0,
-                  'y': info.bounds.top.isFinite ? info.bounds.top : 0,
-                  'width':
-                      info.bounds.width.isFinite && info.bounds.width > 0
-                          ? info.bounds.width
-                          : 1,
-                  'height':
-                      info.bounds.height.isFinite && info.bounds.height > 0
-                          ? info.bounds.height
-                          : 1,
-                },
-                'latex': '',
-                'plainText': '',
-              })
-          .toList(growable: false);
+      final steps = <Map<String, dynamic>>[];
+      for (final info in stepInfos) {
+        final png = await _canvasController.exportStepPng(info.stepId);
+        steps.add({
+          'stepId': info.stepId,
+          'strokeCount': info.strokeCount,
+          'boundingBox': {
+            'x': info.bounds.left.isFinite ? info.bounds.left : 0,
+            'y': info.bounds.top.isFinite ? info.bounds.top : 0,
+            'width':
+                info.bounds.width.isFinite && info.bounds.width > 0
+                    ? info.bounds.width
+                    : 1,
+            'height':
+                info.bounds.height.isFinite && info.bounds.height > 0
+                    ? info.bounds.height
+                    : 1,
+          },
+          'imageBase64': png == null ? '' : base64Encode(png),
+          'latex': '',
+          'plainText': '',
+        });
+      }
       _liveService.sendInkSnapshot(steps);
+      _replayService.appendInk(steps);
     });
   }
 
@@ -686,6 +726,7 @@ class _LecturePageState extends State<LecturePage> {
       cautionPoints: cautions,
     );
     await ReviewRepository.instance.append(record);
+    unawaited(LearningSyncService.instance.postReview(record));
   }
 
   /// 从本轮 + 历史 turns 中抽取 1-3 条「AI 同伴聊了什么」短文本。
@@ -864,12 +905,20 @@ class _LecturePageState extends State<LecturePage> {
   ///   5. 都成功 → 等待麦克风事件驱动状态机进 listening。
   Future<void> _onStartLive() async {
     if (!mounted) return;
+    final acknowledged = await PrivacyNoticePage.ensureAcknowledged(context);
+    if (!mounted || !acknowledged) return;
     setState(() {
       _liveStatus = _LiveStatus.connecting;
       _liveFailureReason = null;
     });
     final sessionId = 'sess-${DateTime.now().millisecondsSinceEpoch}-'
         '${widget.section.id}-${_question.questionId}';
+    _replayService.startSession(
+      sessionId: sessionId,
+      sectionId: widget.section.id,
+      questionId: _question.questionId,
+      questionPrompt: _question.prompt,
+    );
     final connected = await _liveService.connectAndStart(
       sessionId: sessionId,
       sectionId: widget.section.id,
@@ -947,31 +996,87 @@ class _LecturePageState extends State<LecturePage> {
     if (data.isEmpty) return;
     if (!_liveService.isConnected) return;
     _liveService.sendAudioBytes(data);
+    _replayService.appendAudioChunk(base64Encode(data));
   }
 
   void _onAudioPause(int silenceMs) {
-    // 学生静音 ≥ 阈值：通知后端开始追问。
     if (!_liveService.isConnected) return;
     if (_liveStatus == _LiveStatus.thinking ||
         _liveStatus == _LiveStatus.aiSpeaking) {
       // brief 第 12 节"同一轮追问生成中忽略重复触发"
       return;
     }
-    _liveService.sendPauseDetected(silenceMs: silenceMs);
-    setState(() {
-      _liveStatus = _LiveStatus.thinking;
-    });
+    final lastStroke = _canvasController.lastStrokeAt;
+    if (lastStroke != null &&
+        DateTime.now().difference(lastStroke) < const Duration(seconds: 3)) {
+      return;
+    }
+    _stuckHintTimer?.cancel();
+    _wrapUpTimer?.cancel();
+    _stuckHintTimer = Timer(
+      Duration(milliseconds: (2500 - silenceMs).clamp(0, 2500).toInt()),
+      _showStuckHintIfStillPaused,
+    );
+    _wrapUpTimer = Timer(
+      Duration(milliseconds: (4000 - silenceMs).clamp(0, 4000).toInt()),
+      () {
+        if (!_liveService.isConnected || _liveStatus == _LiveStatus.thinking) {
+          return;
+        }
+        final last = _canvasController.lastStrokeAt;
+        if (last != null &&
+            DateTime.now().difference(last) < const Duration(seconds: 3)) {
+          return;
+        }
+        _liveService.sendPauseDetected(silenceMs: 4000);
+        setState(() {
+          _liveStatus = _LiveStatus.thinking;
+        });
+      },
+    );
   }
 
   void _onAudioVoice(bool active) {
     if (!_liveService.isConnected) return;
+    if (active) {
+      _stuckHintTimer?.cancel();
+      _wrapUpTimer?.cancel();
+      _stuckHintShownForPause = false;
+    }
     if (active && (_ttsPlaying || _liveStatus == _LiveStatus.aiSpeaking)) {
-      _maybeInterruptAi(reason: 'voice');
+      _voiceDebounceTimer?.cancel();
+      _voiceDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+        if (_ttsPlaying || _liveStatus == _LiveStatus.aiSpeaking) {
+          _maybeInterruptAi(reason: 'voice');
+        }
+      });
     } else if (active && _liveStatus == _LiveStatus.paused) {
       setState(() {
         _liveStatus = _LiveStatus.listening;
       });
+    } else if (!active) {
+      _voiceDebounceTimer?.cancel();
     }
+  }
+
+  void _showStuckHintIfStillPaused() {
+    if (!mounted || _stuckHintShownForPause) return;
+    if (_liveStatus == _LiveStatus.thinking || _liveStatus == _LiveStatus.aiSpeaking) return;
+    final last = _canvasController.lastStrokeAt;
+    if (last != null &&
+        DateTime.now().difference(last) < const Duration(seconds: 3)) {
+      return;
+    }
+    _stuckHintShownForPause = true;
+    setState(() {
+      _turns.add(const AgentTurn(
+        role: AgentRole.teacher,
+        displayName: '李老师',
+        text: '卡住了也没关系。先想想：被开方数要满足什么条件？这一步为什么能这样化简？',
+        highlightStepIds: [],
+      ));
+    });
+    _scrollToBottomSoon();
   }
 
   void _onAudioStatus(AudioStreamStatus status) {
@@ -1023,11 +1128,11 @@ class _LecturePageState extends State<LecturePage> {
         _ttsPlaying = false;
         _activeStreamingTurnId = '';
         _liveStatus = _LiveStatus.listening;
-        // 给学生一条"AI 已让步"的系统气泡，呼应面板"我继续听你讲"文案。
-        _turns.add(const AgentTurn(
-          role: AgentRole.system,
-          displayName: '系统',
-          text: '我刚才打断了 AI，它停下来听你讲。你可以继续说，或者写白板。',
+        final interruptedRole = _lastNonSystemRole();
+        _turns.add(AgentTurn(
+          role: interruptedRole,
+          displayName: _defaultDisplayName(interruptedRole),
+          text: _interruptMessageFor(interruptedRole),
           highlightStepIds: [],
         ));
       });
@@ -1117,6 +1222,11 @@ class _LecturePageState extends State<LecturePage> {
           }
         }
         if (doneTurn != null) {
+          _replayService.appendTurn(
+            role: agentRoleWire(doneTurn.role),
+            displayName: doneTurn.displayName,
+            text: doneTurn.text,
+          );
           _history.add(_agentTurnToHistory(doneTurn));
           if (_history.length > _maxHistoryItems) {
             _history.removeRange(
@@ -1125,7 +1235,10 @@ class _LecturePageState extends State<LecturePage> {
             );
           }
           // 触发 TTS。失败由 LiveLectureService 自己写到 errors 流。
-          unawaited(_liveService.requestTts(doneTurn.text));
+          unawaited(_liveService.requestTts(
+            doneTurn.text,
+            role: doneTurn.role.name,
+          ));
         }
         if (_activeStreamingTurnId == p.turnId) {
           _activeStreamingTurnId = '';
@@ -1165,6 +1278,7 @@ class _LecturePageState extends State<LecturePage> {
                 .toList(growable: false)),
           );
           unawaited(_persistCompletion(fakeResp));
+          unawaited(_replayService.finishAndUpload());
         }
         _scrollToBottomSoon();
         break;
@@ -1229,6 +1343,29 @@ class _LecturePageState extends State<LecturePage> {
         return '李老师';
       case AgentRole.system:
         return '系统';
+    }
+  }
+
+  AgentRole _lastNonSystemRole() {
+    for (final turn in _turns.reversed) {
+      if (turn.role != AgentRole.system) return turn.role;
+    }
+    return AgentRole.teacher;
+  }
+
+  String _interruptMessageFor(AgentRole role) {
+    switch (role) {
+      case AgentRole.xiaoming:
+        return '没事，你继续说，我听着。';
+      case AgentRole.daxiong:
+        return '哦哦，你有新想法了？那我先不抢话。';
+      case AgentRole.classLeader:
+      case AgentRole.monitor:
+        return '你先把自己的思路讲完整，我帮你记重点。';
+      case AgentRole.teacher:
+        return '你有新想法啦，慢慢讲，我先听你说。';
+      case AgentRole.system:
+        return '我先停下来听你讲。';
     }
   }
 
@@ -1477,7 +1614,15 @@ class _LecturePageState extends State<LecturePage> {
           ],
         ),
         const SizedBox(height: 12),
-        Expanded(child: HandCanvas(controller: _canvasController)),
+        Expanded(
+          child: AnimatedBuilder(
+            animation: UserCosmeticsPrefs.instance,
+            builder: (context, _) => HandCanvas(
+              controller: _canvasController,
+              penStyle: UserCosmeticsPrefs.instance.penStyle,
+            ),
+          ),
+        ),
         const SizedBox(height: 12),
         // 第九轮：白板下方默认展示实时音频面板（替换第四轮的文字输入区）。
         // 兜底情况下（_kShowLegacyTextInputByDefault=true 或 disconnected /
@@ -1495,6 +1640,10 @@ class _LecturePageState extends State<LecturePage> {
               _liveStatus == _LiveStatus.paused,
           failureReason: _liveFailureReason,
         ),
+        if (_debugOcr) ...[
+          const SizedBox(height: 12),
+          _buildDebugOcrPanel(),
+        ],
         if (_kShowLegacyTextInputByDefault ||
             _liveStatus == _LiveStatus.disconnected ||
             _liveStatus == _LiveStatus.permissionDenied ||
@@ -1580,6 +1729,42 @@ class _LecturePageState extends State<LecturePage> {
     // 直接走原有 _onSubmit：它会根据当前白板 / 文字输入区做一次提交，
     // 失败时也能落回 `/lecture/submit` 的 fallback 文案。
     unawaited(_onSubmit());
+  }
+
+  Widget _buildDebugOcrPanel() {
+    return ValueListenableBuilder<List<OcrStepGuess>>(
+      valueListenable: OcrService.debugGuesses,
+      builder: (context, guesses, _) {
+        return ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: const RoundedRectangleBorder(borderRadius: AppRadius.buttonR),
+          collapsedShape:
+              const RoundedRectangleBorder(borderRadius: AppRadius.buttonR),
+          backgroundColor: AppPalette.surface,
+          collapsedBackgroundColor: AppPalette.surface,
+          title: const Text('DEBUG OCR / HWR'),
+          subtitle: Text(guesses.isEmpty ? '暂无识别结果' : '${guesses.length} 个 step'),
+          children: guesses.isEmpty
+              ? const [
+                  Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text('写字后等待 480ms 或提交讲解即可看到 source/confidence/mode。'),
+                  ),
+                ]
+              : guesses
+                  .map(
+                    (g) => ListTile(
+                      dense: true,
+                      title: Text('${g.stepId} · ${g.source} · ${g.mode}'),
+                      subtitle: Text(
+                        '${g.confidence.toStringAsFixed(2)} · ${g.latex.isEmpty ? g.plainText : g.latex}',
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+        );
+      },
+    );
   }
 
   /// 「我刚才是这样讲的」+「为每一步补充一句话」输入区。
@@ -2110,6 +2295,10 @@ class _QuestionCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (question.image != null) ...[
+            const SizedBox(height: 12),
+            _QuestionImage(image: question.image!),
+          ],
           const SizedBox(height: 8),
           FormulaText(
             question.hint,
@@ -2120,6 +2309,33 @@ class _QuestionCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _QuestionImage extends StatelessWidget {
+  const _QuestionImage({required this.image});
+
+  final QuestionImage image;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: image.alt,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppPalette.surface,
+          borderRadius: AppRadius.cardR,
+          border: Border.all(color: AppPalette.outline),
+        ),
+        child: SvgPicture.asset(
+          image.asset,
+          height: 150,
+          fit: BoxFit.contain,
+        ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 import '../config/api_config.dart';
 
@@ -21,6 +22,9 @@ class OcrService {
   final http.Client _client;
   final Duration _timeout;
 
+  static final ValueNotifier<List<OcrStepGuess>> debugGuesses =
+      ValueNotifier<List<OcrStepGuess>>(const <OcrStepGuess>[]);
+
   Future<List<OcrStepGuess>?> recognize({
     required String sectionId,
     required String questionId,
@@ -38,12 +42,15 @@ class OcrService {
             body: utf8.encode(jsonEncode({
               'sectionId': sectionId,
               'questionId': questionId,
+              'mode': 'hwr',
               'referenceSteps': referenceSteps,
               'steps': steps
                   .map((s) => {
                         'stepId': s.stepId,
                         'strokeCount': s.strokeCount,
                         if (s.boundingBox != null) 'boundingBox': s.boundingBox,
+                        if (s.imageBase64.isNotEmpty)
+                          'imageBase64': s.imageBase64,
                       })
                   .toList(growable: false),
             })),
@@ -54,10 +61,12 @@ class OcrService {
       if (decoded is! Map<String, dynamic>) return null;
       final raw = decoded['steps'];
       if (raw is! List) return null;
-      return raw
+      final guesses = raw
           .whereType<Map<String, dynamic>>()
           .map(OcrStepGuess.fromJson)
           .toList(growable: false);
+      debugGuesses.value = guesses;
+      return guesses;
     } on TimeoutException {
       return null;
     } on SocketException {
@@ -75,11 +84,13 @@ class OcrStepInput {
     required this.stepId,
     required this.strokeCount,
     this.boundingBox,
+    this.imageBase64 = '',
   });
 
   final String stepId;
   final int strokeCount;
   final Map<String, dynamic>? boundingBox;
+  final String imageBase64;
 }
 
 class OcrStepGuess {
@@ -89,6 +100,7 @@ class OcrStepGuess {
     required this.plainText,
     required this.confidence,
     required this.source,
+    required this.mode,
   });
 
   final String stepId;
@@ -96,6 +108,7 @@ class OcrStepGuess {
   final String plainText;
   final double confidence;
   final String source;
+  final String mode;
 
   factory OcrStepGuess.fromJson(Map<String, dynamic> json) {
     return OcrStepGuess(
@@ -104,6 +117,7 @@ class OcrStepGuess {
       plainText: json['plainText'] as String? ?? '',
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
       source: json['source'] as String? ?? 'fallback',
+      mode: json['mode'] as String? ?? 'rule',
     );
   }
 }

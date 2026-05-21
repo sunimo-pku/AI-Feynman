@@ -1,0 +1,5518 @@
+{
+  "version": "1.1.0",
+  "source": "data/curriculum/pep-junior-math.json",
+  "questionPolicy": "3 questions per section: basic, practice, challenge; SVG diagrams for visual topics.",
+  "questions": [
+    {
+      "questionId": "q-pep-g7-up-s1-1-001",
+      "sectionId": "pep-g7-up-s1-1",
+      "sectionLabel": "1.1 正数和负数",
+      "prompt": "请围绕「1.1 正数和负数」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「正数和负数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.1 正数和负数」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "正数和负数",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-1-002",
+      "sectionId": "pep-g7-up-s1-1",
+      "sectionLabel": "1.1 正数和负数",
+      "prompt": "给出一个与「1.1 正数和负数」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「正数和负数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.1 正数和负数」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "正数和负数",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-1-003",
+      "sectionId": "pep-g7-up-s1-1",
+      "sectionLabel": "1.1 正数和负数",
+      "prompt": "总结「1.1 正数和负数」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「正数和负数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.1 正数和负数」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "正数和负数",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-2-001",
+      "sectionId": "pep-g7-up-s1-2",
+      "sectionLabel": "1.2 有理数",
+      "prompt": "请围绕「1.2 有理数」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「有理数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.2 有理数」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "有理数",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-2-002",
+      "sectionId": "pep-g7-up-s1-2",
+      "sectionLabel": "1.2 有理数",
+      "prompt": "给出一个与「1.2 有理数」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「有理数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.2 有理数」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "有理数",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-2-003",
+      "sectionId": "pep-g7-up-s1-2",
+      "sectionLabel": "1.2 有理数",
+      "prompt": "总结「1.2 有理数」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「有理数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.2 有理数」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "有理数",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-3-001",
+      "sectionId": "pep-g7-up-s1-3",
+      "sectionLabel": "1.3 有理数的加减法",
+      "prompt": "请围绕「1.3 有理数的加减法」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「有理数的加减法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.3 有理数的加减法」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "有理数的加减",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-3-002",
+      "sectionId": "pep-g7-up-s1-3",
+      "sectionLabel": "1.3 有理数的加减法",
+      "prompt": "给出一个与「1.3 有理数的加减法」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「有理数的加减法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.3 有理数的加减法」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "有理数的加减",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-3-003",
+      "sectionId": "pep-g7-up-s1-3",
+      "sectionLabel": "1.3 有理数的加减法",
+      "prompt": "总结「1.3 有理数的加减法」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「有理数的加减法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.3 有理数的加减法」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "有理数的加减",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-4-001",
+      "sectionId": "pep-g7-up-s1-4",
+      "sectionLabel": "1.4 有理数的乘除法",
+      "prompt": "请围绕「1.4 有理数的乘除法」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「有理数的乘除法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.4 有理数的乘除法」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "有理数的乘除",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-4-002",
+      "sectionId": "pep-g7-up-s1-4",
+      "sectionLabel": "1.4 有理数的乘除法",
+      "prompt": "给出一个与「1.4 有理数的乘除法」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「有理数的乘除法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.4 有理数的乘除法」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "有理数的乘除",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-4-003",
+      "sectionId": "pep-g7-up-s1-4",
+      "sectionLabel": "1.4 有理数的乘除法",
+      "prompt": "总结「1.4 有理数的乘除法」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「有理数的乘除法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.4 有理数的乘除法」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "有理数的乘除",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-5-001",
+      "sectionId": "pep-g7-up-s1-5",
+      "sectionLabel": "1.5 有理数的乘方",
+      "prompt": "请围绕「1.5 有理数的乘方」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「有理数的乘方」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.5 有理数的乘方」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "有理数的乘方",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-5-002",
+      "sectionId": "pep-g7-up-s1-5",
+      "sectionLabel": "1.5 有理数的乘方",
+      "prompt": "给出一个与「1.5 有理数的乘方」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「有理数的乘方」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.5 有理数的乘方」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "有理数的乘方",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s1-5-003",
+      "sectionId": "pep-g7-up-s1-5",
+      "sectionLabel": "1.5 有理数的乘方",
+      "prompt": "总结「1.5 有理数的乘方」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「有理数的乘方」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「1.5 有理数的乘方」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "有理数的乘方",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s2-1-001",
+      "sectionId": "pep-g7-up-s2-1",
+      "sectionLabel": "2.1 整式",
+      "prompt": "化简：$3a+2a-a$，并说明同类项为什么可以合并。",
+      "hint": "提示：这是「基础」题，先抓住「整式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "整式",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s2-1-002",
+      "sectionId": "pep-g7-up-s2-1",
+      "sectionLabel": "2.1 整式",
+      "prompt": "围绕「2.1 整式」计算 $(x+2)(x+3)$，写出展开过程。",
+      "hint": "提示：这是「巩固」题，先抓住「整式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "整式",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s2-1-003",
+      "sectionId": "pep-g7-up-s2-1",
+      "sectionLabel": "2.1 整式",
+      "prompt": "把 $x^2+5x+6$ 分解因式，并说明你怎样找到两个数。",
+      "hint": "提示：这是「挑战」题，先抓住「整式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "整式",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s2-2-001",
+      "sectionId": "pep-g7-up-s2-2",
+      "sectionLabel": "2.2 整式的加减",
+      "prompt": "化简：$3a+2a-a$，并说明同类项为什么可以合并。",
+      "hint": "提示：这是「基础」题，先抓住「整式的加减」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "整式的加减",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s2-2-002",
+      "sectionId": "pep-g7-up-s2-2",
+      "sectionLabel": "2.2 整式的加减",
+      "prompt": "围绕「2.2 整式的加减」计算 $(x+2)(x+3)$，写出展开过程。",
+      "hint": "提示：这是「巩固」题，先抓住「整式的加减」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "整式的加减",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s2-2-003",
+      "sectionId": "pep-g7-up-s2-2",
+      "sectionLabel": "2.2 整式的加减",
+      "prompt": "把 $x^2+5x+6$ 分解因式，并说明你怎样找到两个数。",
+      "hint": "提示：这是「挑战」题，先抓住「整式的加减」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "整式的加减",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-1-001",
+      "sectionId": "pep-g7-up-s3-1",
+      "sectionLabel": "3.1 从算式到方程",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「从算式到方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "从算式到方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-1-002",
+      "sectionId": "pep-g7-up-s3-1",
+      "sectionLabel": "3.1 从算式到方程",
+      "prompt": "围绕「3.1 从算式到方程」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「从算式到方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "从算式到方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-1-003",
+      "sectionId": "pep-g7-up-s3-1",
+      "sectionLabel": "3.1 从算式到方程",
+      "prompt": "小明解「3.1 从算式到方程」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「从算式到方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "从算式到方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-2-001",
+      "sectionId": "pep-g7-up-s3-2",
+      "sectionLabel": "3.2 解一元一次方程(一)——合并同类项与移项",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「解一元一次方程(一)——合并同类项与移项」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "解元次方程合",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-2-002",
+      "sectionId": "pep-g7-up-s3-2",
+      "sectionLabel": "3.2 解一元一次方程(一)——合并同类项与移项",
+      "prompt": "围绕「3.2 解一元一次方程(一)——合并同类项与移项」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「解一元一次方程(一)——合并同类项与移项」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "解元次方程合",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-2-003",
+      "sectionId": "pep-g7-up-s3-2",
+      "sectionLabel": "3.2 解一元一次方程(一)——合并同类项与移项",
+      "prompt": "小明解「3.2 解一元一次方程(一)——合并同类项与移项」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「解一元一次方程(一)——合并同类项与移项」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "解元次方程合",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-3-001",
+      "sectionId": "pep-g7-up-s3-3",
+      "sectionLabel": "3.3 解一元一次方程(二)——去括号与去分母",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「解一元一次方程(二)——去括号与去分母」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "解元次方程去",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-3-002",
+      "sectionId": "pep-g7-up-s3-3",
+      "sectionLabel": "3.3 解一元一次方程(二)——去括号与去分母",
+      "prompt": "围绕「3.3 解一元一次方程(二)——去括号与去分母」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「解一元一次方程(二)——去括号与去分母」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "解元次方程去",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-3-003",
+      "sectionId": "pep-g7-up-s3-3",
+      "sectionLabel": "3.3 解一元一次方程(二)——去括号与去分母",
+      "prompt": "小明解「3.3 解一元一次方程(二)——去括号与去分母」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「解一元一次方程(二)——去括号与去分母」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "解元次方程去",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-4-001",
+      "sectionId": "pep-g7-up-s3-4",
+      "sectionLabel": "3.4 实际问题与一元一次方程",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「实际问题与一元一次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-4-002",
+      "sectionId": "pep-g7-up-s3-4",
+      "sectionLabel": "3.4 实际问题与一元一次方程",
+      "prompt": "围绕「3.4 实际问题与一元一次方程」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「实际问题与一元一次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s3-4-003",
+      "sectionId": "pep-g7-up-s3-4",
+      "sectionLabel": "3.4 实际问题与一元一次方程",
+      "prompt": "小明解「3.4 实际问题与一元一次方程」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「实际问题与一元一次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-1-001",
+      "sectionId": "pep-g7-up-s4-1",
+      "sectionLabel": "4.1 几何图形",
+      "prompt": "观察「4.1 几何图形」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「几何图形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "几何图形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-1-002",
+      "sectionId": "pep-g7-up-s4-1",
+      "sectionLabel": "4.1 几何图形",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「几何图形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "几何图形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-up-s4-1-002.svg",
+        "alt": "4.1 几何图形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-1-003",
+      "sectionId": "pep-g7-up-s4-1",
+      "sectionLabel": "4.1 几何图形",
+      "prompt": "围绕「4.1 几何图形」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「几何图形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "几何图形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-up-s4-1-003.svg",
+        "alt": "4.1 几何图形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-2-001",
+      "sectionId": "pep-g7-up-s4-2",
+      "sectionLabel": "4.2 直线、射线、线段",
+      "prompt": "观察「4.2 直线、射线、线段」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「直线、射线、线段」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "直线、射线、",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-2-002",
+      "sectionId": "pep-g7-up-s4-2",
+      "sectionLabel": "4.2 直线、射线、线段",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「直线、射线、线段」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "直线、射线、",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-up-s4-2-002.svg",
+        "alt": "4.2 直线、射线、线段 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-2-003",
+      "sectionId": "pep-g7-up-s4-2",
+      "sectionLabel": "4.2 直线、射线、线段",
+      "prompt": "围绕「4.2 直线、射线、线段」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「直线、射线、线段」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "直线、射线、",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-up-s4-2-003.svg",
+        "alt": "4.2 直线、射线、线段 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-3-001",
+      "sectionId": "pep-g7-up-s4-3",
+      "sectionLabel": "4.3 角",
+      "prompt": "观察「4.3 角」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「角」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "角",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-3-002",
+      "sectionId": "pep-g7-up-s4-3",
+      "sectionLabel": "4.3 角",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「角」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "角",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-up-s4-3-002.svg",
+        "alt": "4.3 角 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-3-003",
+      "sectionId": "pep-g7-up-s4-3",
+      "sectionLabel": "4.3 角",
+      "prompt": "围绕「4.3 角」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「角」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "角",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-up-s4-3-003.svg",
+        "alt": "4.3 角 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-4-001",
+      "sectionId": "pep-g7-up-s4-4",
+      "sectionLabel": "4.4 课题学习 设计制作长方体形状的包装纸盒",
+      "prompt": "请围绕「4.4 课题学习 设计制作长方体形状的包装纸盒」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「设计制作长方体形状的包装纸盒」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「4.4 课题学习 设计制作长方体形状的包装纸盒」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "设计制作长方",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-4-002",
+      "sectionId": "pep-g7-up-s4-4",
+      "sectionLabel": "4.4 课题学习 设计制作长方体形状的包装纸盒",
+      "prompt": "给出一个与「4.4 课题学习 设计制作长方体形状的包装纸盒」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「设计制作长方体形状的包装纸盒」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「4.4 课题学习 设计制作长方体形状的包装纸盒」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "设计制作长方",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-up-s4-4-003",
+      "sectionId": "pep-g7-up-s4-4",
+      "sectionLabel": "4.4 课题学习 设计制作长方体形状的包装纸盒",
+      "prompt": "总结「4.4 课题学习 设计制作长方体形状的包装纸盒」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「设计制作长方体形状的包装纸盒」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「4.4 课题学习 设计制作长方体形状的包装纸盒」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "设计制作长方",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-1-001",
+      "sectionId": "pep-g7-down-s5-1",
+      "sectionLabel": "5.1 相交线",
+      "prompt": "观察「5.1 相交线」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「相交线」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "相交线",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-1-002",
+      "sectionId": "pep-g7-down-s5-1",
+      "sectionLabel": "5.1 相交线",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「相交线」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "相交线",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s5-1-002.svg",
+        "alt": "5.1 相交线 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-1-003",
+      "sectionId": "pep-g7-down-s5-1",
+      "sectionLabel": "5.1 相交线",
+      "prompt": "围绕「5.1 相交线」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「相交线」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "相交线",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s5-1-003.svg",
+        "alt": "5.1 相交线 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-2-001",
+      "sectionId": "pep-g7-down-s5-2",
+      "sectionLabel": "5.2 平行线及其判定",
+      "prompt": "观察「5.2 平行线及其判定」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「平行线及其判定」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "平行线及其判",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-2-002",
+      "sectionId": "pep-g7-down-s5-2",
+      "sectionLabel": "5.2 平行线及其判定",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「平行线及其判定」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "平行线及其判",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s5-2-002.svg",
+        "alt": "5.2 平行线及其判定 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-2-003",
+      "sectionId": "pep-g7-down-s5-2",
+      "sectionLabel": "5.2 平行线及其判定",
+      "prompt": "围绕「5.2 平行线及其判定」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「平行线及其判定」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "平行线及其判",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s5-2-003.svg",
+        "alt": "5.2 平行线及其判定 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-3-001",
+      "sectionId": "pep-g7-down-s5-3",
+      "sectionLabel": "5.3 平行线的性质",
+      "prompt": "观察「5.3 平行线的性质」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「平行线的性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "平行线的性质",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-3-002",
+      "sectionId": "pep-g7-down-s5-3",
+      "sectionLabel": "5.3 平行线的性质",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「平行线的性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "平行线的性质",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s5-3-002.svg",
+        "alt": "5.3 平行线的性质 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-3-003",
+      "sectionId": "pep-g7-down-s5-3",
+      "sectionLabel": "5.3 平行线的性质",
+      "prompt": "围绕「5.3 平行线的性质」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「平行线的性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "平行线的性质",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s5-3-003.svg",
+        "alt": "5.3 平行线的性质 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-4-001",
+      "sectionId": "pep-g7-down-s5-4",
+      "sectionLabel": "5.4 平移",
+      "prompt": "观察「5.4 平移」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「平移」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "平移",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-4-002",
+      "sectionId": "pep-g7-down-s5-4",
+      "sectionLabel": "5.4 平移",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「平移」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "平移",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s5-4-002.svg",
+        "alt": "5.4 平移 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s5-4-003",
+      "sectionId": "pep-g7-down-s5-4",
+      "sectionLabel": "5.4 平移",
+      "prompt": "围绕「5.4 平移」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「平移」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "平移",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s5-4-003.svg",
+        "alt": "5.4 平移 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-1-001",
+      "sectionId": "pep-g7-down-s6-1",
+      "sectionLabel": "6.1 平方根",
+      "prompt": "求 $\\sqrt{49}$ 和 $-\\sqrt{49}$ 的值，并说明它们的区别。",
+      "hint": "提示：这是「基础」题，先抓住「平方根」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "平方根",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-1-002",
+      "sectionId": "pep-g7-down-s6-1",
+      "sectionLabel": "6.1 平方根",
+      "prompt": "围绕「6.1 平方根」化简 $\\sqrt{72}$，写出把完全平方数提出的过程。",
+      "hint": "提示：这是「巩固」题，先抓住「平方根」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "平方根",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-1-003",
+      "sectionId": "pep-g7-down-s6-1",
+      "sectionLabel": "6.1 平方根",
+      "prompt": "判断 $\\sqrt{x-4}$ 在实数范围内有意义时 $x$ 的取值范围，并说明理由。",
+      "hint": "提示：这是「挑战」题，先抓住「平方根」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "平方根",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-2-001",
+      "sectionId": "pep-g7-down-s6-2",
+      "sectionLabel": "6.2 立方根",
+      "prompt": "求 $\\sqrt{49}$ 和 $-\\sqrt{49}$ 的值，并说明它们的区别。",
+      "hint": "提示：这是「基础」题，先抓住「立方根」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "立方根",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-2-002",
+      "sectionId": "pep-g7-down-s6-2",
+      "sectionLabel": "6.2 立方根",
+      "prompt": "围绕「6.2 立方根」化简 $\\sqrt{72}$，写出把完全平方数提出的过程。",
+      "hint": "提示：这是「巩固」题，先抓住「立方根」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "立方根",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-2-003",
+      "sectionId": "pep-g7-down-s6-2",
+      "sectionLabel": "6.2 立方根",
+      "prompt": "判断 $\\sqrt{x-4}$ 在实数范围内有意义时 $x$ 的取值范围，并说明理由。",
+      "hint": "提示：这是「挑战」题，先抓住「立方根」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "立方根",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-3-001",
+      "sectionId": "pep-g7-down-s6-3",
+      "sectionLabel": "6.3 实数",
+      "prompt": "求 $\\sqrt{49}$ 和 $-\\sqrt{49}$ 的值，并说明它们的区别。",
+      "hint": "提示：这是「基础」题，先抓住「实数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "实数",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-3-002",
+      "sectionId": "pep-g7-down-s6-3",
+      "sectionLabel": "6.3 实数",
+      "prompt": "围绕「6.3 实数」化简 $\\sqrt{72}$，写出把完全平方数提出的过程。",
+      "hint": "提示：这是「巩固」题，先抓住「实数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "实数",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s6-3-003",
+      "sectionId": "pep-g7-down-s6-3",
+      "sectionLabel": "6.3 实数",
+      "prompt": "判断 $\\sqrt{x-4}$ 在实数范围内有意义时 $x$ 的取值范围，并说明理由。",
+      "hint": "提示：这是「挑战」题，先抓住「实数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "找出定义或非负条件",
+        "进行化简或求值",
+        "写出最终结论并检查条件"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "实数",
+        "概念",
+        "运算"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s7-1-001",
+      "sectionId": "pep-g7-down-s7-1",
+      "sectionLabel": "7.1 平面直角坐标系",
+      "prompt": "根据「7.1 平面直角坐标系」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「平面直角坐标系」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "平面直角坐标",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s7-1-002",
+      "sectionId": "pep-g7-down-s7-1",
+      "sectionLabel": "7.1 平面直角坐标系",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「平面直角坐标系」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "平面直角坐标",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s7-1-002.svg",
+        "alt": "7.1 平面直角坐标系 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s7-1-003",
+      "sectionId": "pep-g7-down-s7-1",
+      "sectionLabel": "7.1 平面直角坐标系",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「平面直角坐标系」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "平面直角坐标",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s7-1-003.svg",
+        "alt": "7.1 平面直角坐标系 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s7-2-001",
+      "sectionId": "pep-g7-down-s7-2",
+      "sectionLabel": "7.2 坐标方法的简单应用",
+      "prompt": "根据「7.2 坐标方法的简单应用」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「坐标方法的简单应用」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "坐标方法的简",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s7-2-002",
+      "sectionId": "pep-g7-down-s7-2",
+      "sectionLabel": "7.2 坐标方法的简单应用",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「坐标方法的简单应用」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "坐标方法的简",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s7-2-002.svg",
+        "alt": "7.2 坐标方法的简单应用 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s7-2-003",
+      "sectionId": "pep-g7-down-s7-2",
+      "sectionLabel": "7.2 坐标方法的简单应用",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「坐标方法的简单应用」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "坐标方法的简",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s7-2-003.svg",
+        "alt": "7.2 坐标方法的简单应用 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-1-001",
+      "sectionId": "pep-g7-down-s8-1",
+      "sectionLabel": "8.1 二元一次方程组",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "元次方程组",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-1-002",
+      "sectionId": "pep-g7-down-s8-1",
+      "sectionLabel": "8.1 二元一次方程组",
+      "prompt": "围绕「8.1 二元一次方程组」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "元次方程组",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-1-003",
+      "sectionId": "pep-g7-down-s8-1",
+      "sectionLabel": "8.1 二元一次方程组",
+      "prompt": "小明解「8.1 二元一次方程组」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "元次方程组",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-2-001",
+      "sectionId": "pep-g7-down-s8-2",
+      "sectionLabel": "8.2 消元——解二元一次方程组",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「消元——解二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "消元解元次方",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-2-002",
+      "sectionId": "pep-g7-down-s8-2",
+      "sectionLabel": "8.2 消元——解二元一次方程组",
+      "prompt": "围绕「8.2 消元——解二元一次方程组」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「消元——解二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "消元解元次方",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-2-003",
+      "sectionId": "pep-g7-down-s8-2",
+      "sectionLabel": "8.2 消元——解二元一次方程组",
+      "prompt": "小明解「8.2 消元——解二元一次方程组」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「消元——解二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "消元解元次方",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-3-001",
+      "sectionId": "pep-g7-down-s8-3",
+      "sectionLabel": "8.3 实际问题与二元一次方程组",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「实际问题与二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-3-002",
+      "sectionId": "pep-g7-down-s8-3",
+      "sectionLabel": "8.3 实际问题与二元一次方程组",
+      "prompt": "围绕「8.3 实际问题与二元一次方程组」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「实际问题与二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-3-003",
+      "sectionId": "pep-g7-down-s8-3",
+      "sectionLabel": "8.3 实际问题与二元一次方程组",
+      "prompt": "小明解「8.3 实际问题与二元一次方程组」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「实际问题与二元一次方程组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-4-001",
+      "sectionId": "pep-g7-down-s8-4",
+      "sectionLabel": "8.4 三元一次方程组的解法",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「三元一次方程组的解法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "元次方程组的",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-4-002",
+      "sectionId": "pep-g7-down-s8-4",
+      "sectionLabel": "8.4 三元一次方程组的解法",
+      "prompt": "围绕「8.4 三元一次方程组的解法」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「三元一次方程组的解法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "元次方程组的",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s8-4-003",
+      "sectionId": "pep-g7-down-s8-4",
+      "sectionLabel": "8.4 三元一次方程组的解法",
+      "prompt": "小明解「8.4 三元一次方程组的解法」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「三元一次方程组的解法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "元次方程组的",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-1-001",
+      "sectionId": "pep-g7-down-s9-1",
+      "sectionLabel": "9.1 不等式",
+      "prompt": "解不等式：$2x-3>5$，并把解集用文字说明。",
+      "hint": "提示：这是「基础」题，先抓住「不等式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "不等式",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-1-002",
+      "sectionId": "pep-g7-down-s9-1",
+      "sectionLabel": "9.1 不等式",
+      "prompt": "围绕「9.1 不等式」解不等式 $3(x-1)\\le 2x+4$，说明哪一步需要改变或保持不等号方向。",
+      "hint": "提示：这是「巩固」题，先抓住「不等式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "不等式",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-1-003",
+      "sectionId": "pep-g7-down-s9-1",
+      "sectionLabel": "9.1 不等式",
+      "prompt": "设计一个解集为 $x\\ge -2$ 的一元一次不等式，并讲清构造理由。",
+      "hint": "提示：这是「挑战」题，先抓住「不等式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "不等式",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-2-001",
+      "sectionId": "pep-g7-down-s9-2",
+      "sectionLabel": "9.2 一元一次不等式",
+      "prompt": "解不等式：$2x-3>5$，并把解集用文字说明。",
+      "hint": "提示：这是「基础」题，先抓住「一元一次不等式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "元次不等式",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-2-002",
+      "sectionId": "pep-g7-down-s9-2",
+      "sectionLabel": "9.2 一元一次不等式",
+      "prompt": "围绕「9.2 一元一次不等式」解不等式 $3(x-1)\\le 2x+4$，说明哪一步需要改变或保持不等号方向。",
+      "hint": "提示：这是「巩固」题，先抓住「一元一次不等式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "元次不等式",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-2-003",
+      "sectionId": "pep-g7-down-s9-2",
+      "sectionLabel": "9.2 一元一次不等式",
+      "prompt": "设计一个解集为 $x\\ge -2$ 的一元一次不等式，并讲清构造理由。",
+      "hint": "提示：这是「挑战」题，先抓住「一元一次不等式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "元次不等式",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-3-001",
+      "sectionId": "pep-g7-down-s9-3",
+      "sectionLabel": "9.3 一元一次不等式组",
+      "prompt": "解不等式：$2x-3>5$，并把解集用文字说明。",
+      "hint": "提示：这是「基础」题，先抓住「一元一次不等式组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "元次不等式组",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-3-002",
+      "sectionId": "pep-g7-down-s9-3",
+      "sectionLabel": "9.3 一元一次不等式组",
+      "prompt": "围绕「9.3 一元一次不等式组」解不等式 $3(x-1)\\le 2x+4$，说明哪一步需要改变或保持不等号方向。",
+      "hint": "提示：这是「巩固」题，先抓住「一元一次不等式组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "元次不等式组",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s9-3-003",
+      "sectionId": "pep-g7-down-s9-3",
+      "sectionLabel": "9.3 一元一次不等式组",
+      "prompt": "设计一个解集为 $x\\ge -2$ 的一元一次不等式，并讲清构造理由。",
+      "hint": "提示：这是「挑战」题，先抓住「一元一次不等式组」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "去括号或移项",
+        "合并同类项并化系数",
+        "写出解集并说明边界"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "元次不等式组",
+        "不等式",
+        "解集"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-1-001",
+      "sectionId": "pep-g7-down-s10-1",
+      "sectionLabel": "10.1 统计调查",
+      "prompt": "围绕「10.1 统计调查」读一组数据：8、10、10、12、15，求平均数并说明含义。",
+      "hint": "提示：这是「基础」题，先抓住「统计调查」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "统计调查",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-1-002",
+      "sectionId": "pep-g7-down-s10-1",
+      "sectionLabel": "10.1 统计调查",
+      "prompt": "如图，根据条形统计图判断哪一组数据最大，并说明你的读图依据。",
+      "hint": "提示：这是「巩固」题，先抓住「统计调查」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "统计调查",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s10-1-002.svg",
+        "alt": "10.1 统计调查 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-1-003",
+      "sectionId": "pep-g7-down-s10-1",
+      "sectionLabel": "10.1 统计调查",
+      "prompt": "为「10.1 统计调查」设计一次小调查，说明调查对象、记录方式和怎样避免数据遗漏。",
+      "hint": "提示：这是「挑战」题，先抓住「统计调查」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "统计调查",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s10-1-003.svg",
+        "alt": "10.1 统计调查 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-2-001",
+      "sectionId": "pep-g7-down-s10-2",
+      "sectionLabel": "10.2 直方图",
+      "prompt": "围绕「10.2 直方图」读一组数据：8、10、10、12、15，求平均数并说明含义。",
+      "hint": "提示：这是「基础」题，先抓住「直方图」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "直方图",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-2-002",
+      "sectionId": "pep-g7-down-s10-2",
+      "sectionLabel": "10.2 直方图",
+      "prompt": "如图，根据条形统计图判断哪一组数据最大，并说明你的读图依据。",
+      "hint": "提示：这是「巩固」题，先抓住「直方图」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "直方图",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s10-2-002.svg",
+        "alt": "10.2 直方图 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-2-003",
+      "sectionId": "pep-g7-down-s10-2",
+      "sectionLabel": "10.2 直方图",
+      "prompt": "为「10.2 直方图」设计一次小调查，说明调查对象、记录方式和怎样避免数据遗漏。",
+      "hint": "提示：这是「挑战」题，先抓住「直方图」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "直方图",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s10-2-003.svg",
+        "alt": "10.2 直方图 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-3-001",
+      "sectionId": "pep-g7-down-s10-3",
+      "sectionLabel": "10.3 课题学习 从数据谈节水",
+      "prompt": "围绕「10.3 课题学习 从数据谈节水」读一组数据：8、10、10、12、15，求平均数并说明含义。",
+      "hint": "提示：这是「基础」题，先抓住「从数据谈节水」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "从数据谈节水",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-3-002",
+      "sectionId": "pep-g7-down-s10-3",
+      "sectionLabel": "10.3 课题学习 从数据谈节水",
+      "prompt": "如图，根据条形统计图判断哪一组数据最大，并说明你的读图依据。",
+      "hint": "提示：这是「巩固」题，先抓住「从数据谈节水」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "从数据谈节水",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s10-3-002.svg",
+        "alt": "10.3 课题学习 从数据谈节水 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g7-down-s10-3-003",
+      "sectionId": "pep-g7-down-s10-3",
+      "sectionLabel": "10.3 课题学习 从数据谈节水",
+      "prompt": "为「10.3 课题学习 从数据谈节水」设计一次小调查，说明调查对象、记录方式和怎样避免数据遗漏。",
+      "hint": "提示：这是「挑战」题，先抓住「从数据谈节水」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "从数据谈节水",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g7-down-s10-3-003.svg",
+        "alt": "10.3 课题学习 从数据谈节水 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-1-001",
+      "sectionId": "pep-g8-up-s11-1",
+      "sectionLabel": "11.1 与三角形有关的线段",
+      "prompt": "观察「11.1 与三角形有关的线段」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「与三角形有关的线段」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "与角形有关的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-1-002",
+      "sectionId": "pep-g8-up-s11-1",
+      "sectionLabel": "11.1 与三角形有关的线段",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「与三角形有关的线段」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "与角形有关的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s11-1-002.svg",
+        "alt": "11.1 与三角形有关的线段 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-1-003",
+      "sectionId": "pep-g8-up-s11-1",
+      "sectionLabel": "11.1 与三角形有关的线段",
+      "prompt": "围绕「11.1 与三角形有关的线段」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「与三角形有关的线段」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "与角形有关的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s11-1-003.svg",
+        "alt": "11.1 与三角形有关的线段 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-2-001",
+      "sectionId": "pep-g8-up-s11-2",
+      "sectionLabel": "11.2 与三角形有关的角",
+      "prompt": "观察「11.2 与三角形有关的角」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「与三角形有关的角」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "与角形有关的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-2-002",
+      "sectionId": "pep-g8-up-s11-2",
+      "sectionLabel": "11.2 与三角形有关的角",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「与三角形有关的角」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "与角形有关的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s11-2-002.svg",
+        "alt": "11.2 与三角形有关的角 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-2-003",
+      "sectionId": "pep-g8-up-s11-2",
+      "sectionLabel": "11.2 与三角形有关的角",
+      "prompt": "围绕「11.2 与三角形有关的角」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「与三角形有关的角」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "与角形有关的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s11-2-003.svg",
+        "alt": "11.2 与三角形有关的角 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-3-001",
+      "sectionId": "pep-g8-up-s11-3",
+      "sectionLabel": "11.3 多边形及其内角和",
+      "prompt": "观察「11.3 多边形及其内角和」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「多边形及其内角和」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "多边形及其内",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-3-002",
+      "sectionId": "pep-g8-up-s11-3",
+      "sectionLabel": "11.3 多边形及其内角和",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「多边形及其内角和」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "多边形及其内",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s11-3-002.svg",
+        "alt": "11.3 多边形及其内角和 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s11-3-003",
+      "sectionId": "pep-g8-up-s11-3",
+      "sectionLabel": "11.3 多边形及其内角和",
+      "prompt": "围绕「11.3 多边形及其内角和」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「多边形及其内角和」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "多边形及其内",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s11-3-003.svg",
+        "alt": "11.3 多边形及其内角和 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-1-001",
+      "sectionId": "pep-g8-up-s12-1",
+      "sectionLabel": "12.1 全等三角形",
+      "prompt": "观察「12.1 全等三角形」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「全等三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "全等角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-1-002",
+      "sectionId": "pep-g8-up-s12-1",
+      "sectionLabel": "12.1 全等三角形",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「全等三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "全等角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s12-1-002.svg",
+        "alt": "12.1 全等三角形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-1-003",
+      "sectionId": "pep-g8-up-s12-1",
+      "sectionLabel": "12.1 全等三角形",
+      "prompt": "围绕「12.1 全等三角形」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「全等三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "全等角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s12-1-003.svg",
+        "alt": "12.1 全等三角形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-2-001",
+      "sectionId": "pep-g8-up-s12-2",
+      "sectionLabel": "12.2 三角形全等的判定",
+      "prompt": "观察「12.2 三角形全等的判定」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「三角形全等的判定」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "角形全等的判",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-2-002",
+      "sectionId": "pep-g8-up-s12-2",
+      "sectionLabel": "12.2 三角形全等的判定",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「三角形全等的判定」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "角形全等的判",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s12-2-002.svg",
+        "alt": "12.2 三角形全等的判定 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-2-003",
+      "sectionId": "pep-g8-up-s12-2",
+      "sectionLabel": "12.2 三角形全等的判定",
+      "prompt": "围绕「12.2 三角形全等的判定」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「三角形全等的判定」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "角形全等的判",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s12-2-003.svg",
+        "alt": "12.2 三角形全等的判定 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-3-001",
+      "sectionId": "pep-g8-up-s12-3",
+      "sectionLabel": "12.3 角的平分线的性质",
+      "prompt": "观察「12.3 角的平分线的性质」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「角的平分线的性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "角的平分线的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-3-002",
+      "sectionId": "pep-g8-up-s12-3",
+      "sectionLabel": "12.3 角的平分线的性质",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「角的平分线的性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "角的平分线的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s12-3-002.svg",
+        "alt": "12.3 角的平分线的性质 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s12-3-003",
+      "sectionId": "pep-g8-up-s12-3",
+      "sectionLabel": "12.3 角的平分线的性质",
+      "prompt": "围绕「12.3 角的平分线的性质」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「角的平分线的性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "角的平分线的",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s12-3-003.svg",
+        "alt": "12.3 角的平分线的性质 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-1-001",
+      "sectionId": "pep-g8-up-s13-1",
+      "sectionLabel": "13.1 轴对称",
+      "prompt": "观察「13.1 轴对称」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「轴对称」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "轴对称",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-1-002",
+      "sectionId": "pep-g8-up-s13-1",
+      "sectionLabel": "13.1 轴对称",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「轴对称」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "轴对称",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s13-1-002.svg",
+        "alt": "13.1 轴对称 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-1-003",
+      "sectionId": "pep-g8-up-s13-1",
+      "sectionLabel": "13.1 轴对称",
+      "prompt": "围绕「13.1 轴对称」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「轴对称」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "轴对称",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s13-1-003.svg",
+        "alt": "13.1 轴对称 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-2-001",
+      "sectionId": "pep-g8-up-s13-2",
+      "sectionLabel": "13.2 画轴对称图形",
+      "prompt": "观察「13.2 画轴对称图形」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「画轴对称图形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "画轴对称图形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-2-002",
+      "sectionId": "pep-g8-up-s13-2",
+      "sectionLabel": "13.2 画轴对称图形",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「画轴对称图形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "画轴对称图形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s13-2-002.svg",
+        "alt": "13.2 画轴对称图形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-2-003",
+      "sectionId": "pep-g8-up-s13-2",
+      "sectionLabel": "13.2 画轴对称图形",
+      "prompt": "围绕「13.2 画轴对称图形」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「画轴对称图形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "画轴对称图形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s13-2-003.svg",
+        "alt": "13.2 画轴对称图形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-3-001",
+      "sectionId": "pep-g8-up-s13-3",
+      "sectionLabel": "13.3 等腰三角形",
+      "prompt": "观察「13.3 等腰三角形」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「等腰三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "等腰角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-3-002",
+      "sectionId": "pep-g8-up-s13-3",
+      "sectionLabel": "13.3 等腰三角形",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「等腰三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "等腰角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s13-3-002.svg",
+        "alt": "13.3 等腰三角形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-3-003",
+      "sectionId": "pep-g8-up-s13-3",
+      "sectionLabel": "13.3 等腰三角形",
+      "prompt": "围绕「13.3 等腰三角形」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「等腰三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "等腰角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-up-s13-3-003.svg",
+        "alt": "13.3 等腰三角形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-4-001",
+      "sectionId": "pep-g8-up-s13-4",
+      "sectionLabel": "13.4 课题学习 最短路径问题",
+      "prompt": "请围绕「13.4 课题学习 最短路径问题」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「最短路径问题」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「13.4 课题学习 最短路径问题」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "最短路径问题",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-4-002",
+      "sectionId": "pep-g8-up-s13-4",
+      "sectionLabel": "13.4 课题学习 最短路径问题",
+      "prompt": "给出一个与「13.4 课题学习 最短路径问题」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「最短路径问题」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「13.4 课题学习 最短路径问题」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "最短路径问题",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s13-4-003",
+      "sectionId": "pep-g8-up-s13-4",
+      "sectionLabel": "13.4 课题学习 最短路径问题",
+      "prompt": "总结「13.4 课题学习 最短路径问题」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「最短路径问题」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「13.4 课题学习 最短路径问题」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "最短路径问题",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-1-001",
+      "sectionId": "pep-g8-up-s14-1",
+      "sectionLabel": "14.1 整式的乘法",
+      "prompt": "化简：$3a+2a-a$，并说明同类项为什么可以合并。",
+      "hint": "提示：这是「基础」题，先抓住「整式的乘法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "整式的乘法",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-1-002",
+      "sectionId": "pep-g8-up-s14-1",
+      "sectionLabel": "14.1 整式的乘法",
+      "prompt": "围绕「14.1 整式的乘法」计算 $(x+2)(x+3)$，写出展开过程。",
+      "hint": "提示：这是「巩固」题，先抓住「整式的乘法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "整式的乘法",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-1-003",
+      "sectionId": "pep-g8-up-s14-1",
+      "sectionLabel": "14.1 整式的乘法",
+      "prompt": "把 $x^2+5x+6$ 分解因式，并说明你怎样找到两个数。",
+      "hint": "提示：这是「挑战」题，先抓住「整式的乘法」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "整式的乘法",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-2-001",
+      "sectionId": "pep-g8-up-s14-2",
+      "sectionLabel": "14.2 乘法公式",
+      "prompt": "请围绕「14.2 乘法公式」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「乘法公式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「14.2 乘法公式」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "乘法公式",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-2-002",
+      "sectionId": "pep-g8-up-s14-2",
+      "sectionLabel": "14.2 乘法公式",
+      "prompt": "给出一个与「14.2 乘法公式」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「乘法公式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「14.2 乘法公式」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "乘法公式",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-2-003",
+      "sectionId": "pep-g8-up-s14-2",
+      "sectionLabel": "14.2 乘法公式",
+      "prompt": "总结「14.2 乘法公式」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「乘法公式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「14.2 乘法公式」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "乘法公式",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-3-001",
+      "sectionId": "pep-g8-up-s14-3",
+      "sectionLabel": "14.3 因式分解",
+      "prompt": "化简：$3a+2a-a$，并说明同类项为什么可以合并。",
+      "hint": "提示：这是「基础」题，先抓住「因式分解」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "因式分解",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-3-002",
+      "sectionId": "pep-g8-up-s14-3",
+      "sectionLabel": "14.3 因式分解",
+      "prompt": "围绕「14.3 因式分解」计算 $(x+2)(x+3)$，写出展开过程。",
+      "hint": "提示：这是「巩固」题，先抓住「因式分解」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "因式分解",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s14-3-003",
+      "sectionId": "pep-g8-up-s14-3",
+      "sectionLabel": "14.3 因式分解",
+      "prompt": "把 $x^2+5x+6$ 分解因式，并说明你怎样找到两个数。",
+      "hint": "提示：这是「挑战」题，先抓住「因式分解」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "因式分解",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-1-001",
+      "sectionId": "pep-g8-up-s15-1",
+      "sectionLabel": "15.1 分式",
+      "prompt": "化简：$3a+2a-a$，并说明同类项为什么可以合并。",
+      "hint": "提示：这是「基础」题，先抓住「分式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "分式",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-1-002",
+      "sectionId": "pep-g8-up-s15-1",
+      "sectionLabel": "15.1 分式",
+      "prompt": "围绕「15.1 分式」计算 $(x+2)(x+3)$，写出展开过程。",
+      "hint": "提示：这是「巩固」题，先抓住「分式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "分式",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-1-003",
+      "sectionId": "pep-g8-up-s15-1",
+      "sectionLabel": "15.1 分式",
+      "prompt": "把 $x^2+5x+6$ 分解因式，并说明你怎样找到两个数。",
+      "hint": "提示：这是「挑战」题，先抓住「分式」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "分式",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-2-001",
+      "sectionId": "pep-g8-up-s15-2",
+      "sectionLabel": "15.2 分式的运算",
+      "prompt": "化简：$3a+2a-a$，并说明同类项为什么可以合并。",
+      "hint": "提示：这是「基础」题，先抓住「分式的运算」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "分式的运算",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-2-002",
+      "sectionId": "pep-g8-up-s15-2",
+      "sectionLabel": "15.2 分式的运算",
+      "prompt": "围绕「15.2 分式的运算」计算 $(x+2)(x+3)$，写出展开过程。",
+      "hint": "提示：这是「巩固」题，先抓住「分式的运算」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "分式的运算",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-2-003",
+      "sectionId": "pep-g8-up-s15-2",
+      "sectionLabel": "15.2 分式的运算",
+      "prompt": "把 $x^2+5x+6$ 分解因式，并说明你怎样找到两个数。",
+      "hint": "提示：这是「挑战」题，先抓住「分式的运算」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "识别同类项或结构",
+        "按运算法则展开或合并",
+        "检查结果是否还能化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "分式的运算",
+        "代数式",
+        "化简"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-3-001",
+      "sectionId": "pep-g8-up-s15-3",
+      "sectionLabel": "15.3 分式方程",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「分式方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "分式方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-3-002",
+      "sectionId": "pep-g8-up-s15-3",
+      "sectionLabel": "15.3 分式方程",
+      "prompt": "围绕「15.3 分式方程」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「分式方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "分式方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-up-s15-3-003",
+      "sectionId": "pep-g8-up-s15-3",
+      "sectionLabel": "15.3 分式方程",
+      "prompt": "小明解「15.3 分式方程」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「分式方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "分式方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-s16-1-001",
+      "prompt": "判断 $\\sqrt{2x-6}$ 在实数范围内有意义时，$x$ 的取值范围。",
+      "hint": "提示：被开方数必须非负。",
+      "referenceSteps": [
+        "$2x - 6 \\ge 0$",
+        "$x \\ge 3$"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "取值范围",
+        "非负条件"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-1",
+      "sectionLabel": "16.1 二次根式"
+    },
+    {
+      "questionId": "q-s16-1-002",
+      "prompt": "判断 $\\sqrt{5-x}$ 在实数范围内有意义时，$x$ 的取值范围。",
+      "hint": "提示：把不等式 $5 - x \\ge 0$ 化简后再写结论。",
+      "referenceSteps": [
+        "$5 - x \\ge 0$",
+        "$x \\le 5$"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "取值范围",
+        "移项"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-1",
+      "sectionLabel": "16.1 二次根式"
+    },
+    {
+      "questionId": "q-s16-1-003",
+      "prompt": "判断 $\\sqrt{x+3} + \\sqrt{2-x}$ 在实数范围内有意义时，$x$ 的取值范围。",
+      "hint": "提示：两个被开方数都要 $\\ge 0$，最终取交集。",
+      "referenceSteps": [
+        "$x + 3 \\ge 0 \\Rightarrow x \\ge -3$",
+        "$2 - x \\ge 0 \\Rightarrow x \\le 2$",
+        "$-3 \\le x \\le 2$"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "公共定义域",
+        "不等式组"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-1",
+      "sectionLabel": "16.1 二次根式"
+    },
+    {
+      "questionId": "q-s16-2-001",
+      "prompt": "化简：$\\sqrt{12} \\cdot \\sqrt{3}$，并说明用到的乘法法则与前提条件。",
+      "hint": "提示：$\\sqrt{a} \\cdot \\sqrt{b} = \\sqrt{ab}$（$a, b \\ge 0$）。",
+      "referenceSteps": [
+        "$\\sqrt{12 \\cdot 3}$",
+        "$\\sqrt{36}$",
+        "$= 6$"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "乘法法则",
+        "前提条件"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除"
+    },
+    {
+      "questionId": "q-s16-2-002",
+      "prompt": "化简：$\\sqrt{50} \\div \\sqrt{2}$。",
+      "hint": "提示：$\\dfrac{\\sqrt{a}}{\\sqrt{b}} = \\sqrt{\\dfrac{a}{b}}$（$a \\ge 0, b > 0$）。",
+      "referenceSteps": [
+        "$\\sqrt{50 \\div 2}$",
+        "$\\sqrt{25}$",
+        "$= 5$"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "除法法则",
+        "化简"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除"
+    },
+    {
+      "questionId": "q-s16-2-003",
+      "prompt": "化简：$\\sqrt{8} \\cdot \\sqrt{18}$。",
+      "hint": "提示：先用乘法法则合并，再把完全平方数全部提出来。",
+      "referenceSteps": [
+        "$\\sqrt{8 \\cdot 18}$",
+        "$\\sqrt{144}$",
+        "$= 12$"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "乘法",
+        "完全平方数"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除"
+    },
+    {
+      "questionId": "q-s16-3-001",
+      "prompt": "化简：$\\sqrt{12} - \\sqrt{27}$。",
+      "hint": "提示：先化为最简二次根式，再合并同类二次根式。",
+      "referenceSteps": [
+        "$\\sqrt{12} = 2\\sqrt{3}$",
+        "$\\sqrt{27} = 3\\sqrt{3}$",
+        "$2\\sqrt{3} - 3\\sqrt{3} = -\\sqrt{3}$"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "最简二次根式",
+        "同类二次根式"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-3",
+      "sectionLabel": "16.3 二次根式的加减"
+    },
+    {
+      "questionId": "q-s16-3-002",
+      "prompt": "化简：$2\\sqrt{8} + \\sqrt{18}$。",
+      "hint": "提示：先把 $\\sqrt{8}$、$\\sqrt{18}$ 化成同底再合并。",
+      "referenceSteps": [
+        "$2\\sqrt{8} = 4\\sqrt{2}$",
+        "$\\sqrt{18} = 3\\sqrt{2}$",
+        "$4\\sqrt{2} + 3\\sqrt{2} = 7\\sqrt{2}$"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "化简",
+        "合并同类项"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-3",
+      "sectionLabel": "16.3 二次根式的加减"
+    },
+    {
+      "questionId": "q-s16-3-003",
+      "prompt": "化简：$\\sqrt{45} - 2\\sqrt{20} + \\sqrt{5}$。",
+      "hint": "提示：三项都化成同底 $\\sqrt{5}$，再依次合并系数，留意负号。",
+      "referenceSteps": [
+        "$\\sqrt{45} = 3\\sqrt{5}$",
+        "$2\\sqrt{20} = 4\\sqrt{5}$",
+        "$3\\sqrt{5} - 4\\sqrt{5} + \\sqrt{5} = 0$"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "多项合并",
+        "负号"
+      ],
+      "quality": "curated",
+      "sectionId": "pep-g8-down-s16-3",
+      "sectionLabel": "16.3 二次根式的加减"
+    },
+    {
+      "questionId": "q-pep-g8-down-s17-1-001",
+      "sectionId": "pep-g8-down-s17-1",
+      "sectionLabel": "17.1 勾股定理",
+      "prompt": "观察「17.1 勾股定理」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「勾股定理」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "勾股定理",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s17-1-002",
+      "sectionId": "pep-g8-down-s17-1",
+      "sectionLabel": "17.1 勾股定理",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「勾股定理」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "勾股定理",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s17-1-002.svg",
+        "alt": "17.1 勾股定理 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s17-1-003",
+      "sectionId": "pep-g8-down-s17-1",
+      "sectionLabel": "17.1 勾股定理",
+      "prompt": "围绕「17.1 勾股定理」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「勾股定理」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "勾股定理",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s17-1-003.svg",
+        "alt": "17.1 勾股定理 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s17-2-001",
+      "sectionId": "pep-g8-down-s17-2",
+      "sectionLabel": "17.2 勾股定理的逆定理",
+      "prompt": "观察「17.2 勾股定理的逆定理」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「勾股定理的逆定理」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "勾股定理的逆",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s17-2-002",
+      "sectionId": "pep-g8-down-s17-2",
+      "sectionLabel": "17.2 勾股定理的逆定理",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「勾股定理的逆定理」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "勾股定理的逆",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s17-2-002.svg",
+        "alt": "17.2 勾股定理的逆定理 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s17-2-003",
+      "sectionId": "pep-g8-down-s17-2",
+      "sectionLabel": "17.2 勾股定理的逆定理",
+      "prompt": "围绕「17.2 勾股定理的逆定理」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「勾股定理的逆定理」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "勾股定理的逆",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s17-2-003.svg",
+        "alt": "17.2 勾股定理的逆定理 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s18-1-001",
+      "sectionId": "pep-g8-down-s18-1",
+      "sectionLabel": "18.1 平行四边形",
+      "prompt": "观察「18.1 平行四边形」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「平行四边形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "平行边形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s18-1-002",
+      "sectionId": "pep-g8-down-s18-1",
+      "sectionLabel": "18.1 平行四边形",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「平行四边形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "平行边形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s18-1-002.svg",
+        "alt": "18.1 平行四边形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s18-1-003",
+      "sectionId": "pep-g8-down-s18-1",
+      "sectionLabel": "18.1 平行四边形",
+      "prompt": "围绕「18.1 平行四边形」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「平行四边形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "平行边形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s18-1-003.svg",
+        "alt": "18.1 平行四边形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s18-2-001",
+      "sectionId": "pep-g8-down-s18-2",
+      "sectionLabel": "18.2 特殊的平行四边形",
+      "prompt": "观察「18.2 特殊的平行四边形」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「特殊的平行四边形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "特殊的平行边",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s18-2-002",
+      "sectionId": "pep-g8-down-s18-2",
+      "sectionLabel": "18.2 特殊的平行四边形",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「特殊的平行四边形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "特殊的平行边",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s18-2-002.svg",
+        "alt": "18.2 特殊的平行四边形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s18-2-003",
+      "sectionId": "pep-g8-down-s18-2",
+      "sectionLabel": "18.2 特殊的平行四边形",
+      "prompt": "围绕「18.2 特殊的平行四边形」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「特殊的平行四边形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "特殊的平行边",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s18-2-003.svg",
+        "alt": "18.2 特殊的平行四边形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-1-001",
+      "sectionId": "pep-g8-down-s19-1",
+      "sectionLabel": "19.1 函数",
+      "prompt": "根据「19.1 函数」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-1-002",
+      "sectionId": "pep-g8-down-s19-1",
+      "sectionLabel": "19.1 函数",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s19-1-002.svg",
+        "alt": "19.1 函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-1-003",
+      "sectionId": "pep-g8-down-s19-1",
+      "sectionLabel": "19.1 函数",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s19-1-003.svg",
+        "alt": "19.1 函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-2-001",
+      "sectionId": "pep-g8-down-s19-2",
+      "sectionLabel": "19.2 一次函数",
+      "prompt": "根据「19.2 一次函数」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「一次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "次函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-2-002",
+      "sectionId": "pep-g8-down-s19-2",
+      "sectionLabel": "19.2 一次函数",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「一次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "次函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s19-2-002.svg",
+        "alt": "19.2 一次函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-2-003",
+      "sectionId": "pep-g8-down-s19-2",
+      "sectionLabel": "19.2 一次函数",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「一次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "次函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s19-2-003.svg",
+        "alt": "19.2 一次函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-3-001",
+      "sectionId": "pep-g8-down-s19-3",
+      "sectionLabel": "19.3 课题学习 选择方案",
+      "prompt": "请围绕「19.3 课题学习 选择方案」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「选择方案」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「19.3 课题学习 选择方案」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "选择方案",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-3-002",
+      "sectionId": "pep-g8-down-s19-3",
+      "sectionLabel": "19.3 课题学习 选择方案",
+      "prompt": "给出一个与「19.3 课题学习 选择方案」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「选择方案」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「19.3 课题学习 选择方案」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "选择方案",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s19-3-003",
+      "sectionId": "pep-g8-down-s19-3",
+      "sectionLabel": "19.3 课题学习 选择方案",
+      "prompt": "总结「19.3 课题学习 选择方案」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「选择方案」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「19.3 课题学习 选择方案」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "选择方案",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-1-001",
+      "sectionId": "pep-g8-down-s20-1",
+      "sectionLabel": "20.1 数据的集中趋势",
+      "prompt": "围绕「20.1 数据的集中趋势」读一组数据：8、10、10、12、15，求平均数并说明含义。",
+      "hint": "提示：这是「基础」题，先抓住「数据的集中趋势」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "数据的集中趋",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-1-002",
+      "sectionId": "pep-g8-down-s20-1",
+      "sectionLabel": "20.1 数据的集中趋势",
+      "prompt": "如图，根据条形统计图判断哪一组数据最大，并说明你的读图依据。",
+      "hint": "提示：这是「巩固」题，先抓住「数据的集中趋势」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "数据的集中趋",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s20-1-002.svg",
+        "alt": "20.1 数据的集中趋势 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-1-003",
+      "sectionId": "pep-g8-down-s20-1",
+      "sectionLabel": "20.1 数据的集中趋势",
+      "prompt": "为「20.1 数据的集中趋势」设计一次小调查，说明调查对象、记录方式和怎样避免数据遗漏。",
+      "hint": "提示：这是「挑战」题，先抓住「数据的集中趋势」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "数据的集中趋",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s20-1-003.svg",
+        "alt": "20.1 数据的集中趋势 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-2-001",
+      "sectionId": "pep-g8-down-s20-2",
+      "sectionLabel": "20.2 数据的波动程度",
+      "prompt": "围绕「20.2 数据的波动程度」读一组数据：8、10、10、12、15，求平均数并说明含义。",
+      "hint": "提示：这是「基础」题，先抓住「数据的波动程度」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "数据的波动程",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-2-002",
+      "sectionId": "pep-g8-down-s20-2",
+      "sectionLabel": "20.2 数据的波动程度",
+      "prompt": "如图，根据条形统计图判断哪一组数据最大，并说明你的读图依据。",
+      "hint": "提示：这是「巩固」题，先抓住「数据的波动程度」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "数据的波动程",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s20-2-002.svg",
+        "alt": "20.2 数据的波动程度 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-2-003",
+      "sectionId": "pep-g8-down-s20-2",
+      "sectionLabel": "20.2 数据的波动程度",
+      "prompt": "为「20.2 数据的波动程度」设计一次小调查，说明调查对象、记录方式和怎样避免数据遗漏。",
+      "hint": "提示：这是「挑战」题，先抓住「数据的波动程度」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "数据的波动程",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s20-2-003.svg",
+        "alt": "20.2 数据的波动程度 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-3-001",
+      "sectionId": "pep-g8-down-s20-3",
+      "sectionLabel": "20.3 课题学习 体质健康测试中的数据",
+      "prompt": "围绕「20.3 课题学习 体质健康测试中的数据」读一组数据：8、10、10、12、15，求平均数并说明含义。",
+      "hint": "提示：这是「基础」题，先抓住「体质健康测试中的数据」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "体质健康测试",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-3-002",
+      "sectionId": "pep-g8-down-s20-3",
+      "sectionLabel": "20.3 课题学习 体质健康测试中的数据",
+      "prompt": "如图，根据条形统计图判断哪一组数据最大，并说明你的读图依据。",
+      "hint": "提示：这是「巩固」题，先抓住「体质健康测试中的数据」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "体质健康测试",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s20-3-002.svg",
+        "alt": "20.3 课题学习 体质健康测试中的数据 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g8-down-s20-3-003",
+      "sectionId": "pep-g8-down-s20-3",
+      "sectionLabel": "20.3 课题学习 体质健康测试中的数据",
+      "prompt": "为「20.3 课题学习 体质健康测试中的数据」设计一次小调查，说明调查对象、记录方式和怎样避免数据遗漏。",
+      "hint": "提示：这是「挑战」题，先抓住「体质健康测试中的数据」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "明确统计对象",
+        "读取或计算关键数据",
+        "用一句话解释统计结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "体质健康测试",
+        "数据",
+        "读图"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g8-down-s20-3-003.svg",
+        "alt": "20.3 课题学习 体质健康测试中的数据 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-1-001",
+      "sectionId": "pep-g9-up-s21-1",
+      "sectionLabel": "21.1 一元二次方程",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "元次方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-1-002",
+      "sectionId": "pep-g9-up-s21-1",
+      "sectionLabel": "21.1 一元二次方程",
+      "prompt": "围绕「21.1 一元二次方程」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "元次方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-1-003",
+      "sectionId": "pep-g9-up-s21-1",
+      "sectionLabel": "21.1 一元二次方程",
+      "prompt": "小明解「21.1 一元二次方程」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "元次方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-2-001",
+      "sectionId": "pep-g9-up-s21-2",
+      "sectionLabel": "21.2 解一元二次方程",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「解一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "解元次方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-2-002",
+      "sectionId": "pep-g9-up-s21-2",
+      "sectionLabel": "21.2 解一元二次方程",
+      "prompt": "围绕「21.2 解一元二次方程」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「解一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "解元次方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-2-003",
+      "sectionId": "pep-g9-up-s21-2",
+      "sectionLabel": "21.2 解一元二次方程",
+      "prompt": "小明解「21.2 解一元二次方程」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「解一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "解元次方程",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-3-001",
+      "sectionId": "pep-g9-up-s21-3",
+      "sectionLabel": "21.3 实际问题与一元二次方程",
+      "prompt": "解方程：$2x+3=11$，并说明每一步等式变形依据。",
+      "hint": "提示：这是「基础」题，先抓住「实际问题与一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-3-002",
+      "sectionId": "pep-g9-up-s21-3",
+      "sectionLabel": "21.3 实际问题与一元二次方程",
+      "prompt": "围绕「21.3 实际问题与一元二次方程」列方程解决：一个数的 3 倍减 5 等于 16，求这个数。",
+      "hint": "提示：这是「巩固」题，先抓住「实际问题与一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s21-3-003",
+      "sectionId": "pep-g9-up-s21-3",
+      "sectionLabel": "21.3 实际问题与一元二次方程",
+      "prompt": "小明解「21.3 实际问题与一元二次方程」题时把移项后的符号写反了。请设计一个一元一次方程，指出错误并改正。",
+      "hint": "提示：这是「挑战」题，先抓住「实际问题与一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "设未知数并列出方程",
+        "按等式性质变形",
+        "检验结果是否符合题意"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "实际问题与元",
+        "方程",
+        "建模"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-1-001",
+      "sectionId": "pep-g9-up-s22-1",
+      "sectionLabel": "22.1 二次函数的图象和性质",
+      "prompt": "根据「22.1 二次函数的图象和性质」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「二次函数的图象和性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "次函数的图象",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-1-002",
+      "sectionId": "pep-g9-up-s22-1",
+      "sectionLabel": "22.1 二次函数的图象和性质",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「二次函数的图象和性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "次函数的图象",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s22-1-002.svg",
+        "alt": "22.1 二次函数的图象和性质 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-1-003",
+      "sectionId": "pep-g9-up-s22-1",
+      "sectionLabel": "22.1 二次函数的图象和性质",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「二次函数的图象和性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "次函数的图象",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s22-1-003.svg",
+        "alt": "22.1 二次函数的图象和性质 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-2-001",
+      "sectionId": "pep-g9-up-s22-2",
+      "sectionLabel": "22.2 二次函数与一元二次方程",
+      "prompt": "根据「22.2 二次函数与一元二次方程」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「二次函数与一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "次函数与元次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-2-002",
+      "sectionId": "pep-g9-up-s22-2",
+      "sectionLabel": "22.2 二次函数与一元二次方程",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「二次函数与一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "次函数与元次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s22-2-002.svg",
+        "alt": "22.2 二次函数与一元二次方程 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-2-003",
+      "sectionId": "pep-g9-up-s22-2",
+      "sectionLabel": "22.2 二次函数与一元二次方程",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「二次函数与一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "次函数与元次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s22-2-003.svg",
+        "alt": "22.2 二次函数与一元二次方程 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-3-001",
+      "sectionId": "pep-g9-up-s22-3",
+      "sectionLabel": "22.3 实际问题与二次函数",
+      "prompt": "根据「22.3 实际问题与二次函数」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「实际问题与二次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "实际问题与次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-3-002",
+      "sectionId": "pep-g9-up-s22-3",
+      "sectionLabel": "22.3 实际问题与二次函数",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「实际问题与二次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "实际问题与次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s22-3-002.svg",
+        "alt": "22.3 实际问题与二次函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s22-3-003",
+      "sectionId": "pep-g9-up-s22-3",
+      "sectionLabel": "22.3 实际问题与二次函数",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「实际问题与二次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "实际问题与次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s22-3-003.svg",
+        "alt": "22.3 实际问题与二次函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-1-001",
+      "sectionId": "pep-g9-up-s23-1",
+      "sectionLabel": "23.1 图形的旋转",
+      "prompt": "观察「23.1 图形的旋转」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「图形的旋转」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "图形的旋转",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-1-002",
+      "sectionId": "pep-g9-up-s23-1",
+      "sectionLabel": "23.1 图形的旋转",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「图形的旋转」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "图形的旋转",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s23-1-002.svg",
+        "alt": "23.1 图形的旋转 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-1-003",
+      "sectionId": "pep-g9-up-s23-1",
+      "sectionLabel": "23.1 图形的旋转",
+      "prompt": "围绕「23.1 图形的旋转」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「图形的旋转」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "图形的旋转",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s23-1-003.svg",
+        "alt": "23.1 图形的旋转 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-2-001",
+      "sectionId": "pep-g9-up-s23-2",
+      "sectionLabel": "23.2 中心对称",
+      "prompt": "请围绕「23.2 中心对称」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「中心对称」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「23.2 中心对称」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "中心对称",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-2-002",
+      "sectionId": "pep-g9-up-s23-2",
+      "sectionLabel": "23.2 中心对称",
+      "prompt": "给出一个与「23.2 中心对称」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「中心对称」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「23.2 中心对称」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "中心对称",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-2-003",
+      "sectionId": "pep-g9-up-s23-2",
+      "sectionLabel": "23.2 中心对称",
+      "prompt": "总结「23.2 中心对称」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「中心对称」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「23.2 中心对称」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "中心对称",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-3-001",
+      "sectionId": "pep-g9-up-s23-3",
+      "sectionLabel": "23.3 课题学习 图案设计",
+      "prompt": "请围绕「23.3 课题学习 图案设计」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「图案设计」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「23.3 课题学习 图案设计」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "图案设计",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-3-002",
+      "sectionId": "pep-g9-up-s23-3",
+      "sectionLabel": "23.3 课题学习 图案设计",
+      "prompt": "给出一个与「23.3 课题学习 图案设计」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「图案设计」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「23.3 课题学习 图案设计」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "图案设计",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s23-3-003",
+      "sectionId": "pep-g9-up-s23-3",
+      "sectionLabel": "23.3 课题学习 图案设计",
+      "prompt": "总结「23.3 课题学习 图案设计」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「图案设计」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「23.3 课题学习 图案设计」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "图案设计",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-1-001",
+      "sectionId": "pep-g9-up-s24-1",
+      "sectionLabel": "24.1 圆的有关性质",
+      "prompt": "观察「24.1 圆的有关性质」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「圆的有关性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "圆的有关性质",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-1-002",
+      "sectionId": "pep-g9-up-s24-1",
+      "sectionLabel": "24.1 圆的有关性质",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「圆的有关性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "圆的有关性质",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s24-1-002.svg",
+        "alt": "24.1 圆的有关性质 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-1-003",
+      "sectionId": "pep-g9-up-s24-1",
+      "sectionLabel": "24.1 圆的有关性质",
+      "prompt": "围绕「24.1 圆的有关性质」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「圆的有关性质」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "圆的有关性质",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s24-1-003.svg",
+        "alt": "24.1 圆的有关性质 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-2-001",
+      "sectionId": "pep-g9-up-s24-2",
+      "sectionLabel": "24.2 点和圆、直线和圆的位置关系",
+      "prompt": "观察「24.2 点和圆、直线和圆的位置关系」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「点和圆、直线和圆的位置关系」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "点和圆、直线",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-2-002",
+      "sectionId": "pep-g9-up-s24-2",
+      "sectionLabel": "24.2 点和圆、直线和圆的位置关系",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「点和圆、直线和圆的位置关系」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "点和圆、直线",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s24-2-002.svg",
+        "alt": "24.2 点和圆、直线和圆的位置关系 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-2-003",
+      "sectionId": "pep-g9-up-s24-2",
+      "sectionLabel": "24.2 点和圆、直线和圆的位置关系",
+      "prompt": "围绕「24.2 点和圆、直线和圆的位置关系」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「点和圆、直线和圆的位置关系」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "点和圆、直线",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s24-2-003.svg",
+        "alt": "24.2 点和圆、直线和圆的位置关系 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-3-001",
+      "sectionId": "pep-g9-up-s24-3",
+      "sectionLabel": "24.3 正多边形和圆",
+      "prompt": "观察「24.3 正多边形和圆」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「正多边形和圆」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "正多边形和圆",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-3-002",
+      "sectionId": "pep-g9-up-s24-3",
+      "sectionLabel": "24.3 正多边形和圆",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「正多边形和圆」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "正多边形和圆",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s24-3-002.svg",
+        "alt": "24.3 正多边形和圆 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-3-003",
+      "sectionId": "pep-g9-up-s24-3",
+      "sectionLabel": "24.3 正多边形和圆",
+      "prompt": "围绕「24.3 正多边形和圆」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「正多边形和圆」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "正多边形和圆",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s24-3-003.svg",
+        "alt": "24.3 正多边形和圆 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-4-001",
+      "sectionId": "pep-g9-up-s24-4",
+      "sectionLabel": "24.4 弧长和扇形面积",
+      "prompt": "请围绕「24.4 弧长和扇形面积」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「弧长和扇形面积」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「24.4 弧长和扇形面积」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "弧长和扇形面",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-4-002",
+      "sectionId": "pep-g9-up-s24-4",
+      "sectionLabel": "24.4 弧长和扇形面积",
+      "prompt": "给出一个与「24.4 弧长和扇形面积」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「弧长和扇形面积」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「24.4 弧长和扇形面积」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "弧长和扇形面",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s24-4-003",
+      "sectionId": "pep-g9-up-s24-4",
+      "sectionLabel": "24.4 弧长和扇形面积",
+      "prompt": "总结「24.4 弧长和扇形面积」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「弧长和扇形面积」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「24.4 弧长和扇形面积」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "弧长和扇形面",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-1-001",
+      "sectionId": "pep-g9-up-s25-1",
+      "sectionLabel": "25.1 随机事件与概率",
+      "prompt": "袋中有 2 个红球、3 个蓝球，随机摸出 1 个，求摸到红球的概率。",
+      "hint": "提示：这是「基础」题，先抓住「随机事件与概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "随机事件与概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-1-002",
+      "sectionId": "pep-g9-up-s25-1",
+      "sectionLabel": "25.1 随机事件与概率",
+      "prompt": "如图，袋中有红、蓝、白三类球。若红球 2 个、蓝球 3 个、白球 1 个，求摸到蓝球的概率。",
+      "hint": "提示：这是「巩固」题，先抓住「随机事件与概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "随机事件与概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s25-1-002.svg",
+        "alt": "25.1 随机事件与概率 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-1-003",
+      "sectionId": "pep-g9-up-s25-1",
+      "sectionLabel": "25.1 随机事件与概率",
+      "prompt": "围绕「25.1 随机事件与概率」设计一个概率为 $\\dfrac13$ 的摸球实验，并说明样本总数和有利结果数。",
+      "hint": "提示：这是「挑战」题，先抓住「随机事件与概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "随机事件与概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s25-1-003.svg",
+        "alt": "25.1 随机事件与概率 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-2-001",
+      "sectionId": "pep-g9-up-s25-2",
+      "sectionLabel": "25.2 用列举法求概率",
+      "prompt": "袋中有 2 个红球、3 个蓝球，随机摸出 1 个，求摸到红球的概率。",
+      "hint": "提示：这是「基础」题，先抓住「用列举法求概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "用列举法求概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-2-002",
+      "sectionId": "pep-g9-up-s25-2",
+      "sectionLabel": "25.2 用列举法求概率",
+      "prompt": "如图，袋中有红、蓝、白三类球。若红球 2 个、蓝球 3 个、白球 1 个，求摸到蓝球的概率。",
+      "hint": "提示：这是「巩固」题，先抓住「用列举法求概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "用列举法求概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s25-2-002.svg",
+        "alt": "25.2 用列举法求概率 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-2-003",
+      "sectionId": "pep-g9-up-s25-2",
+      "sectionLabel": "25.2 用列举法求概率",
+      "prompt": "围绕「25.2 用列举法求概率」设计一个概率为 $\\dfrac13$ 的摸球实验，并说明样本总数和有利结果数。",
+      "hint": "提示：这是「挑战」题，先抓住「用列举法求概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "用列举法求概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s25-2-003.svg",
+        "alt": "25.2 用列举法求概率 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-3-001",
+      "sectionId": "pep-g9-up-s25-3",
+      "sectionLabel": "25.3 用频率估计概率",
+      "prompt": "袋中有 2 个红球、3 个蓝球，随机摸出 1 个，求摸到红球的概率。",
+      "hint": "提示：这是「基础」题，先抓住「用频率估计概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "用频率估计概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-3-002",
+      "sectionId": "pep-g9-up-s25-3",
+      "sectionLabel": "25.3 用频率估计概率",
+      "prompt": "如图，袋中有红、蓝、白三类球。若红球 2 个、蓝球 3 个、白球 1 个，求摸到蓝球的概率。",
+      "hint": "提示：这是「巩固」题，先抓住「用频率估计概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "用频率估计概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s25-3-002.svg",
+        "alt": "25.3 用频率估计概率 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-up-s25-3-003",
+      "sectionId": "pep-g9-up-s25-3",
+      "sectionLabel": "25.3 用频率估计概率",
+      "prompt": "围绕「25.3 用频率估计概率」设计一个概率为 $\\dfrac13$ 的摸球实验，并说明样本总数和有利结果数。",
+      "hint": "提示：这是「挑战」题，先抓住「用频率估计概率」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "列出所有等可能结果",
+        "数出有利结果",
+        "写成概率并化简"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "用频率估计概",
+        "概率",
+        "样本空间"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-up-s25-3-003.svg",
+        "alt": "25.3 用频率估计概率 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-1-001",
+      "sectionId": "pep-g9-down-s26-1",
+      "sectionLabel": "26.1 二次函数及其图象",
+      "prompt": "根据「26.1 二次函数及其图象」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「二次函数及其图象」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "次函数及其图",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-1-002",
+      "sectionId": "pep-g9-down-s26-1",
+      "sectionLabel": "26.1 二次函数及其图象",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「二次函数及其图象」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "次函数及其图",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s26-1-002.svg",
+        "alt": "26.1 二次函数及其图象 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-1-003",
+      "sectionId": "pep-g9-down-s26-1",
+      "sectionLabel": "26.1 二次函数及其图象",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「二次函数及其图象」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "次函数及其图",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s26-1-003.svg",
+        "alt": "26.1 二次函数及其图象 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-2-001",
+      "sectionId": "pep-g9-down-s26-2",
+      "sectionLabel": "26.2 用函数观点看一元二次方程",
+      "prompt": "根据「26.2 用函数观点看一元二次方程」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「用函数观点看一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "用函数观点看",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-2-002",
+      "sectionId": "pep-g9-down-s26-2",
+      "sectionLabel": "26.2 用函数观点看一元二次方程",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「用函数观点看一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "用函数观点看",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s26-2-002.svg",
+        "alt": "26.2 用函数观点看一元二次方程 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-2-003",
+      "sectionId": "pep-g9-down-s26-2",
+      "sectionLabel": "26.2 用函数观点看一元二次方程",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「用函数观点看一元二次方程」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "用函数观点看",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s26-2-003.svg",
+        "alt": "26.2 用函数观点看一元二次方程 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-3-001",
+      "sectionId": "pep-g9-down-s26-3",
+      "sectionLabel": "26.3 实际问题与二次函数",
+      "prompt": "根据「26.3 实际问题与二次函数」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「实际问题与二次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "实际问题与次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-3-002",
+      "sectionId": "pep-g9-down-s26-3",
+      "sectionLabel": "26.3 实际问题与二次函数",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「实际问题与二次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "实际问题与次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s26-3-002.svg",
+        "alt": "26.3 实际问题与二次函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s26-3-003",
+      "sectionId": "pep-g9-down-s26-3",
+      "sectionLabel": "26.3 实际问题与二次函数",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「实际问题与二次函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "实际问题与次",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s26-3-003.svg",
+        "alt": "26.3 实际问题与二次函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-1-001",
+      "sectionId": "pep-g9-down-s27-1",
+      "sectionLabel": "27.1 图形的相似",
+      "prompt": "观察「27.1 图形的相似」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「图形的相似」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "图形的相似",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-1-002",
+      "sectionId": "pep-g9-down-s27-1",
+      "sectionLabel": "27.1 图形的相似",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「图形的相似」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "图形的相似",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s27-1-002.svg",
+        "alt": "27.1 图形的相似 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-1-003",
+      "sectionId": "pep-g9-down-s27-1",
+      "sectionLabel": "27.1 图形的相似",
+      "prompt": "围绕「27.1 图形的相似」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「图形的相似」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "图形的相似",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s27-1-003.svg",
+        "alt": "27.1 图形的相似 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-2-001",
+      "sectionId": "pep-g9-down-s27-2",
+      "sectionLabel": "27.2 相似三角形",
+      "prompt": "观察「27.2 相似三角形」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「相似三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "相似角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-2-002",
+      "sectionId": "pep-g9-down-s27-2",
+      "sectionLabel": "27.2 相似三角形",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「相似三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "相似角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s27-2-002.svg",
+        "alt": "27.2 相似三角形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-2-003",
+      "sectionId": "pep-g9-down-s27-2",
+      "sectionLabel": "27.2 相似三角形",
+      "prompt": "围绕「27.2 相似三角形」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「相似三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "相似角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s27-2-003.svg",
+        "alt": "27.2 相似三角形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-3-001",
+      "sectionId": "pep-g9-down-s27-3",
+      "sectionLabel": "27.3 位似",
+      "prompt": "请围绕「27.3 位似」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「位似」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「27.3 位似」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "位似",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-3-002",
+      "sectionId": "pep-g9-down-s27-3",
+      "sectionLabel": "27.3 位似",
+      "prompt": "给出一个与「27.3 位似」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「位似」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「27.3 位似」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "位似",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s27-3-003",
+      "sectionId": "pep-g9-down-s27-3",
+      "sectionLabel": "27.3 位似",
+      "prompt": "总结「27.3 位似」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「位似」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「27.3 位似」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "位似",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s28-1-001",
+      "sectionId": "pep-g9-down-s28-1",
+      "sectionLabel": "28.1 锐角三角函数",
+      "prompt": "根据「28.1 锐角三角函数」写出一个变量关系，并判断它是不是函数关系。",
+      "hint": "提示：这是「基础」题，先抓住「锐角三角函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "锐角角函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s28-1-002",
+      "sectionId": "pep-g9-down-s28-1",
+      "sectionLabel": "28.1 锐角三角函数",
+      "prompt": "如图，观察函数图像的大致变化趋势，说出 $y$ 随 $x$ 增大如何变化。",
+      "hint": "提示：这是「巩固」题，先抓住「锐角三角函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "锐角角函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s28-1-002.svg",
+        "alt": "28.1 锐角三角函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s28-1-003",
+      "sectionId": "pep-g9-down-s28-1",
+      "sectionLabel": "28.1 锐角三角函数",
+      "prompt": "已知一次函数经过点 $(0,2)$ 和 $(2,6)$，求函数解析式并说明图像特征。",
+      "hint": "提示：这是「挑战」题，先抓住「锐角三角函数」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "确定自变量和因变量",
+        "读取点或变化趋势",
+        "用解析式或图像语言表达结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "锐角角函数",
+        "函数",
+        "图像"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s28-1-003.svg",
+        "alt": "28.1 锐角三角函数 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s28-2-001",
+      "sectionId": "pep-g9-down-s28-2",
+      "sectionLabel": "28.2 解直角三角形",
+      "prompt": "观察「28.2 解直角三角形」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「解直角三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "解直角角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s28-2-002",
+      "sectionId": "pep-g9-down-s28-2",
+      "sectionLabel": "28.2 解直角三角形",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「解直角三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "解直角角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s28-2-002.svg",
+        "alt": "28.2 解直角三角形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s28-2-003",
+      "sectionId": "pep-g9-down-s28-2",
+      "sectionLabel": "28.2 解直角三角形",
+      "prompt": "围绕「28.2 解直角三角形」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「解直角三角形」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "解直角角形",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s28-2-003.svg",
+        "alt": "28.2 解直角三角形 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-1-001",
+      "sectionId": "pep-g9-down-s29-1",
+      "sectionLabel": "29.1 投影",
+      "prompt": "观察「29.1 投影」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「投影」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "投影",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-1-002",
+      "sectionId": "pep-g9-down-s29-1",
+      "sectionLabel": "29.1 投影",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「投影」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "投影",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s29-1-002.svg",
+        "alt": "29.1 投影 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-1-003",
+      "sectionId": "pep-g9-down-s29-1",
+      "sectionLabel": "29.1 投影",
+      "prompt": "围绕「29.1 投影」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「投影」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "投影",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s29-1-003.svg",
+        "alt": "29.1 投影 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-2-001",
+      "sectionId": "pep-g9-down-s29-2",
+      "sectionLabel": "29.2 三视图",
+      "prompt": "观察「29.2 三视图」中的基本图形，说出图中至少两个关键元素及它们的关系。",
+      "hint": "提示：这是「基础」题，先抓住「三视图」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "视图",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-2-002",
+      "sectionId": "pep-g9-down-s29-2",
+      "sectionLabel": "29.2 三视图",
+      "prompt": "如图，结合已标出的线段或角，说明可以推出哪个几何结论。",
+      "hint": "提示：这是「巩固」题，先抓住「三视图」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "视图",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s29-2-002.svg",
+        "alt": "29.2 三视图 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-2-003",
+      "sectionId": "pep-g9-down-s29-2",
+      "sectionLabel": "29.2 三视图",
+      "prompt": "围绕「29.2 三视图」写一段完整推理：先列已知，再说明判定依据，最后写结论。",
+      "hint": "提示：这是「挑战」题，先抓住「三视图」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "读图并标出已知量",
+        "选择对应的定义或判定方法",
+        "按因为所以写出结论"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "视图",
+        "几何图形",
+        "推理"
+      ],
+      "quality": "generated_seed",
+      "image": {
+        "asset": "assets/questions/diagrams/q-pep-g9-down-s29-2-003.svg",
+        "alt": "29.2 三视图 的配图，用于读图、推理或解释题意"
+      }
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-3-001",
+      "sectionId": "pep-g9-down-s29-3",
+      "sectionLabel": "29.3 课题学习 制作立体模型",
+      "prompt": "请围绕「29.3 课题学习 制作立体模型」讲清一个核心概念，并举一个简单例子。",
+      "hint": "提示：这是「基础」题，先抓住「制作立体模型」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「29.3 课题学习 制作立体模型」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "制作立体模型",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-3-002",
+      "sectionId": "pep-g9-down-s29-3",
+      "sectionLabel": "29.3 课题学习 制作立体模型",
+      "prompt": "给出一个与「29.3 课题学习 制作立体模型」有关的计算或判断题，写出完整步骤并解释依据。",
+      "hint": "提示：这是「巩固」题，先抓住「制作立体模型」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「29.3 课题学习 制作立体模型」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "制作立体模型",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    },
+    {
+      "questionId": "q-pep-g9-down-s29-3-003",
+      "sectionId": "pep-g9-down-s29-3",
+      "sectionLabel": "29.3 课题学习 制作立体模型",
+      "prompt": "总结「29.3 课题学习 制作立体模型」里一个容易出错的地方，设计例子说明正确做法。",
+      "hint": "提示：这是「挑战」题，先抓住「制作立体模型」的核心规则，再按步骤讲清理由。",
+      "referenceSteps": [
+        "说出「29.3 课题学习 制作立体模型」的核心概念",
+        "列出一个代表性步骤",
+        "总结易错点并修正"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "制作立体模型",
+        "概念",
+        "例子"
+      ],
+      "quality": "generated_seed"
+    }
+  ]
+}

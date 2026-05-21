@@ -1,0 +1,79 @@
+[
+  {
+    "id": "k-s16-1-meaning",
+    "sectionId": "pep-g8-down-s16-1",
+    "title": "二次根式的形式",
+    "text": "一般地，形如 \\(\\sqrt{a}\\) 的式子叫做二次根式，其中被开方数 a 必须在实数范围内有意义。",
+    "keywords": ["二次根式", "形式", "被开方数"]
+  },
+  {
+    "id": "k-s16-1-domain",
+    "sectionId": "pep-g8-down-s16-1",
+    "title": "被开方数非负",
+    "text": "讨论 \\(\\sqrt{a}\\) 是否有意义时，关键条件是被开方数 \\(a\\ge0\\)，不是 \\(a>0\\)。",
+    "keywords": ["有意义", "非负", "取值范围", "大于等于"]
+  },
+  {
+    "id": "k-s16-1-system",
+    "sectionId": "pep-g8-down-s16-1",
+    "title": "多个根式取交集",
+    "text": "一个式子含有多个二次根式时，每个被开方数都要非负，最后解不等式组并取公共范围。",
+    "keywords": ["不等式组", "公共范围", "交集"]
+  },
+  {
+    "id": "k-s16-2-multiply-rule",
+    "sectionId": "pep-g8-down-s16-2",
+    "title": "二次根式乘法法则",
+    "text": "当 \\(a\\ge0,b\\ge0\\) 时，\\(\\sqrt{a}\\sqrt{b}=\\sqrt{ab}\\)。使用时要说明前提条件。",
+    "keywords": ["乘法法则", "前提条件", "合并"]
+  },
+  {
+    "id": "k-s16-2-divide-rule",
+    "sectionId": "pep-g8-down-s16-2",
+    "title": "二次根式除法法则",
+    "text": "当 \\(a\\ge0,b>0\\) 时，\\(\\frac{\\sqrt{a}}{\\sqrt{b}}=\\sqrt{\\frac{a}{b}}\\)，分母对应的被开方数必须大于 0。",
+    "keywords": ["除法法则", "分母", "大于0"]
+  },
+  {
+    "id": "k-s16-2-simplify",
+    "sectionId": "pep-g8-down-s16-2",
+    "title": "完全平方数外移",
+    "text": "化简二次根式时，应把被开方数中的完全平方因数尽量提到根号外，例如 \\(\\sqrt{12}=2\\sqrt{3}\\)。",
+    "keywords": ["完全平方数", "化简", "根号外"]
+  },
+  {
+    "id": "k-s16-2-negative-trap",
+    "sectionId": "pep-g8-down-s16-2",
+    "title": "负数不能直接拆根号",
+    "text": "在实数范围内，不能把 \\(\\sqrt{-2}\\sqrt{-8}\\) 直接改写成 \\(\\sqrt{16}\\)，因为原式本身无意义。",
+    "keywords": ["负数", "无意义", "易错"]
+  },
+  {
+    "id": "k-s16-3-like-radicals",
+    "sectionId": "pep-g8-down-s16-3",
+    "title": "同类二次根式",
+    "text": "几个二次根式化成最简二次根式后，如果被开方数相同，就叫同类二次根式，可以合并系数。",
+    "keywords": ["同类二次根式", "最简", "合并"]
+  },
+  {
+    "id": "k-s16-3-add-subtract",
+    "sectionId": "pep-g8-down-s16-3",
+    "title": "二次根式加减步骤",
+    "text": "二次根式加减通常先化简，再找同类二次根式，最后只合并根号前的系数，根号部分不变。",
+    "keywords": ["加减", "系数", "根号部分"]
+  },
+  {
+    "id": "k-s16-3-sign",
+    "sectionId": "pep-g8-down-s16-3",
+    "title": "合并时留意符号",
+    "text": "合并同类二次根式时，减号会影响系数，例如 \\(2\\sqrt{3}-3\\sqrt{3}=-\\sqrt{3}\\)。",
+    "keywords": ["负号", "系数", "减法"]
+  },
+  {
+    "id": "k-s16-3-zero",
+    "sectionId": "pep-g8-down-s16-3",
+    "title": "系数合并为零",
+    "text": "当同类二次根式的系数相加减为 0 时，结果就是 0，不需要保留根号项。",
+    "keywords": ["零", "合并", "多项"]
+  }
+]

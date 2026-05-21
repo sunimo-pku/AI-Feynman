@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.db import (
     LearningProgress,
     LectureReview,
+    StudentProfile,
     User,
     dump_json,
     ensure_student_profile,
@@ -76,6 +77,32 @@ class ReviewItem(BaseModel):
 class SyncRequest(BaseModel):
     progress: list[ProgressItem] = Field(default_factory=list)
     reviews: list[ReviewItem] = Field(default_factory=list)
+    mode: Literal["merge", "overwrite"] = "merge"
+
+    model_config = {"populate_by_name": True}
+
+
+class ProfilePatchRequest(BaseModel):
+    display_name: str | None = Field(None, alias="displayName", max_length=64)
+    grade: str | None = Field(None, max_length=32)
+    school_name: str | None = Field(None, alias="schoolName", max_length=96)
+    province: str | None = Field(None, max_length=32)
+    city: str | None = Field(None, max_length=32)
+    district: str | None = Field(None, max_length=32)
+    equipped_title: str | None = Field(None, alias="equippedTitle", max_length=96)
+
+    model_config = {"populate_by_name": True}
+
+
+class ProfileOut(BaseModel):
+    id: int
+    display_name: str = Field("", serialization_alias="displayName")
+    grade: str = ""
+    school_name: str = Field("", serialization_alias="schoolName")
+    province: str = ""
+    city: str = ""
+    district: str = ""
+    equipped_title: str = Field("", serialization_alias="equippedTitle")
 
     model_config = {"populate_by_name": True}
 
@@ -156,6 +183,19 @@ def _review_to_out(row: LectureReview) -> ReviewOut:
     )
 
 
+def _profile_to_out(profile: StudentProfile) -> ProfileOut:
+    return ProfileOut(
+        id=int(profile.id),
+        display_name=profile.display_name or "",
+        grade=profile.grade or "",
+        school_name=getattr(profile, "school_name", "") or "",
+        province=getattr(profile, "province", "") or "",
+        city=getattr(profile, "city", "") or "",
+        district=getattr(profile, "district", "") or "",
+        equipped_title=getattr(profile, "equipped_title", "") or "",
+    )
+
+
 @router.get(
     "/progress",
     response_model=list[ProgressOut],
@@ -194,6 +234,76 @@ async def list_reviews(
     return [_review_to_out(r) for r in rows]
 
 
+@router.get("/profile", response_model=ProfileOut, response_model_by_alias=True)
+async def get_profile(
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ProfileOut:
+    return _profile_to_out(ensure_student_profile(db, user))
+
+
+@router.patch("/profile", response_model=ProfileOut, response_model_by_alias=True)
+async def patch_profile(
+    req: ProfilePatchRequest,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ProfileOut:
+    profile = ensure_student_profile(db, user)
+    for attr, value in (
+        ("display_name", req.display_name),
+        ("grade", req.grade),
+        ("school_name", req.school_name),
+        ("province", req.province),
+        ("city", req.city),
+        ("district", req.district),
+        ("equipped_title", req.equipped_title),
+    ):
+        if value is not None:
+            setattr(profile, attr, value.strip())
+    db.commit()
+    db.refresh(profile)
+    logger.info("[learning] profile updated user=%s display=%s", user.username, profile.display_name)
+    return _profile_to_out(profile)
+
+
+@router.post(
+    "/reviews",
+    response_model=ReviewOut,
+    response_model_by_alias=True,
+    summary="单条讲题回顾 upsert",
+)
+async def upsert_review(
+    req: ReviewItem,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ReviewOut:
+    profile = ensure_student_profile(db, user)
+    existing = db.query(LectureReview).filter(LectureReview.client_id == req.client_id).first()
+    if existing is None:
+        existing = LectureReview(
+            student_id=profile.id,
+            client_id=req.client_id,
+            section_id=req.section_id,
+            question_id=req.question_id,
+        )
+        db.add(existing)
+    elif existing.student_id != profile.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Review belongs to another student.")
+
+    existing.section_id = req.section_id
+    existing.question_id = req.question_id
+    existing.question_prompt = req.question_prompt
+    existing.difficulty = req.difficulty
+    existing.tags_json = dump_json(req.tags)
+    existing.summary = req.summary
+    existing.agent_highlights_json = dump_json(req.agent_highlights)
+    existing.caution_points_json = dump_json(req.caution_points)
+    existing.created_at = req.completed_at
+    db.commit()
+    db.refresh(existing)
+    return _review_to_out(existing)
+
+
 @router.post(
     "/progress/sync",
     response_model=SyncResponse,
@@ -227,6 +337,13 @@ async def sync_progress(
                 last_summary=incoming.last_summary,
             )
             db.add(row)
+            accepted_progress += 1
+            continue
+        if req.mode == "overwrite":
+            existing.completed_rounds = incoming.completed_rounds
+            existing.mastery_score = incoming.mastery_score
+            existing.last_practiced_at = incoming.last_practiced_at
+            existing.last_summary = incoming.last_summary
             accepted_progress += 1
             continue
         # 合并：取较高 completedRounds 与较新 lastPracticedAt 为准。

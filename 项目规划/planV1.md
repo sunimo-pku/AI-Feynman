@@ -254,5 +254,33 @@
 
 ---
 
+## 7. 实现状态（第十二轮产品闭环）
+
+| 能力 | 状态 | App 可演示 | 工程落点 |
+|------|------|------------|----------|
+| 学生端讲题闭环 | 已落地 | 是 | Flutter `LecturePage` + FastAPI `/lecture/submit` / `/lecture/live` |
+| 真 LLM 流式 | 已落地 | 是 | `lecture_agent_stream.py` NDJSON 事件；异常走 `stream_fallback` |
+| 账号级本地隔离 | 已落地 | 是 | `AuthService.storageNamespace` + progress/review namespaced prefs |
+| 原生公式渲染 | 已落地 | 是 | `flutter_math_fork` 封装在 `FormulaText` |
+| 实时礼貌策略 | 已落地 | 是 | 写字 3s 内不追问、2.5s 提示、4s 收束、300ms 声音打断防抖 |
+| 多角色 TTS | 已落地 | 是 | `/tts` role/speaker 映射：小明/大雄/班长/老师 |
+| 学习数据同步 | 已落地 | 是 | pull/merge/overwrite + 单条 review upsert |
+| 隐私权限说明 | 已落地 | 是 | `PrivacyNoticePage` 首次讲题前确认 |
+| OCR/HWR | 已落地 | 是 | `/ocr/ink mode=rule|hwr`，`DEBUG_OCR` 展示 source/confidence/mode |
+| 流式 ASR | 已落地 | 是 | `live_asr_buffer.py` 优先 stream；未配置时 window fallback |
+| 精彩讲题回放 | 已落地 | 是 | `ReplayService` + `ReplayPage` + `/replays` + `/parent/replays` |
+| 费曼战力/段位 | 已落地 | 是 | `PowerProfilePage` + `/gamification/me` |
+| 地理排行榜 | 已落地 | 是 | `LeaderboardPage` + `/leaderboard` + `scripts/settle_leaderboard.py` |
+| 今日悬赏挑错 | 已落地 | 是 | `BountyPage` + `/bounty/today` + `/bounty/submit` |
+| 晶石商城 | 已落地 | 是 | `ShopPage` + `UserCosmeticsPrefs` + `/shop/catalog` / redeem / ledger |
+| 工具局兑换 | 已落地 | 是 | `GeekShopPage` + 物理 SKU + `RedeemOrder` pending 状态 |
+| 拍照识题 | 已落地 | 是 | `PhotoQuestionPage` + `image_picker` + `/questions/upload-image` |
+| 知识库检索 | 已落地 | 是 | `data/knowledge/*_chunks.json` + `knowledge_index` 注入 prompt |
+| 全册题库 | 已落地 | 是 | `data/questions/pep-junior-math-questions.json` 覆盖 90 节 |
+| 多孩子绑定 | 已落地 | 是 | `ParentDashboardPage` child switcher + `/parent/children` |
+| 掌握度驱动难度 | 已落地 | 是 | `LecturePage` 按 mastery 推荐初始题目难度 |
+
+仅保留真实支付、真实物流 API、家长充值/打赏为不做项；晶石只能通过讲题、悬赏与排行玩法获得。
+
 
 

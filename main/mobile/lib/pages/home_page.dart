@@ -13,7 +13,9 @@ import '../theme/app_theme.dart';
 import 'auth_page.dart';
 import 'lecture_page.dart';
 import 'parent_dashboard_page.dart';
+import 'privacy_notice_page.dart';
 import 'review_page.dart';
+import 'v2_pages.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -36,6 +38,9 @@ class _HomePageState extends State<HomePage> {
     // 仓库本身是 ChangeNotifier，加载成功后 _ProgressAwareSectionPill 会
     // 自动重建展示「已完成 N 轮 · 掌握度 X/100」。
     ProgressRepository.instance.load();
+    MockLectureRepository.instance.loadAssetBank().then((_) {
+      if (mounted) setState(() {});
+    });
     // 第八轮：预热回顾仓库，让小节 pill 上的「回顾」入口能立即反映「有/无
     // 历史记录」。失败同样被仓库吞掉打 log，不阻塞首页。
     ReviewRepository.instance.load();
@@ -44,7 +49,7 @@ class _HomePageState extends State<HomePage> {
     AuthService.instance.load().then((_) {
       if (AuthService.instance.isLoggedIn) {
         // 静默同步：失败仅在 sync service 的 lastError 里暴露。
-        LearningSyncService.instance.syncNow();
+        LearningSyncService.instance.pullAndMerge();
       }
     });
   }
@@ -55,7 +60,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _onSectionTap(CurriculumSection section) async {
-    if (section.isAvailable) {
+    final hasQuestion =
+        MockLectureRepository.instance.questionCountForSection(section.id) > 0;
+    if (section.isAvailable || hasQuestion) {
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => LecturePage(section: section),
@@ -103,7 +110,10 @@ class _HomePageState extends State<HomePage> {
   /// 只对 `available` 的小节开放（未上线小节既没法练习也没法回顾，避免
   /// 在置灰 pill 旁边放一个能点进去的「回顾」按钮造成迷惑）。
   Future<void> _onSectionReview(CurriculumSection section) async {
-    if (!section.isAvailable) return;
+    if (!section.isAvailable &&
+        MockLectureRepository.instance.questionCountForSection(section.id) <= 0) {
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => ReviewPage(section: section)),
     );
@@ -130,6 +140,13 @@ class _HomePageState extends State<HomePage> {
               );
             },
           ),
+          IconButton(
+            tooltip: '隐私说明',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PrivacyNoticePage()),
+            ),
+            icon: const Icon(Icons.privacy_tip_outlined),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(child: _ApiStatusBadge(healthy: _apiHealthy)),
@@ -151,6 +168,8 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.all(AppSpacing.pageEdge),
               children: [
                 _HeroBanner(curriculum: curriculum),
+                const SizedBox(height: AppSpacing.moduleGap),
+                const _V2EntrySection(),
                 const SizedBox(height: AppSpacing.moduleGap),
                 ...curriculum.books.map(
                   (book) => Padding(
@@ -207,7 +226,7 @@ class _HeroBanner extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'V1 仅开放「八年级下册 · 第十六章 二次根式」。其余章节正在备课，目录可以浏览，暂未开放练习。',
+            '第十二轮已开放 V2 演示闭环：完整目录可练习，二次根式内容精讲，悬赏、商城、排行榜与拍照识题都可从首页进入。',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 12),
@@ -225,6 +244,61 @@ class _HeroBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+class _V2EntrySection extends StatelessWidget {
+  const _V2EntrySection();
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = <_V2Entry>[
+      _V2Entry('今日悬赏', Icons.where_to_vote_outlined, () => const BountyPage()),
+      _V2Entry('晶石商城', Icons.diamond_outlined, () => const ShopPage()),
+      _V2Entry('排行榜', Icons.emoji_events_outlined, () => const LeaderboardPage()),
+      _V2Entry('拍照识题', Icons.document_scanner_outlined, () => const PhotoQuestionPage()),
+      _V2Entry('我的战力', Icons.bolt_outlined, () => const PowerProfilePage()),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.cardR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('V2 产品入口', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: entries
+                .map(
+                  (e) => SizedBox(
+                    width: 150,
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => e.builder()),
+                      ),
+                      icon: Icon(e.icon, size: 18),
+                      label: Text(e.label),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _V2Entry {
+  const _V2Entry(this.label, this.icon, this.builder);
+  final String label;
+  final IconData icon;
+  final Widget Function() builder;
 }
 
 class _Tag extends StatelessWidget {
@@ -348,8 +422,9 @@ class _BookCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasAvailable = book.chapters
-        .any((c) => c.sections.any((s) => s.isAvailable));
+    final hasAvailable = book.chapters.any((c) => c.sections.any((s) =>
+        s.isAvailable ||
+        MockLectureRepository.instance.questionCountForSection(s.id) > 0));
     return Card(
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -401,7 +476,9 @@ class _ChapterBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chapterAvailable = chapter.sections.any((s) => s.isAvailable);
+    final chapterAvailable = chapter.sections.any((s) =>
+        s.isAvailable ||
+        MockLectureRepository.instance.questionCountForSection(s.id) > 0);
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Column(
@@ -455,7 +532,8 @@ class _SectionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final available = section.isAvailable;
+    final available = section.isAvailable ||
+        MockLectureRepository.instance.questionCountForSection(section.id) > 0;
     // 第六轮：可练习小节订阅 ProgressRepository，展示「已完成 N 轮 · 掌握度
     // X/100」。未上线小节仍保持原样，不挂订阅、不展示进度。
     if (!available) {
@@ -478,7 +556,8 @@ class _SectionPill extends StatelessWidget {
   }
 
   Widget _buildPill(BuildContext context, {required SectionProgress? progress}) {
-    final available = section.isAvailable;
+    final available = section.isAvailable ||
+        MockLectureRepository.instance.questionCountForSection(section.id) > 0;
     final hasProgress = progress != null && progress.hasAnyCompletion;
     final bg = available
         ? AppPalette.primary.withValues(alpha: 0.08)

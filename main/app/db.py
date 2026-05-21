@@ -100,6 +100,11 @@ class StudentProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, unique=True)
     display_name = Column(String(64), default="同学")
     grade = Column(String(32), default="八年级")
+    school_name = Column(String(96), default="AI 费曼实验校")
+    province = Column(String(32), default="山东省")
+    city = Column(String(32), default="济南市")
+    district = Column(String(32), default="历下区")
+    equipped_title = Column(String(96), default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -180,6 +185,138 @@ class LectureSessionRecord(Base):
     completed_at = Column(DateTime, nullable=True)
 
 
+class LectureReplayRecord(Base):
+    """讲题过程回放：音频片段、笔迹时间轴、气泡时间轴。
+
+    第十一轮不强制合成 MP4；用结构化时间轴满足「可回放」底线。
+    """
+
+    __tablename__ = "lecture_replay_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    session_id = Column(String(64), nullable=False, index=True, unique=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    question_id = Column(String(64), nullable=False, index=True)
+    question_prompt = Column(Text, default="")
+    audio_base64_chunks_json = Column(Text, default="[]")
+    ink_timeline_json = Column(Text, default="[]")
+    turns_timeline_json = Column(Text, default="[]")
+    duration_ms = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SectionPower(Base):
+    __tablename__ = "section_power"
+    __table_args__ = (
+        UniqueConstraint("student_id", "section_id", name="uq_power_student_section"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    power_score = Column(Integer, default=0)
+    rank_tier = Column(String(32), default="青铜")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PowerEvent(Base):
+    __tablename__ = "power_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    delta = Column(Integer, default=0)
+    reason = Column(String(64), default="")
+    ref_id = Column(String(96), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LeaderboardSnapshot(Base):
+    __tablename__ = "leaderboard_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope", "section_id", "week_id", "student_id",
+            name="uq_leaderboard_scope_week_student",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    scope = Column(String(24), nullable=False, index=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    week_id = Column(String(16), nullable=False, index=True)
+    rank = Column(Integer, default=0)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    power_score = Column(Integer, default=0)
+    title_label = Column(String(96), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BountyAttempt(Base):
+    __tablename__ = "bounty_attempts"
+    __table_args__ = (
+        UniqueConstraint("student_id", "challenge_id", name="uq_bounty_student_challenge"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    challenge_id = Column(String(64), nullable=False, index=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    circled_correctly = Column(Integer, default=0)
+    transcript_text = Column(Text, default="")
+    crystal_reward = Column(Integer, default=0)
+    power_reward = Column(Integer, default=0)
+    completed_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CrystalWallet(Base):
+    __tablename__ = "crystal_wallets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True, unique=True)
+    balance = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CrystalLedger(Base):
+    __tablename__ = "crystal_ledgers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    amount = Column(Integer, default=0)
+    reason = Column(String(64), default="")
+    ref_id = Column(String(96), default="")
+    balance_after = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RedeemOrder(Base):
+    __tablename__ = "redeem_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(String(64), nullable=False, index=True, unique=True)
+    sku_id = Column(String(64), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    status = Column(String(32), default="pending")
+    crystal_cost = Column(Integer, default=0)
+    address_json = Column(Text, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ParentStudentLink(Base):
+    __tablename__ = "parent_student_links"
+    __table_args__ = (
+        UniqueConstraint("parent_user_id", "student_profile_id", name="uq_parent_student_link"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    parent_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    student_profile_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    nickname = Column(String(64), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ---------------------------------------------------------------------------
 # 启动初始化 + 轻量迁移
 # ---------------------------------------------------------------------------
@@ -200,16 +337,14 @@ def _run_lightweight_migrations() -> None:
 
     with engine.connect() as conn:
         # 检查 lecture_session_records 的列；本次新增的几个字段在旧库不存在
-        try:
-            cols = [
-                row[1]
-                for row in conn.execute(
-                    text("PRAGMA table_info(lecture_session_records)")
-                )
-            ]
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[db-migrate] inspect lecture_session_records failed: %s", e)
-            cols = []
+        def _columns(table: str) -> list[str]:
+            try:
+                return [row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))]
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[db-migrate] inspect %s failed: %s", table, e)
+                return []
+
+        cols = _columns("lecture_session_records")
 
         if cols:  # 表已存在
             if "mastery_delta" not in cols:
@@ -234,6 +369,24 @@ def _run_lightweight_migrations() -> None:
                     logger.info("[db-migrate] added lecture_session_records.round_count")
                 except Exception as e:  # noqa: BLE001
                     logger.warning("[db-migrate] add round_count failed: %s", e)
+
+        profile_cols = _columns("student_profiles")
+        profile_additions = {
+            "school_name": "ALTER TABLE student_profiles ADD COLUMN school_name VARCHAR(96) DEFAULT 'AI 费曼实验校'",
+            "province": "ALTER TABLE student_profiles ADD COLUMN province VARCHAR(32) DEFAULT '山东省'",
+            "city": "ALTER TABLE student_profiles ADD COLUMN city VARCHAR(32) DEFAULT '济南市'",
+            "district": "ALTER TABLE student_profiles ADD COLUMN district VARCHAR(32) DEFAULT '历下区'",
+            "equipped_title": "ALTER TABLE student_profiles ADD COLUMN equipped_title VARCHAR(96) DEFAULT ''",
+        }
+        if profile_cols:
+            for col, sql in profile_additions.items():
+                if col in profile_cols:
+                    continue
+                try:
+                    conn.execute(text(sql))
+                    logger.info("[db-migrate] added student_profiles.%s", col)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[db-migrate] add student_profiles.%s failed: %s", col, e)
 
         try:
             conn.commit()
@@ -312,6 +465,10 @@ def ensure_student_profile(db: Session, user: User) -> StudentProfile:
         user_id=user.id,
         display_name=user.username,
         grade="八年级",
+        school_name="AI 费曼实验校",
+        province="山东省",
+        city="济南市",
+        district="历下区",
     )
     db.add(profile)
     db.commit()

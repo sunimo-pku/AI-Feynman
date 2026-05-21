@@ -41,7 +41,9 @@ class ProgressRepository extends ChangeNotifier {
 
   /// `shared_preferences` 里持久化的 key。改格式时必须改这个 key（如 `.v2`）,
   /// 否则老用户读出的字段语义会漂移。
-  static const String _storageKey = 'ai_feynman.section_progress.v1';
+  static const String _storagePrefix = 'ai_feynman.section_progress.v1';
+  String _namespace = 'guest';
+  String get _storageKey => '$_storagePrefix.$_namespace';
 
   final Map<String, SectionProgress> _cache = <String, SectionProgress>{};
 
@@ -126,6 +128,18 @@ class ProgressRepository extends ChangeNotifier {
 
   /// 是否已经有过任意一条本地进度（用于首页徽标提示）。
   bool get isLoaded => _loaded;
+  List<SectionProgress> get allProgress =>
+      List.unmodifiable(_cache.values.toList(growable: false));
+
+  Future<void> switchUser(String namespace) async {
+    final next = namespace.trim().isEmpty ? 'guest' : namespace.trim();
+    if (next == _namespace && _loaded) return;
+    _namespace = next;
+    _cache.clear();
+    _loaded = false;
+    _pendingLoad = null;
+    await load();
+  }
 
   /// 应用一次「老师说 completed」：算出新的 SectionProgress、写盘、通知 UI。
   ///
@@ -188,6 +202,26 @@ class ProgressRepository extends ChangeNotifier {
         stackTrace: st,
       );
     }
+  }
+
+  Future<void> applyFromServer(SectionProgress progress) async {
+    _writeQueue = _writeQueue.then((_) async {
+      if (!_loaded) {
+        await _loadInternal();
+      }
+      final local = _cache[progress.sectionId];
+      final shouldReplace = local == null ||
+          progress.masteryScore > local.masteryScore ||
+          progress.completedRounds > local.completedRounds ||
+          ((progress.lastPracticedAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+              .isAfter(local.lastPracticedAt ?? DateTime.fromMillisecondsSinceEpoch(0)));
+      if (shouldReplace) {
+        _cache[progress.sectionId] = progress;
+        await _save();
+        notifyListeners();
+      }
+    });
+    await _writeQueue;
   }
 
   /// 仅供测试 / Demo 用：清空本地所有进度。生产 UI 不要暴露此入口，

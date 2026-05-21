@@ -1,23 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 
 import '../theme/app_theme.dart';
 
-/// 极简的 LaTeX → Unicode 渲染器（V1 占位用）。
+/// 全站公式渲染封装。
 ///
-/// 真正的公式渲染按 `MOBILE_STYLE.md` §4.1 应使用 `flutter_math_fork`。
-/// 在引入该依赖之前，本组件做最小可读化处理，把 `\sqrt{...}` / `\frac{a}{b}` /
-/// `\cdot` 等常见 token 转成 Unicode + 富文本，保证公式（特别是二次根式）
-/// 在演示中不至于以原始 LaTeX 字符串呈现。
-///
-/// 渲染规则：
-///   * 行内片段用 `$...$` 包裹，块级片段用 `$$...$$`。
-///   * 未被 `$` 包裹的部分作为普通中文 / 英文文本渲染。
-///   * `\sqrt{x}`     → `√(x)`（单字符则去括号，如 `√3`）。
-///   * `\frac{a}{b}`  → `a/b`。
-///   * `\cdot` / `\times` → `·` / `×`。
-///   * `\le` / `\ge` / `\ne` → `≤` / `≥` / `≠`。
-///   * `^{n}` / `^n` 上标（`²` `³` 直接映射，其他用 `^n`）。
-///   * `_{n}` / `_n` 直接保留 `_n`。
+/// 第十一轮起使用 `flutter_math_fork` 原生 Canvas 渲染 LaTeX，同时保留
+/// `renderLatex` 作为旧单测和极端 fallback 的可读化工具。
 class FormulaText extends StatelessWidget {
   const FormulaText(
     this.source, {
@@ -43,10 +32,20 @@ class FormulaText extends StatelessWidget {
       fontWeight: FontWeight.w600,
     );
 
-    final spans = _buildSpans(source, base, formula);
-    return RichText(
-      text: TextSpan(style: base, children: spans),
-      textAlign: textAlign ?? TextAlign.start,
+    final normalized = _normalizeDelimiters(source);
+    if (!_looksLikeFormula(normalized)) {
+      return Text(normalized, style: base, textAlign: textAlign);
+    }
+    if (!normalized.contains(r'$') && normalized.contains('\\')) {
+      return RepaintBoundary(
+        child: _MathBox(normalized, textStyle: formula, isBlock: false),
+      );
+    }
+    return RepaintBoundary(
+      child: RichText(
+        text: TextSpan(style: base, children: _buildSpans(normalized, base, formula)),
+        textAlign: textAlign ?? TextAlign.start,
+      ),
     );
   }
 
@@ -65,8 +64,14 @@ class FormulaText extends StatelessWidget {
       final block = match.group(1);
       final inline = match.group(2);
       final raw = block ?? inline ?? '';
-      final rendered = renderLatex(raw);
-      spans.add(TextSpan(text: rendered, style: formulaStyle));
+      spans.add(WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: _MathBox(
+          raw,
+          textStyle: formulaStyle,
+          isBlock: block != null,
+        ),
+      ));
       cursor = match.end;
     }
     if (cursor < source.length) {
@@ -76,6 +81,16 @@ class FormulaText extends StatelessWidget {
       spans.add(TextSpan(text: renderLatex(source)));
     }
     return spans;
+  }
+
+  static String _normalizeDelimiters(String input) {
+    return input
+        .replaceAllMapped(RegExp(r'\\\((.*?)\\\)'), (m) => '\$${m.group(1)}\$')
+        .replaceAllMapped(RegExp(r'\\\[(.*?)\\\]', dotAll: true), (m) => '\$\$${m.group(1)}\$\$');
+  }
+
+  static bool _looksLikeFormula(String input) {
+    return input.contains(r'$') || input.contains('\\');
   }
 
   /// 将常见的 LaTeX 片段转成 Unicode 文本（仅供 V1 占位）。
@@ -140,5 +155,35 @@ class FormulaText extends StatelessWidget {
       buf.write(mapped);
     }
     return allMapped ? buf.toString() : '^$raw';
+  }
+}
+
+class _MathBox extends StatelessWidget {
+  const _MathBox(
+    this.tex, {
+    required this.textStyle,
+    required this.isBlock,
+  });
+
+  final String tex;
+  final TextStyle textStyle;
+  final bool isBlock;
+
+  @override
+  Widget build(BuildContext context) {
+    final math = Math.tex(
+      tex,
+      textStyle: textStyle,
+      mathStyle: MathStyle.text,
+      onErrorFallback: (error) => Text(
+        FormulaText.renderLatex(tex),
+        style: textStyle,
+      ),
+    );
+    if (!isBlock) return math;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(child: math),
+    );
   }
 }

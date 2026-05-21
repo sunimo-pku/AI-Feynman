@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../data/parent_models.dart';
+import '../data/round12_models.dart';
 import '../services/auth_service.dart';
 import '../services/learning_sync_service.dart';
 import '../services/parent_service.dart';
+import '../services/replay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
 import 'auth_page.dart';
+import 'replay_page.dart';
 
 /// 家长端 dashboard 页（第十轮）。
 ///
@@ -33,10 +36,14 @@ class ParentDashboardPage extends StatefulWidget {
 
 class _ParentDashboardPageState extends State<ParentDashboardPage> {
   final ParentService _parentService = ParentService();
+  final ReplayService _replayService = ReplayService();
 
   bool _loading = true;
   String? _error;
   ParentDashboardPayload? _payload;
+  List<ParentChild> _children = const <ParentChild>[];
+  List<ReplaySummary> _replays = const <ReplaySummary>[];
+  int? _activeStudentId;
 
   @override
   void initState() {
@@ -70,10 +77,15 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
       await LearningSyncService.instance.syncNow();
     }
     try {
-      final payload = await _parentService.fetchDashboard();
+      final children = await _parentService.fetchChildren();
+      _activeStudentId ??= children.isNotEmpty ? children.first.studentId : null;
+      final payload = await _parentService.fetchDashboard(studentId: _activeStudentId);
+      final replays = await _replayService.fetchParentReplays(studentId: _activeStudentId);
       if (!mounted) return;
       setState(() {
+        _children = children;
         _payload = payload;
+        _replays = replays;
         _loading = false;
       });
     } on ParentApiException catch (e) {
@@ -97,6 +109,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   @override
   void dispose() {
     _parentService.close();
+    _replayService.close();
     super.dispose();
   }
 
@@ -125,9 +138,15 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                   await AuthService.instance.logout();
                   if (!mounted) return;
                   navigator.pop();
+                } else if (key == 'edit_profile') {
+                  await _editProfile(innerCtx);
+                } else if (key == 'bind_child') {
+                  await _bindChild(innerCtx);
                 }
               },
               itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit_profile', child: Text('编辑孩子资料')),
+                PopupMenuItem(value: 'bind_child', child: Text('绑定孩子')),
                 PopupMenuItem(value: 'logout', child: Text('退出登录')),
               ],
             ),
@@ -136,6 +155,78 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
       ),
       body: SafeArea(child: _buildBody(context)),
     );
+  }
+
+  Future<void> _editProfile(BuildContext context) async {
+    final payload = _payload;
+    final nameController = TextEditingController(text: payload?.studentName ?? '');
+    final gradeController = TextEditingController(text: payload?.grade ?? '八年级');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('编辑孩子资料'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: '展示名'),
+            ),
+            TextField(
+              controller: gradeController,
+              decoration: const InputDecoration(labelText: '年级'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _parentService.updateProfile(
+      displayName: nameController.text.trim(),
+      grade: gradeController.text.trim(),
+    );
+    if (!mounted) return;
+    await _refresh();
+  }
+
+  Future<void> _bindChild(BuildContext context) async {
+    final username = TextEditingController();
+    final nickname = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('绑定孩子账号'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: username, decoration: const InputDecoration(labelText: '孩子用户名')),
+            TextField(controller: nickname, decoration: const InputDecoration(labelText: '备注昵称')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('绑定')),
+        ],
+      ),
+    );
+    if (ok == true && username.text.trim().isNotEmpty) {
+      await _parentService.bindChild(
+        username: username.text.trim(),
+        nickname: nickname.text.trim(),
+      );
+      if (!mounted) return;
+      await _refresh();
+    }
   }
 
   Widget _buildBody(BuildContext context) {
@@ -152,6 +243,17 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         padding: const EdgeInsets.all(AppSpacing.pageEdge),
         children: [
           _StudentHeaderCard(payload: p),
+          if (_children.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.moduleGap),
+            _ChildSwitcher(
+              children: _children,
+              activeStudentId: _activeStudentId,
+              onSelected: (id) {
+                setState(() => _activeStudentId = id);
+                _refresh();
+              },
+            ),
+          ],
           const SizedBox(height: AppSpacing.moduleGap),
           _SuggestionCard(text: p.suggestedNextAction),
           const SizedBox(height: AppSpacing.moduleGap),
@@ -172,6 +274,11 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           ),
           const SizedBox(height: AppSpacing.moduleGap),
           _RecentReviewsCard(reviews: p.recentReviews),
+          const SizedBox(height: AppSpacing.moduleGap),
+          _ReplayListCard(
+            replays: _replays,
+            studentId: _activeStudentId,
+          ),
           const SizedBox(height: AppSpacing.moduleGap),
           if (_error != null)
             Container(
@@ -204,6 +311,43 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
 }
 
 // ---------------------------------------------------------------- widgets ----
+
+class _ChildSwitcher extends StatelessWidget {
+  const _ChildSwitcher({
+    required this.children,
+    required this.activeStudentId,
+    required this.onSelected,
+  });
+
+  final List<ParentChild> children;
+  final int? activeStudentId;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.cardR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: children
+            .map(
+              (c) => ChoiceChip(
+                label: Text(c.nickname),
+                selected: activeStudentId == c.studentId,
+                onSelected: (_) => onSelected(c.studentId),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
 
 class _StudentHeaderCard extends StatelessWidget {
   const _StudentHeaderCard({required this.payload});
@@ -278,6 +422,56 @@ class _StudentHeaderCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplayListCard extends StatelessWidget {
+  const _ReplayListCard({required this.replays, required this.studentId});
+  final List<ReplaySummary> replays;
+  final int? studentId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.cardR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(width: 4, height: 16, color: AppPalette.primaryAccent),
+              const SizedBox(width: 8),
+              Text('精彩回放', style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (replays.isEmpty)
+            const Text('暂无回放。完成一次 live 讲题后会出现在这里。')
+          else
+            ...replays.map(
+              (r) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: FormulaText(r.questionPrompt),
+                subtitle: Text('${r.sectionId} · ${r.durationMs}ms'),
+                trailing: const Icon(Icons.play_circle_outline),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReplayPage(
+                      sessionId: r.sessionId,
+                      studentId: studentId,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

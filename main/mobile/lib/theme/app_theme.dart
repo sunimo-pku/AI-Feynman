@@ -120,11 +120,11 @@ class AppTheme {
           color: AppPalette.textPrimary,
         ),
       ),
-      cardTheme: CardThemeData(
+      cardTheme: const CardThemeData(
         elevation: 0,
         color: AppPalette.surface,
         margin: EdgeInsets.zero,
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: AppRadius.cardR,
           side: BorderSide(color: AppPalette.outlineSoft),
         ),

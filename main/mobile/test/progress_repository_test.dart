@@ -159,7 +159,7 @@ void main() {
         summary: 'round-1 done',
       );
       final raw = (await SharedPreferences.getInstance())
-          .getString('ai_feynman.section_progress.v1');
+          .getString('ai_feynman.section_progress.v1.guest');
       expect(raw, isNotNull,
           reason: 'applyCompleted must write the storage key');
       final decoded = jsonDecode(raw!) as Map<String, dynamic>;

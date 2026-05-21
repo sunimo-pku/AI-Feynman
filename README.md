@@ -36,13 +36,18 @@
 │   ├── AI_CODE_AGENT_BRIEF_ROUND8.md # 第八轮本地讲题回顾与错因卡片执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND9.md # 第九轮学生端实时闭环总收口执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND10.md # 第十轮全功能最终总收口执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND11.md # 第十一轮全量收口（V1 缺口 + planV1 V2）执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND12.md # 第十二轮 V2 产品闭环（UI/接线/验收补齐）执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
 │   └── planV1.md             # 产品规划 V1
 ├── data/
-│   └── curriculum/
-│       └── pep-junior-math.json   # 人教版初中数学目录（6 册 · 29 章 · 90 节）
+│   ├── curriculum/
+│   │   └── pep-junior-math.json   # 人教版初中数学目录（6 册 · 29 章 · 90 节）
+│   ├── knowledge/                 # 第十六章本地知识库 chunks
+│   ├── questions/                 # 全册 90 节题库 JSON
+│   └── shop/                      # 工具局 SKU 数据
 ├── scripts/
 │   └── build_curriculum.py   # 重新生成课程目录 JSON
 └── main/
@@ -341,6 +346,48 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
 ## 环境配置
 
 敏感信息写入根目录 `.env`（已加入 `.gitignore`），参考 `.env.example` 填写。**切勿提交 `.env`。**
+
+### 第十一轮全量收口
+
+第十一轮把 `planV1.md` 中 V1 缺口与 V2 能力统一落地，当前后端新增/扩展：
+
+- 真 LLM NDJSON 流式：`main/app/services/lecture_agent_stream.py`，`/lecture/live` 默认消费 `turn_start/delta/turn_done/round_meta`；失败时才走 `stream_fallback`。
+- 学习数据：`GET/PATCH /learning/profile`、`POST /learning/reviews`、`POST /learning/progress/sync` 支持 `mode=merge|overwrite`。
+- 游戏化：`GET /gamification/me`、`POST /gamification/power/adjust`、`GET /leaderboard`、`GET /leaderboard/my-titles`。
+- 悬赏与晶石：`GET /bounty/today`、`POST /bounty/submit`、`GET /shop/catalog`、`POST /shop/redeem`、`GET /shop/orders`。
+- 回放与家长端：`POST /replays`、`GET /parent/replays`、`GET /replays/{sessionId}`、`GET/POST /parent/children*`。
+- 识题与知识库：`POST /questions/upload-image`、`POST /knowledge/search`。
+- OCR/HWR：`POST /ocr/ink` 支持 `mode=rule|hwr`，响应和日志包含 `source/confidence`。
+
+Flutter 侧同步完成：
+
+- `ProgressRepository` / `ReviewRepository` 按 `AuthService.storageNamespace` 隔离本地数据，guest 与不同用户互不串号。
+- `FormulaText` 接入 `flutter_math_fork`，公式不再走 Unicode 占位。
+- 实时讲题增加写字不追问、2.5s 断档提示、4s 自动追问、300ms 声音打断防抖和角色礼貌气泡。
+- 首次开始讲题前展示 `PrivacyNoticePage`；家长端支持编辑展示名/年级。
+- 非 16 章节由 `MockLectureRepository` 生成「教研中」模板题，确保全册目录均可进入讲题闭环。
+
+### 第十二轮 V2 产品闭环
+
+第十二轮把 Round 11 的 V2 API 接到平板 App 产品路径：
+
+- 首页新增 5 个学生端入口：今日悬赏、晶石商城、排行榜、拍照识题、我的战力。
+- 新增/接线 Flutter 页面：`BountyPage`、`ShopPage`、`GeekShopPage`、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
+- 回放闭环：`ReplayService` 记录 live 讲题的音频片段、白板时间轴和气泡时间轴，登录后 `POST /replays`；家长端「精彩回放」可点进播放器。
+- 家长端多孩子：`/parent/dashboard`、`/parent/reviews`、`/parent/poster` 和 `/parent/replays` 支持 `studentId` / `X-Student-Id`，App 内可绑定和切换孩子。
+- 数据化题库与知识库：`scripts/generate_section_questions.py` 生成 `data/questions/pep-junior-math-questions.json`（90 节 × 基础/巩固/挑战 3 题，共 270 题），几何/坐标/函数/统计类题附带 SVG 题图；`data/knowledge/pep-g8-down-ch16_chunks.json` 由 `knowledge_index` 注入讲题 prompt。
+- HWR / OCR 可观测：白板 step payload 带 `imageBase64`；`DEBUG_OCR=1` 时讲题页展示 `stepId | latex | source | confidence | mode`。
+- 排行榜周结算：`scripts/settle_leaderboard.py` 幂等写入 `LeaderboardSnapshot`，`GET /leaderboard` 优先读 snapshot，缺失时回退实时聚合。
+
+验收记录见 `docs/ROUND12_VERIFICATION.md`。
+
+依赖安装统一使用根目录：
+
+```bash
+pip install -r requirements.txt
+```
+
+验收记录见 `docs/ROUND11_VERIFICATION.md`。
 
 ## 部署（服务端）
 

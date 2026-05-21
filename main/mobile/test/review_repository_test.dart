@@ -127,7 +127,7 @@ void main() {
       );
       await repo.append(record);
       final raw = (await SharedPreferences.getInstance())
-          .getString('ai_feynman.lecture_reviews.v1');
+          .getString('ai_feynman.lecture_reviews.v1.guest');
       expect(raw, isNotNull,
           reason: 'append must write the storage key');
       final decoded = jsonDecode(raw!) as List<dynamic>;

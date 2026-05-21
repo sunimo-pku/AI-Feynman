@@ -15,10 +15,33 @@ class Config:
     DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
     DEEPSEEK_MODEL = "deepseek-v4-pro"
 
+    ALIYUN_API_KEY = os.getenv("ALIYUN_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
+    ALIYUN_BASE_URL = os.getenv(
+        "ALIYUN_BASE_URL",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+    QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen-vl-plus")
+
     VOLC_API_KEY = os.getenv("VOLC_API_KEY", "")
+    # Most Volc capabilities in this project share VOLC_API_KEY. Keep the
+    # stream-specific names as optional overrides for SDKs that require them.
+    VOLC_ASR_STREAM_APP_ID = os.getenv("VOLC_ASR_STREAM_APP_ID", "")
+    VOLC_ASR_STREAM_ACCESS_TOKEN = os.getenv(
+        "VOLC_ASR_STREAM_ACCESS_TOKEN",
+        VOLC_API_KEY,
+    )
+    OCR_HWR_API_KEY = os.getenv("OCR_HWR_API_KEY", VOLC_API_KEY)
+    EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
+    REPLAY_STORAGE_DIR = os.getenv("REPLAY_STORAGE_DIR", "data/replays")
     VOLC_TTS_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
     VOLC_TTS_RESOURCE_ID = "volc.service_type.10029"
     VOLC_DEFAULT_SPEAKER = "zh_female_qingchezizi_moon_bigtts"
+    SPEAKER_BY_ROLE = {
+        "xiaoming": os.getenv("VOLC_TTS_SPEAKER_XIAOMING", "zh_male_xiaoming_moon_bigtts"),
+        "daxiong": os.getenv("VOLC_TTS_SPEAKER_DAXIONG", "zh_male_wennuanahu_moon_bigtts"),
+        "monitor": os.getenv("VOLC_TTS_SPEAKER_MONITOR", "zh_female_qingchezizi_moon_bigtts"),
+        "teacher": os.getenv("VOLC_TTS_SPEAKER_TEACHER", "zh_female_wanwanxiaohe_moon_bigtts"),
+    }
 
     # 后台注入的系统提示词：用于塑造产品专业人设，用户无感知
     # 可根据产品方向调整，例如：

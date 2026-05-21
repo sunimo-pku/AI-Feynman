@@ -1,0 +1,20 @@
+[
+  {
+    "skuId": "geek-compass",
+    "name": "专业圆规套装",
+    "type": "physical",
+    "crystalCost": 120
+  },
+  {
+    "skuId": "geek-timer",
+    "name": "翻转番茄钟",
+    "type": "physical",
+    "crystalCost": 180
+  },
+  {
+    "skuId": "geek-notebook",
+    "name": "费曼错题本",
+    "type": "physical",
+    "crystalCost": 90
+  }
+]

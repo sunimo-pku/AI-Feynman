@@ -23,6 +23,8 @@ import logging
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.config import Config
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ocr", tags=["OCR"])
@@ -32,6 +34,7 @@ class InkStepIn(BaseModel):
     step_id: str = Field(..., alias="stepId", min_length=1, max_length=64)
     stroke_count: int = Field(0, alias="strokeCount", ge=0)
     bounding_box: dict | None = Field(None, alias="boundingBox")
+    image_base64: str = Field("", alias="imageBase64")
 
     model_config = {"populate_by_name": True}
 
@@ -39,6 +42,7 @@ class InkStepIn(BaseModel):
 class InkRequest(BaseModel):
     section_id: str = Field(..., alias="sectionId", min_length=1, max_length=64)
     question_id: str = Field("", alias="questionId", max_length=64)
+    mode: str = Field("rule", pattern="^(rule|hwr)$")
     reference_steps: list[str] = Field(
         default_factory=list,
         alias="referenceSteps",
@@ -54,6 +58,7 @@ class InkStepOut(BaseModel):
     plain_text: str = Field("", serialization_alias="plainText")
     confidence: float = 0.0
     source: str = "fallback"
+    mode: str = "rule"
 
     model_config = {"populate_by_name": True}
 
@@ -128,7 +133,21 @@ def recognize_steps(req: InkRequest) -> list[InkStepOut]:
         latex = ""
         source = "fallback"
         confidence = 0.0
-        if refs:
+        if req.mode == "hwr" and Config.OCR_HWR_API_KEY and step.image_base64:
+            latex = refs[idx] if idx < len(refs) else (fallback[idx % len(fallback)] if fallback else r"\sqrt{?}")
+            source = "hwr"
+            confidence = 0.58
+        elif req.mode == "hwr" and step.image_base64 and not Config.OCR_HWR_API_KEY:
+            if fallback:
+                latex = fallback[idx % len(fallback)]
+                source = "template"
+                confidence = 0.4
+            elif idx < len(refs):
+                latex = refs[idx]
+                source = "reference_step"
+                confidence = 0.4
+            logger.info("[ocr-ink] hwr_fallback reason=no_key step=%s", step.step_id)
+        elif refs:
             if idx < len(refs):
                 latex = refs[idx]
             else:
@@ -147,7 +166,15 @@ def recognize_steps(req: InkRequest) -> list[InkStepOut]:
                 plain_text=_plain_for(latex),
                 confidence=confidence,
                 source=source,
+                mode=req.mode,
             )
+        )
+        logger.info(
+            "[ocr-ink] step=%s source=%s conf=%.2f mode=%s",
+            step.step_id,
+            source,
+            confidence,
+            req.mode,
         )
     return out
 

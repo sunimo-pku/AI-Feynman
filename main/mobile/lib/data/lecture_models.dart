@@ -92,6 +92,7 @@ class LectureQuestion {
     required this.referenceSteps,
     this.difficulty = 1,
     this.tags = const <String>[],
+    this.image,
   });
 
   final String questionId;
@@ -118,6 +119,53 @@ class LectureQuestion {
   /// 仅前端展示用，**不**会作为后端 `/lecture/submit` 的请求字段。
   /// 单题建议 1-3 个，避免题面卡片拥挤。
   final List<String> tags;
+
+  /// 可选题图。JSON 中只保存 asset 路径与无障碍描述，图片文件单独放 assets。
+  final QuestionImage? image;
+
+  factory LectureQuestion.fromJson(Map<String, dynamic> json) {
+    List<String> readStringList(String key) {
+      final raw = json[key];
+      if (raw is! List) return const <String>[];
+      return raw
+          .where((e) => e != null)
+          .map((e) => e.toString())
+          .where((s) => s.isNotEmpty)
+          .toList(growable: false);
+    }
+
+    return LectureQuestion(
+      questionId: json['questionId'] as String? ?? '',
+      sectionId: json['sectionId'] as String? ?? '',
+      sectionLabel: json['sectionLabel'] as String? ?? '',
+      prompt: json['prompt'] as String? ?? '',
+      hint: json['hint'] as String? ?? '',
+      referenceSteps: readStringList('referenceSteps'),
+      difficulty: (json['difficulty'] as num?)?.toInt() ?? 1,
+      tags: readStringList('tags'),
+      image: QuestionImage.fromJson(json['image']),
+    );
+  }
+}
+
+class QuestionImage {
+  const QuestionImage({
+    required this.asset,
+    required this.alt,
+  });
+
+  final String asset;
+  final String alt;
+
+  static QuestionImage? fromJson(Object? raw) {
+    if (raw is! Map<String, dynamic>) return null;
+    final asset = raw['asset'] as String? ?? '';
+    if (asset.isEmpty) return null;
+    return QuestionImage(
+      asset: asset,
+      alt: raw['alt'] as String? ?? '题目配图',
+    );
+  }
 }
 
 /// 单条多轮上下文历史项。

@@ -47,7 +47,9 @@ class ReviewRepository extends ChangeNotifier {
 
   /// `shared_preferences` 存储 key。改格式时必须改这个 key（如 `.v2`）,
   /// 否则老用户读出的字段语义会漂移。
-  static const String _storageKey = 'ai_feynman.lecture_reviews.v1';
+  static const String _storagePrefix = 'ai_feynman.lecture_reviews.v1';
+  String _namespace = 'guest';
+  String get _storageKey => '$_storagePrefix.$_namespace';
 
   /// 全局最多保留最近多少条记录。超过则丢弃最旧的，旧记录不会无限增长。
   static const int _maxRecords = 30;
@@ -134,6 +136,16 @@ class ReviewRepository extends ChangeNotifier {
   /// 全部记录的不可变快照（已按倒序排好）。
   List<LectureReviewRecord> get allRecords =>
       List.unmodifiable(_cache);
+
+  Future<void> switchUser(String namespace) async {
+    final next = namespace.trim().isEmpty ? 'guest' : namespace.trim();
+    if (next == _namespace && _loaded) return;
+    _namespace = next;
+    _cache.clear();
+    _loaded = false;
+    _pendingLoad = null;
+    await load();
+  }
 
   /// 取某小节最近的回顾记录（默认 [sectionPageLimit] 条）。
   ///

@@ -1,5 +1,8 @@
 #!/bin/bash
 # deploy.sh - AI Feynman 后端一键部署（Python API + 健康检查）
+# WebSocket 反代需在 nginx 配置 `/lecture/live` Upgrade 头；长耗时 LLM/ASR/OCR
+# 建议 proxy_read_timeout >= 300s。讲题回放结构化数据默认落 SQLite；
+# 如后续落文件，路径由 REPLAY_STORAGE_DIR 控制。
 #
 # Flutter Android 客户端在本地/CI 构建，不在此脚本内编译。
 # 用法: bash /root/new-project/deploy.sh

@@ -106,14 +106,14 @@ void main() {
       }
     });
 
-    test('未知 sectionId 回退到 16.1 第 1 题', () {
+    test('未知 sectionId 生成教研中模板题', () {
       final fallback = repo.questionForSection('not-a-real-section');
-      final s161First = repo.questionForSection('pep-g8-down-s16-1');
-      expect(fallback.questionId, s161First.questionId);
+      expect(fallback.sectionId, 'not-a-real-section');
+      expect(fallback.tags, contains('全册题库'));
     });
 
-    test('questionCountForSection 对未知 section 返回 0', () {
-      expect(repo.questionCountForSection('not-a-real-section'), 0);
+    test('questionCountForSection 对未知 section 返回 1 个模板题', () {
+      expect(repo.questionCountForSection('not-a-real-section'), 1);
     });
   });
 
@@ -175,6 +175,24 @@ void main() {
       );
       expect(q.difficulty, 1);
       expect(q.tags, isEmpty);
+    });
+
+    test('fromJson 可解析可选 SVG 题图', () {
+      final q = LectureQuestion.fromJson(const {
+        'questionId': 'q-image',
+        'sectionId': 's-image',
+        'sectionLabel': '图形题',
+        'prompt': '如图说明理由。',
+        'hint': '提示：先读图。',
+        'referenceSteps': ['读图', '推理'],
+        'image': {
+          'asset': 'assets/questions/diagrams/q-image.svg',
+          'alt': '一张图形题配图',
+        },
+      });
+
+      expect(q.image?.asset, 'assets/questions/diagrams/q-image.svg');
+      expect(q.image?.alt, '一张图形题配图');
     });
   });
 }

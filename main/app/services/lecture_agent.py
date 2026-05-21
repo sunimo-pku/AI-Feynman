@@ -34,6 +34,7 @@ from app.config import Config
 # 所以这里绕过 `chat()` 封装直连 `kimi_client`，让我们能显式选择模型 +
 # 透传 `thinking={"type":"disabled"}` 把 K2.6 切到非思考模式。
 from app.services.kimi import kimi_client
+from app.services import knowledge_index
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +273,14 @@ def _build_user_prompt(
     lines.append(f"【本题第几轮提交】{round_index}")
     lines.append(f"【题目 ID】{question_id}")
     lines.append(f"【题面】{question_prompt or '（题面未提供）'}")
+    knowledge_context = knowledge_index.prompt_context(
+        section_id=section_id,
+        question_prompt=question_prompt,
+        top_k=3,
+    )
+    if knowledge_context:
+        lines.append("")
+        lines.append(knowledge_context)
     speech = (student_speech_text or "").strip()
     has_step_text = any(
         (s.get("latex") or "").strip()

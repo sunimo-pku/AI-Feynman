@@ -1,10 +1,14 @@
+import 'dart:convert';
+
+import 'package:flutter/services.dart';
+
 import 'lecture_models.dart';
 
 /// 本地题库 Mock：第七轮起每个 V1 可练习章节内置 3 道题。
 ///
 /// 设计要点：
 ///
-/// - 仅前端 Dart 内嵌，**不**引入 JSON 题库文件，保持本轮轻量；
+/// - 第十二轮起优先加载 asset JSON；内嵌 16 章题作为冷启动兜底；
 /// - 每道题在原有 `questionId / sectionId / sectionLabel / prompt / hint /
 ///   referenceSteps` 基础上轻量加厚 `difficulty`（1=基础 / 2=巩固 / 3=挑战）
 ///   与 `tags`（1-3 个知识标签），仅供讲题页 chip 展示；
@@ -19,6 +23,33 @@ class MockLectureRepository {
   static final MockLectureRepository instance = MockLectureRepository._();
 
   static const _defaultSection = 'pep-g8-down-s16-1';
+  static const questionBankAssetPath =
+      'assets/questions/pep-junior-math-questions.json';
+
+  final Map<String, List<LectureQuestion>> _assetBank =
+      <String, List<LectureQuestion>>{};
+  bool _assetLoaded = false;
+
+  Future<void> loadAssetBank() async {
+    if (_assetLoaded) return;
+    final raw = await rootBundle.loadString(questionBankAssetPath);
+    final decoded = jsonDecode(raw);
+    final list = decoded is Map<String, dynamic> ? decoded['questions'] : null;
+    if (list is! List) {
+      _assetLoaded = true;
+      return;
+    }
+    final next = <String, List<LectureQuestion>>{};
+    for (final item in list.whereType<Map<String, dynamic>>()) {
+      final q = LectureQuestion.fromJson(item);
+      if (q.questionId.isEmpty || q.sectionId.isEmpty) continue;
+      next.putIfAbsent(q.sectionId, () => <LectureQuestion>[]).add(q);
+    }
+    _assetBank
+      ..clear()
+      ..addAll(next.map((key, value) => MapEntry(key, List.unmodifiable(value))));
+    _assetLoaded = true;
+  }
 
   /// 每个 sectionId 对应的题目列表，顺序即"第 1 / 3 题、第 2 / 3 题…"。
   ///
@@ -162,7 +193,8 @@ class MockLectureRepository {
   ///
   /// 返回值是不可变视图，调用方不要尝试 mutate。
   List<LectureQuestion> questionsForSection(String sectionId) {
-    final list = _bank[sectionId] ?? _bank[_defaultSection]!;
+    final list =
+        _assetBank[sectionId] ?? _bank[sectionId] ?? [_stubQuestionForSection(sectionId)];
     return List.unmodifiable(list);
   }
 
@@ -174,7 +206,8 @@ class MockLectureRepository {
   ///   做 modulo 循环（Dart 的 `%` 对负数返回非负余数），**不**抛异常。
   /// - 未知 `sectionId` 回退到 16.1 第 1 题。
   LectureQuestion questionForSection(String sectionId, {int index = 0}) {
-    final list = _bank[sectionId] ?? _bank[_defaultSection]!;
+    final list =
+        _assetBank[sectionId] ?? _bank[sectionId] ?? [_stubQuestionForSection(sectionId)];
     if (list.isEmpty) {
       // 兜底：题库被误清空时不让上层崩，仍能进入讲题页。
       return _bank[_defaultSection]!.first;
@@ -187,8 +220,8 @@ class MockLectureRepository {
   ///
   /// 未知章节返回 0：首页据此**不**展示题量徽标，避免对未上线章节误标。
   int questionCountForSection(String sectionId) {
-    final list = _bank[sectionId];
-    return list?.length ?? 0;
+    final list = _assetBank[sectionId] ?? _bank[sectionId];
+    return list?.length ?? 1;
   }
 
   /// 把开发字段 `difficulty` 翻译成 UI 用的中文标签：
@@ -206,5 +239,22 @@ class MockLectureRepository {
       default:
         return '基础';
     }
+  }
+
+  LectureQuestion _stubQuestionForSection(String sectionId) {
+    return LectureQuestion(
+      questionId: 'q-$sectionId-stub-001',
+      sectionId: sectionId,
+      sectionLabel: '教研中小节',
+      prompt: '教研中模板题：请结合本节标题，讲清一个核心概念、一个例题步骤和一个容易出错的地方。',
+      hint: '提示：先说定义，再写一步例题，最后总结易错点。',
+      referenceSteps: const [
+        '写出本节核心概念',
+        '列出一个代表性步骤',
+        '总结易错点',
+      ],
+      difficulty: 1,
+      tags: const ['教研中', '全册题库'],
+    );
   }
 }

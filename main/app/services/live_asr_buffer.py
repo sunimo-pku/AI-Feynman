@@ -1,24 +1,15 @@
-"""实时讲题 · 音频窗口缓冲（第九轮）。
+"""实时讲题 · 音频窗口缓冲。
 
-第一版策略（与 brief 第 7 节对齐）：
+策略：
 
-- 每个 session 维护一个累加 base64 字符串（裸 PCM16 / WAV 头由调用方决定）。
-- 累计音频时长 ≥ ``_FLUSH_WINDOW_SECONDS`` 时输出一个窗口，交给
-  ``volc_asr.recognize(...)`` 同步识别（路由层用 ``run_in_threadpool``
-  避免阻塞 asyncio 事件循环）。
+- 每个 session 维护 base64 音频 chunk，drain 时先 decode 再合并，避免
+  base64 padding 拼接错误。
+- 配置 `VOLC_ASR_STREAM_*` 时优先走 ``VolcStreamingAsrClient``，日志标记
+  ``asr_mode=stream``；未配置时显式回落窗口式 ASR，日志标记
+  ``asr_mode=window_fallback``。
 - ASR 调用失败时**不丢弃**窗口、不终止 session —— 把窗口推回缓冲下一轮再试，
   并由 session 层把错误透传成 ``listening``+warning 状态（"AI 没听清，
   继续讲就好"），保证体感不中断。
-
-为什么不用流式 ASR：第一版火山 ASR 已经是"录音文件大模型"，原生不支持
-推流，且我们没必要为 MVP 接入流式 SDK。把 chunk 聚合到 2-4s 窗口里走
-已有 ``recognize`` 接口，时延中位数 1-3s，符合 brief 第 5 节"实时性硬指标"
-"ASR 片段 1-3s"目标。
-
-注意：本模块**不**做 base64 decode/encode、不做格式转换 —— 客户端发上来
-什么字节，我们就累加什么字节；火山 ASR 端用 ``format=pcm`` 参数把它当作
-16k/16bit 单声道裸 PCM 处理。后续接入更高级 ASR 时，本模块仅需替换
-``flush_to_text`` 的实现。
 """
 
 from __future__ import annotations
@@ -27,6 +18,8 @@ import base64
 import logging
 from dataclasses import dataclass, field
 from typing import Callable
+
+from app.services.volc_asr_stream import VolcStreamingAsrClient
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +73,7 @@ class LiveAsrBuffer:
     _pending: list[_PendingChunk] = field(default_factory=list)
     _pending_seconds: float = 0.0
     _last_seq: int = -1
+    stream_client: VolcStreamingAsrClient = field(default_factory=VolcStreamingAsrClient)
 
     def push(
         self,
@@ -203,6 +197,20 @@ class LiveAsrBuffer:
         if not b64:
             return None
         try:
+            stream_result = self.stream_client.recognize_window(
+                audio_base64=b64,
+                audio_format=self.audio_format,
+                recognize_fallback=recognize_fn,
+            )
+            if stream_result is not None:
+                return {
+                    "text": stream_result.text.strip(),
+                    "seconds": seconds,
+                    "error": None,
+                    "mode": stream_result.mode,
+                    "isFinal": stream_result.is_final,
+                }
+            logger.info("[asr-stream] asr_mode=window_fallback seconds=%.2f", seconds)
             result = recognize_fn(b64, self.audio_format)
         except Exception as e:  # noqa: BLE001
             logger.exception("[asr-buffer] recognize_fn 抛异常：%s", e)

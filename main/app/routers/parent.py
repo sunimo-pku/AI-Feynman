@@ -19,7 +19,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,8 @@ from app.db import (
     LearningProgress,
     LectureReview,
     LectureSessionRecord,
+    ParentStudentLink,
+    StudentProfile,
     User,
     ensure_student_profile,
     get_db,
@@ -163,6 +165,48 @@ def _review_to_card(row: LectureReview) -> ReviewCardOut:
     )
 
 
+def _active_student_profile(
+    db: Session,
+    user: User,
+    *,
+    student_id: int | None,
+    header_student_id: str | None,
+) -> StudentProfile:
+    """Resolve the child shown in parent APIs.
+
+    Default remains the logged-in user's own profile for old clients. When a
+    parent passes `studentId` or `X-Student-Id`, the id must either be their own
+    profile or one of the bound children.
+    """
+
+    own = ensure_student_profile(db, user)
+    raw = student_id
+    if raw is None and header_student_id:
+        try:
+            raw = int(header_student_id)
+        except ValueError:
+            raw = None
+    if raw is None or raw == own.id:
+        return own
+    link = (
+        db.query(ParentStudentLink)
+        .filter(
+            ParentStudentLink.parent_user_id == user.id,
+            ParentStudentLink.student_profile_id == raw,
+        )
+        .first()
+    )
+    if link is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Student is not bound to this parent.",
+        )
+    profile = db.query(StudentProfile).filter(StudentProfile.id == raw).first()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Student profile not found.")
+    return profile
+
+
 def _progress_to_weak(row: LearningProgress) -> WeakSectionOut:
     return WeakSectionOut(
         section_id=row.section_id,
@@ -218,8 +262,15 @@ def _build_suggested_action(
 async def parent_dashboard(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
+    student_id: int | None = Query(None, alias="studentId"),
+    x_student_id: str | None = Header(None, alias="X-Student-Id"),
 ) -> DashboardOut:
-    profile = ensure_student_profile(db, user)
+    profile = _active_student_profile(
+        db,
+        user,
+        student_id=student_id,
+        header_student_id=x_student_id,
+    )
     progress_rows = (
         db.query(LearningProgress)
         .filter(LearningProgress.student_id == profile.id)
@@ -283,9 +334,16 @@ async def parent_reviews(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
     section_id: str | None = Query(None, alias="sectionId", max_length=64),
+    student_id: int | None = Query(None, alias="studentId"),
+    x_student_id: str | None = Header(None, alias="X-Student-Id"),
     limit: int = Query(20, ge=1, le=50),
 ) -> list[ReviewCardOut]:
-    profile = ensure_student_profile(db, user)
+    profile = _active_student_profile(
+        db,
+        user,
+        student_id=student_id,
+        header_student_id=x_student_id,
+    )
     q = db.query(LectureReview).filter(LectureReview.student_id == profile.id)
     if section_id:
         q = q.filter(LectureReview.section_id == section_id)
@@ -302,8 +360,15 @@ async def parent_reviews(
 async def parent_poster(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
+    student_id: int | None = Query(None, alias="studentId"),
+    x_student_id: str | None = Header(None, alias="X-Student-Id"),
 ) -> PosterOut:
-    profile = ensure_student_profile(db, user)
+    profile = _active_student_profile(
+        db,
+        user,
+        student_id=student_id,
+        header_student_id=x_student_id,
+    )
     progress_rows = (
         db.query(LearningProgress)
         .filter(LearningProgress.student_id == profile.id)

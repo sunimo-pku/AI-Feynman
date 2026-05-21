@@ -128,6 +128,7 @@ class LiveLectureSession:
         send: Callable[[dict[str, Any]], Awaitable[None]],
         recognize_fn: Callable[[str, str], dict],
         lecture_agent_fn: Callable[..., dict[str, Any]],
+        stream_agent_fn: Callable[..., Any] | None = None,
     ) -> bool:
         """处理一条来自客户端的事件。
 
@@ -177,6 +178,7 @@ class LiveLectureSession:
                 send=send,
                 recognize_fn=recognize_fn,
                 lecture_agent_fn=lecture_agent_fn,
+                stream_agent_fn=stream_agent_fn,
             )
             return True
         if evt_type == EVT_STUDENT_INTERRUPT:
@@ -302,6 +304,7 @@ class LiveLectureSession:
         send: Callable[[dict[str, Any]], Awaitable[None]],
         recognize_fn: Callable[[str, str], dict],
         lecture_agent_fn: Callable[..., dict[str, Any]],
+        stream_agent_fn: Callable[..., Any] | None = None,
     ) -> None:
         if self.is_thinking:
             # brief 第 12 节："同一轮追问生成中忽略重复触发"
@@ -334,7 +337,13 @@ class LiveLectureSession:
         thinking_start_ms = time.monotonic() * 1000
 
         try:
-            response = await self._invoke_lecture_agent(lecture_agent_fn)
+            if stream_agent_fn is not None:
+                response = await self._stream_agent_events_to_client(
+                    stream_agent_fn,
+                    send=send,
+                )
+            else:
+                response = await self._invoke_lecture_agent(lecture_agent_fn)
         except Exception as e:  # noqa: BLE001
             logger.exception("[live-session] lecture_agent 失败：%s", e)
             await self._safe_send(send, {
@@ -355,7 +364,8 @@ class LiveLectureSession:
         if elapsed_ms < _MIN_THINKING_VISIBLE_MS:
             await asyncio.sleep((_MIN_THINKING_VISIBLE_MS - elapsed_ms) / 1000)
 
-        await self._stream_turns_to_client(response, send=send)
+        if stream_agent_fn is None:
+            await self._stream_turns_to_client(response, send=send)
 
         # 落 history。先 student 一条（来自当前 transcript_segments），
         # 再依次落 AI turns。
@@ -494,6 +504,93 @@ class LiveLectureSession:
                 "turnId": turn_id,
             })
             await asyncio.sleep(_INTER_TURN_DELAY_MS / 1000)
+
+    async def _stream_agent_events_to_client(
+        self,
+        stream_agent_fn: Callable[..., Any],
+        *,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> dict[str, Any]:
+        steps_payload = [
+            {
+                "stepId": s.step_id,
+                "latex": s.latex,
+                "plainText": s.plain_text,
+                "strokeCount": s.stroke_count,
+            }
+            for s in self.latest_steps
+        ]
+        speech = " ".join(self.transcript_segments[-6:]).strip()
+        turns_by_id: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        status = "needs_explanation"
+        mastery_delta = 0
+        for event in stream_agent_fn(
+            section_id=self.section_id,
+            question_id=self.question_id,
+            question_prompt=self.question_prompt,
+            student_speech_text=speech,
+            steps=steps_payload,
+            round_index=max(1, self.round_index + 1),
+            history=list(self.history),
+        ):
+            if self._interrupt_event.is_set():
+                break
+            typ = str(event.get("type") or "")
+            if typ == "turn_start":
+                turn_id = str(event.get("turnId") or f"turn_{len(order) + 1}")
+                order.append(turn_id)
+                turns_by_id[turn_id] = {
+                    "turn_id": turn_id,
+                    "role": str(event.get("role") or "teacher"),
+                    "display_name": str(event.get("displayName") or "李老师"),
+                    "text": "",
+                    "highlight_step_ids": list(event.get("highlightStepIds") or []),
+                }
+                await self._safe_send(send, {
+                    "type": EVT_AGENT_TURN_START,
+                    "sessionId": self.session_id,
+                    "turnId": turn_id,
+                    "role": turns_by_id[turn_id]["role"],
+                    "displayName": turns_by_id[turn_id]["display_name"],
+                    "highlightStepIds": turns_by_id[turn_id]["highlight_step_ids"],
+                })
+            elif typ == "delta":
+                turn_id = str(event.get("turnId") or (order[-1] if order else "turn_1"))
+                delta = str(event.get("delta") or "")
+                turns_by_id.setdefault(turn_id, {
+                    "turn_id": turn_id,
+                    "role": "teacher",
+                    "display_name": "李老师",
+                    "text": "",
+                    "highlight_step_ids": [self.latest_steps[0].step_id] if self.latest_steps else [],
+                })
+                turns_by_id[turn_id]["text"] += delta
+                await self._safe_send(send, {
+                    "type": EVT_AGENT_TURN_DELTA,
+                    "sessionId": self.session_id,
+                    "turnId": turn_id,
+                    "delta": delta,
+                })
+            elif typ == "turn_done":
+                await self._safe_send(send, {
+                    "type": EVT_AGENT_TURN_DONE,
+                    "sessionId": self.session_id,
+                    "turnId": str(event.get("turnId") or (order[-1] if order else "turn_1")),
+                })
+            elif typ == "round_meta":
+                status = str(event.get("status") or status)
+                try:
+                    mastery_delta = int(event.get("masteryDelta") or 0)
+                except (TypeError, ValueError):
+                    mastery_delta = 0
+        turns = [turns_by_id[k] for k in order if k in turns_by_id]
+        return {
+            "status": status,
+            "mastery_delta": mastery_delta,
+            "turns": turns,
+            "source": "llm_stream",
+        }
 
     def _append_student_history_snapshot(self) -> None:
         speech = " ".join(self.transcript_segments[-6:]).strip()

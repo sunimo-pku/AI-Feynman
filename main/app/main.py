@@ -13,6 +13,7 @@ from app.routers import (
     lecture_live,
     ocr,
     parent,
+    round11,
     sessions,
     tts,
     upload,
@@ -64,6 +65,7 @@ app.include_router(lecture_live.router)
 app.include_router(learning.router)
 app.include_router(parent.router)
 app.include_router(ocr.router)
+app.include_router(round11.router)
 
 @app.get("/")
 async def root():

@@ -50,6 +50,49 @@ class LearningSyncService extends ChangeNotifier {
     return future;
   }
 
+  Future<bool> pullAndMerge() {
+    final pending = _pending;
+    if (pending != null) return pending;
+    final future = _runPull();
+    _pending = future;
+    future.whenComplete(() => _pending = null);
+    return future;
+  }
+
+  Future<bool> postReview(LectureReviewRecord record) async {
+    final auth = AuthService.instance;
+    if (!auth.isLoggedIn) return false;
+    try {
+      final resp = await _client
+          .post(
+            ApiConfig.uri('/learning/reviews'),
+            headers: auth.authHeaders(),
+            body: utf8.encode(jsonEncode({
+              'id': record.id,
+              'sectionId': record.sectionId,
+              'questionId': record.questionId,
+              'questionPrompt': record.questionPrompt,
+              'difficulty': record.difficulty,
+              'tags': record.tags,
+              'completedAt': record.completedAt.toIso8601String(),
+              'summary': record.summary,
+              'agentHighlights': record.agentHighlights,
+              'cautionPoints': record.cautionPoints,
+            })),
+          )
+          .timeout(const Duration(seconds: 8));
+      return resp.statusCode >= 200 && resp.statusCode < 300;
+    } catch (e, st) {
+      developer.log(
+        'LearningSyncService postReview failed',
+        name: 'ai_feynman.sync',
+        error: e,
+        stackTrace: st,
+      );
+      return false;
+    }
+  }
+
   Future<bool> _runSync() async {
     final auth = AuthService.instance;
     if (!auth.isLoggedIn) {
@@ -68,6 +111,7 @@ class LearningSyncService extends ChangeNotifier {
       final reviewItems = _collectLocalReviews();
 
       final body = jsonEncode({
+        'mode': 'merge',
         'progress': progressItems,
         'reviews': reviewItems,
       });
@@ -118,18 +162,48 @@ class LearningSyncService extends ChangeNotifier {
     }
   }
 
+  Future<bool> _runPull() async {
+    final auth = AuthService.instance;
+    if (!auth.isLoggedIn) return false;
+    _inFlight = true;
+    notifyListeners();
+    try {
+      final progressResp = await _client
+          .get(ApiConfig.uri('/learning/progress'), headers: auth.authHeaders())
+          .timeout(const Duration(seconds: 12));
+      final reviewResp = await _client
+          .get(ApiConfig.uri('/learning/reviews'), headers: auth.authHeaders())
+          .timeout(const Duration(seconds: 12));
+      if (progressResp.statusCode >= 200 && progressResp.statusCode < 300) {
+        final progress = jsonDecode(utf8.decode(progressResp.bodyBytes));
+        await _applyServerPayload({'progress': progress, 'reviews': const []});
+      }
+      if (reviewResp.statusCode >= 200 && reviewResp.statusCode < 300) {
+        final reviews = jsonDecode(utf8.decode(reviewResp.bodyBytes));
+        await _applyServerPayload({'progress': const [], 'reviews': reviews});
+      }
+      _lastSyncedAt = DateTime.now();
+      _lastError = null;
+      return true;
+    } catch (e, st) {
+      developer.log(
+        'LearningSyncService pull failed',
+        name: 'ai_feynman.sync',
+        error: e,
+        stackTrace: st,
+      );
+      _lastError = '拉取同步失败：$e';
+      return false;
+    } finally {
+      _inFlight = false;
+      notifyListeners();
+    }
+  }
+
   List<Map<String, dynamic>> _collectLocalProgress() {
     final repo = ProgressRepository.instance;
-    // ProgressRepository 没有暴露「全部进度」的遍历接口，但本节场景下
-    // 我们只关心 16.1 / 16.2 / 16.3 三个 V1 章节；同步时按白名单读出来即可。
-    const v1Sections = <String>[
-      'pep-g8-down-s16-1',
-      'pep-g8-down-s16-2',
-      'pep-g8-down-s16-3',
-    ];
     final out = <Map<String, dynamic>>[];
-    for (final id in v1Sections) {
-      final p = repo.progressFor(id);
+    for (final p in repo.allProgress) {
       if (!p.hasAnyCompletion) continue;
       out.add({
         'sectionId': p.sectionId,
@@ -176,20 +250,19 @@ class LearningSyncService extends ChangeNotifier {
         final sectionId = item['sectionId'] as String? ?? '';
         if (sectionId.isEmpty) continue;
         final local = progressRepo.progressFor(sectionId);
-        // 如果服务端比本地更高就 applyCompleted（用差值近似），避免后端缓存
-        // 比本地新但本地 + 差值小于 8 的情况导致少加 —— 这里精度允许偏差。
         if (serverScore <= local.masteryScore &&
             serverRounds <= local.completedRounds) {
           continue;
         }
-        // applyCompleted 会按规则 +max(8, masteryDelta*10)；
-        // 直接把差值除以 10 喂回去做粗略对齐即可。
-        final neededGain = serverScore - local.masteryScore;
-        final delta = (neededGain / 10).ceil().clamp(1, 3);
-        await progressRepo.applyCompleted(
-          sectionId: sectionId,
-          masteryDelta: delta,
-          summary: item['lastSummary'] as String? ?? '',
+        await progressRepo.applyFromServer(
+          local.copyWith(
+            completedRounds: serverRounds,
+            masteryScore: serverScore,
+            lastSummary: item['lastSummary'] as String? ?? '',
+            lastPracticedAt: DateTime.tryParse(
+              item['lastPracticedAt'] as String? ?? '',
+            ),
+          ),
         );
       }
     }

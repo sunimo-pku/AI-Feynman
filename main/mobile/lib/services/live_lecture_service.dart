@@ -192,6 +192,7 @@ class LiveLectureService {
                     stepId: s['stepId'] as String? ?? '',
                     strokeCount: (s['strokeCount'] as int?) ?? 0,
                     boundingBox: s['boundingBox'] as Map<String, dynamic>?,
+                    imageBase64: s['imageBase64'] as String? ?? '',
                   ))
               .toList(growable: false),
         );
@@ -254,7 +255,7 @@ class LiveLectureService {
   ///     TODO：接入 200ms 淡出（audioplayers 暂不直接支持 fade，
   ///     需要平台侧实现或用 just_audio）。
   ///   * 任意失败都只走 [errors] / [ttsState]，不抛。
-  Future<void> requestTts(String text) async {
+  Future<void> requestTts(String text, {String role = ''}) async {
     if (_disposed || text.trim().isEmpty) return;
     try {
       final uri = ApiConfig.uri('/tts');
@@ -262,7 +263,7 @@ class LiveLectureService {
           .post(
             uri,
             headers: const {'Content-Type': 'application/json; charset=utf-8'},
-            body: utf8.encode(jsonEncode({'text': text})),
+            body: utf8.encode(jsonEncode({'text': text, 'role': role})),
           )
           .timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) {

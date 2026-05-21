@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="220" viewBox="0 0 420 220">
+  <rect width="420" height="220" rx="18" fill="#FBFBFA"/>
+  <circle cx="130" cy="110" r="46" fill="#DBEAFE" stroke="#1E40AF" stroke-width="3"/>
+  <circle cx="210" cy="110" r="46" fill="#CFFAFE" stroke="#0891B2" stroke-width="3"/>
+  <circle cx="290" cy="110" r="46" fill="#FEE2E2" stroke="#EF4444" stroke-width="3"/>
+  <text x="119" y="116" font-size="18" fill="#0F172A">红</text>
+  <text x="199" y="116" font-size="18" fill="#0F172A">蓝</text>
+  <text x="279" y="116" font-size="18" fill="#0F172A">白</text>
+  <text x="120" y="180" font-size="16" fill="#1E40AF">摸到指定颜色的概率</text>
+</svg>

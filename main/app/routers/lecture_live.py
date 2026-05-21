@@ -29,6 +29,7 @@ from app.db import (
 )
 from app.middleware.auth import decode_token
 from app.services.lecture_agent import generate_lecture_turns
+from app.services.lecture_agent_stream import generate_turn_events
 from app.services.live_lecture_session import (
     EVT_ERROR,
     LiveLectureSession,
@@ -118,6 +119,7 @@ async def lecture_live(websocket: WebSocket) -> None:
                     send=send,
                     recognize_fn=volc_recognize,
                     lecture_agent_fn=generate_lecture_turns,
+                    stream_agent_fn=generate_turn_events,
                 )
             except Exception as e:  # noqa: BLE001
                 logger.exception("[lecture-live] handle_event 异常：%s", e)

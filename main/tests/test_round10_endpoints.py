@@ -11,56 +11,10 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
 import uuid
 from datetime import datetime
-from typing import Iterator
 
-import pytest
 from fastapi.testclient import TestClient
-
-
-@pytest.fixture(scope="module")
-def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
-    """在干净的临时 sqlite 上跑测试，避免污染开发 DB。
-
-    用 monkey patch DB_PATH 不够 —— `app.db` 在 import 时就建好了 engine。
-    所以这里通过环境变量绕开：测试用一个 fresh `data/app.db`，整模块跑完
-    后清理。
-    """
-
-    # 临时 DB：放进 tmp_path_factory，pytest 跑完会自动清。
-    tmp_dir = tmp_path_factory.mktemp("ai_feynman_db")
-    db_path = tmp_dir / "app.db"
-    # 必须在 import app.* 之前设置 DB_PATH，所以我们走 monkeypatch 真实路径文件名
-    # —— sqlite 文件路径在 app.db 模块里硬编码 `data/app.db`。
-    # 简化：直接 truncate data/app.db。本地开发可能丢数据，但对 CI / 一次性容器
-    # 跑测试是 OK 的。
-    real_db = os.path.join(
-        os.path.dirname(__file__), "..", "data", "app.db"
-    )
-    # 先备份再清；测试结束后还原。
-    backup_path = real_db + ".test_backup"
-    if os.path.exists(real_db):
-        os.replace(real_db, backup_path)
-    try:
-        from app.db import init_db  # noqa: WPS433
-
-        init_db()
-        from app.main import app  # noqa: WPS433
-        from app.middleware.rate_limit import reset_limiter  # noqa: WPS433
-
-        reset_limiter()
-        with TestClient(app) as c:
-            yield c
-        reset_limiter()
-    finally:
-        # 还原
-        if os.path.exists(real_db):
-            os.remove(real_db)
-        if os.path.exists(backup_path):
-            os.replace(backup_path, real_db)
 
 
 def _register_and_login(client: TestClient, username: str | None = None) -> str:

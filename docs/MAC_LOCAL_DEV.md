@@ -189,6 +189,46 @@ export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 
 ---
 
+## 第十一轮实时能力调试
+
+- 真机 Base URL：Android 模拟器可继续用 `http://10.0.2.2:8001`；真机必须用局域网 IP：
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://<你的电脑IP>:8001
+```
+
+- DEBUG_OCR 面板：讲题页默认不展示 OCR 细节；调试 HWR 时使用：
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=http://<你的电脑IP>:8001 \
+  --dart-define=DEBUG_OCR=1
+```
+
+- 拍照识题：第十二轮引入 `image_picker`，Android 真机首次访问相册/相机时会触发系统权限。若权限被拒绝，需要到系统设置中允许「照片和视频」/「相机」。
+- Qwen-VL 视觉识题：在 `.env` 配置 `ALIYUN_API_KEY` 后，`/questions/upload-image` 会优先调用阿里云 DashScope OpenAI 兼容接口（默认模型 `qwen-vl-plus`）；失败时才回到 `vision_fallback`。
+- WebSocket：`/lecture/live` 需要 nginx 透传 Upgrade 头；本地直连时确认 `ws://<IP>:8001/lecture/live` 可建立连接。
+- 流式 ASR：默认复用 `VOLC_API_KEY`；只有具体 SDK 要独立凭证时才额外配置 `VOLC_ASR_STREAM_APP_ID` / `VOLC_ASR_STREAM_ACCESS_TOKEN`。完全未配置火山 key 时日志应出现 `asr_mode=window_fallback`，仍不阻塞讲题。
+- OCR/HWR：默认复用 `VOLC_API_KEY`；接其他 HWR 供应商时再配置 `OCR_HWR_API_KEY`。未配置任何 HWR key 时 source 会回落 `reference_step` 或 `template`。
+- 回放：结构化时间轴通过 `/replays` 保存，服务端默认存数据库 JSON；如后续落文件，路径用 `.env` 的 `REPLAY_STORAGE_DIR`。当前 App 端在 `ReplayService` 内临时缓存本次 live 的音频 chunk、白板 timeline 与气泡 timeline，完成或退出时尽力上传。
+
+nginx 反代示例：
+
+```nginx
+location /lecture/live {
+    proxy_pass http://127.0.0.1:8001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 360s;
+    proxy_send_timeout 360s;
+}
+```
+
+LLM、ASR、OCR 都可能超过默认 60s，生产反代建议把 `proxy_read_timeout` 拉长到 300s 以上。
+
+---
+
 ## 附录：无线调试（可选，Android 11+）
 
 1. 先用 USB 连一次，或平板开发者选项里打开「无线调试」

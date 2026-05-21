@@ -58,6 +58,7 @@ class LectureService {
                   'width': s.boundingBox.width,
                   'height': s.boundingBox.height,
                 },
+                imageBase64: '',
               ))
           .toList(growable: false),
     );

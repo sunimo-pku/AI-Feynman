@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
+import 'progress_repository.dart';
+import 'review_repository.dart';
 
 /// 第十轮：登录/注册 + token 持久化。
 ///
@@ -47,6 +49,10 @@ class AuthService extends ChangeNotifier {
   String get currentUsername => _username;
   bool get isLoggedIn => _token.isNotEmpty;
   bool get isLoaded => _loaded;
+  String get storageNamespace {
+    final name = _username.trim();
+    return name.isEmpty ? 'guest' : name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+  }
 
   Future<void> load() async {
     if (_loaded) return;
@@ -77,6 +83,8 @@ class AuthService extends ChangeNotifier {
     } finally {
       _loaded = true;
       _pendingLoad = null;
+      await ProgressRepository.instance.switchUser(storageNamespace);
+      await ReviewRepository.instance.switchUser(storageNamespace);
       notifyListeners();
     }
   }
@@ -132,6 +140,8 @@ class AuthService extends ChangeNotifier {
         stackTrace: st,
       );
     }
+    await ProgressRepository.instance.switchUser(storageNamespace);
+    await ReviewRepository.instance.switchUser(storageNamespace);
     notifyListeners();
     return AuthResult.success(_username);
   }
@@ -146,6 +156,8 @@ class AuthService extends ChangeNotifier {
     } catch (_) {
       /* swallow */
     }
+    await ProgressRepository.instance.switchUser(storageNamespace);
+    await ReviewRepository.instance.switchUser(storageNamespace);
     notifyListeners();
   }
 
