@@ -72,9 +72,11 @@ API 文档：`http://127.0.0.1:8001/docs`
 `POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解」时调用。
 
 - **第三轮**起，后端 `services/lecture_agent.py` 会调用 Moonshot 真实 LLM
-  （非思考模型 `moonshot-v1-32k`，温度 0.4，`response_format=json_object`），
+  （旗舰模型 `kimi-k2.6` + `thinking.type=disabled` 关思考模式，
+  `temperature=0.6`、`response_format=json_object`、`max_retries=0`），
   让 Kimi 在单次调用内扮演小明 / 大雄 / 班长 / 李老师中的 1-2 个角色，
   生成针对学生当前 `steps` 的强结构化追问。
+  实测中位数 5-15s 即可返回；后端层 28s timeout + 自动回退 Mock 兜底。
 - LLM 返回的 JSON 会经过严格校验：`role` 白名单、`text` 非空且 ≤180 中文字符、
   `highlightStepIds` 必须命中请求里真实存在的 `stepId`、`masteryDelta ∈ {-1, 0, 1}`。
 - **任意环节失败**（`KIMI_API_KEY` 缺失、LLM 超时、返回非 JSON、字段不合规）

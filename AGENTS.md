@@ -196,20 +196,32 @@ git push origin main
 
 ### Kimi / Moonshot LLM（第三轮 `/lecture/submit` 实接踩坑）
 
-- **`kimi-k2.6` 是思考模型，单次 30-90s 不可接讲题闭环**：默认开"思考模式"，
-  会先把推理塞 `reasoning_content` 再写 `content`；`max_tokens=1200` 经常
-  `finish_reason=length` + `content=''`，全部被解析层当失败回退到 Mock。
-  讲题闭环对延迟极敏感（学生提交后等 AI 同伴讲话），所以 `services/lecture_agent.py`
-  显式指定 `moonshot-v1-32k`（经典非思考模型，1-3s 返回）。换到 k2.6 前
-  务必测端到端延迟。
-- **`app.services.kimi.chat(...)` 的 `model` 参数对非 deepseek 模型无效**：
+- **K2.6 默认思考模式，单次 30-90s，不能直接接讲题闭环**：默认开思考时
+  K2.6 会先把推理塞 `reasoning_content` 再写 `content`，`max_tokens=1200`
+  经常 `finish_reason=length` + `content=''`，全部被解析层当失败回退到 Mock。
+- **K2.6 关思考是当前最优解**：在请求 body 传 `thinking={"type":"disabled"}`
+  即可让 K2.6 跳过推理直出答案，实测 5-15s 一次往返、偶发 25s 拖尾，
+  且**输出质量显著高于 `moonshot-v1-*` 经典模型**——K2.6 关思考能给出
+  「若题目改成 `\sqrt{-x}` 口诀还能直接用吗？条件会变成什么？」这种
+  拓展引导，经典模型只能照本宣科。
+  实施细节：OpenAI Python SDK 用 `extra_body={"thinking":{"type":"disabled"}}`
+  透传该字段，标准 `create(...)` 参数里没有 `thinking`。
+- **K2.6 的 `temperature` 有两套独立硬约束**：
+  - 思考模式（默认）：**只允许 `temperature=1`**，其他值 400
+    `invalid temperature: only 1 is allowed for this model`。
+  - 关思考（`thinking.type=disabled`）：**只允许 `temperature=0.6`**，
+    传 0.4 同样 400 `invalid temperature: only 0.6 is allowed for this model`。
+  - 切思考开关时务必同步改 temperature，否则秒挂。
+- **`app.services.kimi.chat(...)` 既不传 `extra_body` 也吞掉 `model`**：
   `_get_client(model)` 里非 deepseek 一律返回 `Config.KIMI_MODEL`，
-  外面传 `model='moonshot-v1-32k'` 会被静默覆盖回 `kimi-k2.6`。
-  想要选模型，直接复用 `kimi.kimi_client.chat.completions.create(model=...)`，
-  不要新建 OpenAI client（避免双客户端导致 base_url / key 漂移）。
-- **`kimi-k2.6` 只接受 `temperature=1`**：传 0.4 直接 400
-  「invalid temperature: only 1 is allowed for this model」。换 `moonshot-v1-*`
-  这一族经典模型则正常支持 0.0-1.5 的自定义温度。
+  外面传别的模型名会被静默覆盖；同时该封装也没暴露 `extra_body` 入口，
+  没法关 K2.6 思考。所以 `services/lecture_agent.py` 选择**复用** `kimi.kimi_client`
+  直连 `chat.completions.create(...)`，**不新建** OpenAI client（避免双客户端
+  导致 base_url / key 漂移）。
+- **OpenAI Python SDK 默认 `max_retries=2`，会把"超时即回退"翻倍/三倍**：
+  我们的设计是「LLM 25-28s 没出结果就落 Mock」，但 SDK 默认遇 timeout / 5xx
+  会自动重试 2 次，一次 28s 超时被翻成 60-90s 真实卡顿，前端早就报错了。
+  必须 `kimi_client.with_options(max_retries=0).chat.completions.create(...)`。
 - **必须开 `response_format={"type": "json_object"}` 双保险**：Prompt 里写
   "只输出 JSON" 还不够，模型偶尔会包 ```json``` 三重反引号。`response_format`
   会让 Moonshot 服务端硬约束首字符为 `{`；service 解析时再 `_strip_markdown_fence`
@@ -220,9 +232,10 @@ git push origin main
 - **LLM 异常不要抛 HTTPException**：抛了前端会出红色错误条破坏 Demo。
   统一在 `lecture_agent` 内 `try/except` 后 `return _fallback_payload()`，
   路由层只在日志里区分 `source=llm` / `source=fallback`，对前端始终返回 200。
-- **客户端 timeout 至少 30s**：经典模型平均 3-5s，但偶发 10-20s 拖尾（Moonshot
-  侧排队）。Flutter `LectureService._timeout` 给 30s 是稳态下限；同时后端层
-  自带 20s OpenAI SDK `timeout=...`，确保不会把客户端 30s 全部吃满。
+- **前端 timeout 必须严格大于后端 timeout**：实施时把后端 SDK timeout 设 28s，
+  Flutter `LectureService._timeout` 设 35s，确保「后端先 timeout 落 Mock」
+  而非「前端先报错但后端继续跑」——前后端 timeout 反过来时会让学生看到
+  红色错误条但日志里实际拿到了 LLM 回复，非常误导。
 
 ### 前后端契约（第二轮 `/lecture/submit`）
 

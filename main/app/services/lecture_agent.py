@@ -25,24 +25,38 @@ from typing import Any
 from app.config import Config
 # 复用 kimi.py 里已经实例化好的 OpenAI client（指向 Moonshot），
 # 而不是新建一套。`kimi.chat(...)` 内部强制把 model 锁回 `Config.KIMI_MODEL`
-# = `kimi-k2.6`（思考模式，单次 30-90s），不适合做"边写边答"的讲题闭环，
-# 所以这里绕过 `chat()` 封装直连 `kimi_client`，让我们能显式选择
-# `moonshot-v1-32k` 这种非思考模型，把端到端延迟压回 1-3s。
+# 且把 `extra_body` 这种 OpenAI SDK 扩展参数全吞掉，没法关 K2.6 的思考开关，
+# 所以这里绕过 `chat()` 封装直连 `kimi_client`，让我们能显式选择模型 +
+# 透传 `thinking={"type":"disabled"}` 把 K2.6 切到非思考模式。
 from app.services.kimi import kimi_client
 
 logger = logging.getLogger(__name__)
 
 
-# Moonshot 经典非思考模型。Kimi `kimi-k2.6` 思考模式会先把内容塞进
-# `reasoning_content` 再写 `content`，单轮经常 30-90s；对讲题闭环
-# （学生写完点提交后等 AI 同伴追问）的体感无法接受。
-# 同 key 下 `moonshot-v1-32k` 即时回复，且支持自定义 temperature。
-_LECTURE_MODEL = "moonshot-v1-32k"
+# Kimi 旗舰模型 K2.6 + **关闭思考模式**：
+#   - 默认开"思考"时，K2.6 会先把推理塞 `reasoning_content` 再写 `content`，
+#     单次 30-90s，且 `max_tokens=1200` 经常 `finish_reason=length`+空 `content`，
+#     对"学生提交后等 AI 同伴追问"的体感完全不可接受。
+#   - 通过 `extra_body={"thinking":{"type":"disabled"}}` 关掉思考后，
+#     K2.6 在我们的 Prompt 上实测 3-6s 即可返回合规 JSON，
+#     既保住了旗舰模型对中文数学语境 + LaTeX 输出的理解力，
+#     又把延迟压到 Demo 可接受范围。
+_LECTURE_MODEL = "kimi-k2.6"
 
-# 后端层 LLM 调用超时（秒）。Moonshot 经典模型 1-3s 返回，给 20s
-# 已足够覆盖网络抖动；超过即落 fallback，避免把 30s 的 Flutter 客户端
-# timeout 全部吃满。
-_LLM_TIMEOUT_SECONDS = 20.0
+# K2.6 关思考模式后 Moonshot 仍硬约束 `temperature=0.6`，传其他值会 400
+# `invalid temperature: only 0.6 is allowed for this model`。
+# 思考模式下要求 1.0、关思考后要求 0.6，是两套独立约束，切模型时都要重测。
+_LECTURE_TEMPERATURE = 0.6
+
+# 透传给 Moonshot 的扩展参数。OpenAI Python SDK 用 `extra_body` 透传
+# 非 OpenAI 标准字段；Moonshot 这边是 `thinking: {type: enabled|disabled}`。
+_LECTURE_EXTRA_BODY: dict[str, Any] = {"thinking": {"type": "disabled"}}
+
+# 后端层 LLM 调用超时（秒）。K2.6 关思考实测中位数 5-15s，偶发
+# 20-25s 拖尾（Moonshot 侧排队 + 长 Prompt 生成）。给 28s 既能盖住
+# 大部分拖尾，又比 Flutter 客户端 30s timeout 短 2s —— 让前端先于
+# 后端断开的概率最低，避免「前端报错 / 后端却拿到结果」的不一致。
+_LLM_TIMEOUT_SECONDS = 28.0
 
 
 # ---------------------------------------------------------------------------
@@ -480,18 +494,23 @@ def generate_lecture_turns(
     ]
 
     # 直接走 `kimi_client.chat.completions.create(...)`：
-    #   - 用 `moonshot-v1-32k`（非思考模型），1-3s 返回，支持 temperature。
+    #   - 用 `kimi-k2.6` 旗舰模型，靠 `extra_body.thinking.type=disabled` 关思考。
     #   - `response_format={"type":"json_object"}` 双保险地约束 LLM 输出 JSON。
     #   - `timeout` 走 OpenAI SDK 自带的 per-request 超时（秒），超时即抛
     #     `APITimeoutError`，被外层 `except Exception` 接住后回落 fallback。
+    #   - `.with_options(max_retries=0)`：OpenAI Python SDK 默认遇 timeout /
+    #     5xx 会自动 retry 2 次，对我们的"超时即回退"语义是反作用力 ——
+    #     一次 25s 超时会被 SDK 翻成 50-75s 真实卡顿，前端早就报错了。
+    #     显式关掉，让超时只发生一次。
     try:
-        resp = kimi_client.chat.completions.create(
+        resp = kimi_client.with_options(max_retries=0).chat.completions.create(
             model=_LECTURE_MODEL,
             messages=messages,
-            temperature=0.4,
+            temperature=_LECTURE_TEMPERATURE,
             max_tokens=1200,
             response_format={"type": "json_object"},
             timeout=_LLM_TIMEOUT_SECONDS,
+            extra_body=_LECTURE_EXTRA_BODY,
         )
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
     except Exception as e:  # noqa: BLE001 — Moonshot SDK 可能抛任意异常
