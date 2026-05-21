@@ -12,9 +12,10 @@ set -euo pipefail
 PROJECT_ROOT="/root/new-project"
 BACKEND_DIR="$PROJECT_ROOT/main"
 APP_MODULE="app.main:app"
-HOST="127.0.0.1"
+BIND_HOST="0.0.0.0"
+HEALTH_HOST="127.0.0.1"
 PORT="8001"
-HEALTH_URL="http://127.0.0.1:${PORT}/health"
+HEALTH_URL="http://${HEALTH_HOST}:${PORT}/health"
 LOG_FILE="$BACKEND_DIR/logs/uvicorn.log"
 
 START_TS=$(date +%s)
@@ -24,14 +25,14 @@ echo "[1/2] restarting backend on port $PORT ..."
 cd "$BACKEND_DIR"
 mkdir -p logs
 
-if pkill -f "uvicorn $APP_MODULE --host $HOST --port $PORT" 2>/dev/null; then
+if pkill -f "uvicorn $APP_MODULE --host .* --port $PORT" 2>/dev/null; then
   echo "       old uvicorn killed, waiting 1s ..."
   sleep 1
 else
   echo "       no running uvicorn on $PORT (first deploy?)"
 fi
 
-nohup uvicorn "$APP_MODULE" --host "$HOST" --port "$PORT" \
+nohup uvicorn "$APP_MODULE" --host "$BIND_HOST" --port "$PORT" \
   >> "$LOG_FILE" 2>&1 &
 NEW_PID=$!
 disown || true
