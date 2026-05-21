@@ -186,6 +186,11 @@ TOPIC_SECTIONS = {
     "4.4", "10.3", "13.4", "19.3", "20.3", "23.3", "29.3",
 }
 
+# V1 唯一有内容的章节：八年级下册 · 第十六章 二次根式
+V1_LAUNCH_BOOK_KEY = "g8-down"
+V1_LAUNCH_CHAPTER_NUM = 16
+V1_LAUNCH_CHAPTER_TITLE = "二次根式"
+
 
 def section_type(num: str, title: str) -> str:
     if num in TOPIC_SECTIONS:
@@ -202,23 +207,32 @@ def section_label(num: str, title: str, stype: str) -> str:
 def build() -> dict:
     grade_labels = {7: "七年级", 8: "八年级", 9: "九年级"}
     books = []
+    v1_book_id = f"pep-{V1_LAUNCH_BOOK_KEY}"
+    v1_chapter_id = f"{v1_book_id}-ch{V1_LAUNCH_CHAPTER_NUM}"
+    v1_section_ids: list[str] = []
+    v1_book_label = ""
 
     for book_key, grade, semester, sem_label, chapters in CURRICULUM:
         book_id = f"pep-{book_key}"
         ch_list = []
         for ch_num, ch_title, sections in chapters:
             ch_id = f"{book_id}-ch{ch_num}"
+            is_v1_chapter = (
+                book_key == V1_LAUNCH_BOOK_KEY and ch_num == V1_LAUNCH_CHAPTER_NUM
+            )
             sec_list = []
             for sec_num, sec_title in sections:
                 stype = section_type(sec_num, sec_title)
                 sec_id = f"{book_id}-s{sec_num.replace('.', '-')}"
+                if is_v1_chapter:
+                    v1_section_ids.append(sec_id)
                 sec_list.append({
                     "id": sec_id,
                     "number": sec_num,
                     "title": sec_title,
                     "label": section_label(sec_num, sec_title, stype),
                     "type": stype,
-                    "contentStatus": "coming_soon",
+                    "contentStatus": "available" if is_v1_chapter else "coming_soon",
                 })
             ch_list.append({
                 "id": ch_id,
@@ -228,6 +242,10 @@ def build() -> dict:
                 "sections": sec_list,
             })
 
+        book_label = f"{grade_labels[grade]}{sem_label}"
+        if book_id == v1_book_id:
+            v1_book_label = book_label
+
         books.append({
             "id": book_id,
             "publisher": "人教版",
@@ -235,7 +253,7 @@ def build() -> dict:
             "gradeLabel": grade_labels[grade],
             "semester": semester,
             "semesterLabel": sem_label,
-            "label": f"{grade_labels[grade]}{sem_label}",
+            "label": book_label,
             "chapters": ch_list,
         })
 
@@ -246,6 +264,15 @@ def build() -> dict:
         "stage": "junior_high",
         "stageLabel": "初中",
         "publisher": "人教版",
+        "v1Launch": {
+            "bookId": v1_book_id,
+            "bookLabel": v1_book_label,
+            "chapterId": v1_chapter_id,
+            "chapterNumber": V1_LAUNCH_CHAPTER_NUM,
+            "chapterTitle": V1_LAUNCH_CHAPTER_TITLE,
+            "chapterLabel": f"第{_cn_num(V1_LAUNCH_CHAPTER_NUM)}章 {V1_LAUNCH_CHAPTER_TITLE}",
+            "sectionIds": v1_section_ids,
+        },
         "books": books,
     }
 

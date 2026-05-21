@@ -14,10 +14,17 @@ export type {
   CurriculumSection,
   MathCurriculum,
   SectionType,
+  V1Launch,
 } from "./curriculum.types";
 
 /** 人教版初中数学完整目录（6 册 · 29 章 · 90 节） */
 export const mathCurriculum = raw as MathCurriculum;
+
+/** V1 唯一有内容的章节：八年级下册 · 第十六章 二次根式 */
+export const v1Launch = mathCurriculum.v1Launch;
+
+export const V1_LAUNCH_CHAPTER_ID = v1Launch.chapterId;
+export const V1_LAUNCH_CHAPTER_LABEL = v1Launch.chapterLabel;
 
 export function getBooks(): CurriculumBook[] {
   return mathCurriculum.books;
@@ -66,7 +73,17 @@ export function isSectionAvailable(section: CurriculumSection): boolean {
   return section.contentStatus === "available";
 }
 
-/** 将某小节标记为已上线（V1 确定章节后调用，或后端覆盖） */
+export function isChapterAvailable(chapter: CurriculumChapter): boolean {
+  return chapter.id === V1_LAUNCH_CHAPTER_ID
+    ? chapter.sections.some(isSectionAvailable)
+    : false;
+}
+
+export function getV1LaunchChapter(): CurriculumChapter | undefined {
+  return getChapter(V1_LAUNCH_CHAPTER_ID);
+}
+
+/** 将某小节 contentStatus 覆盖为指定值（测试或动态配置用） */
 export function withSectionStatus(
   sectionId: string,
   contentStatus: ContentStatus,

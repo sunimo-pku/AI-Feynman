@@ -5,6 +5,19 @@
   "stage": "junior_high",
   "stageLabel": "初中",
   "publisher": "人教版",
+  "v1Launch": {
+    "bookId": "pep-g8-down",
+    "bookLabel": "八年级下册",
+    "chapterId": "pep-g8-down-ch16",
+    "chapterNumber": 16,
+    "chapterTitle": "二次根式",
+    "chapterLabel": "第十六章 二次根式",
+    "sectionIds": [
+      "pep-g8-down-s16-1",
+      "pep-g8-down-s16-2",
+      "pep-g8-down-s16-3"
+    ]
+  },
   "books": [
     {
       "id": "pep-g7-up",
@@ -580,7 +593,7 @@
               "title": "二次根式",
               "label": "16.1 二次根式",
               "type": "lesson",
-              "contentStatus": "coming_soon"
+              "contentStatus": "available"
             },
             {
               "id": "pep-g8-down-s16-2",
@@ -588,7 +601,7 @@
               "title": "二次根式的乘除",
               "label": "16.2 二次根式的乘除",
               "type": "lesson",
-              "contentStatus": "coming_soon"
+              "contentStatus": "available"
             },
             {
               "id": "pep-g8-down-s16-3",
@@ -596,7 +609,7 @@
               "title": "二次根式的加减",
               "label": "16.3 二次根式的加减",
               "type": "lesson",
-              "contentStatus": "coming_soon"
+              "contentStatus": "available"
             }
           ]
         },

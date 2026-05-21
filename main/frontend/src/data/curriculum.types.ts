@@ -33,6 +33,16 @@ export interface CurriculumBook {
   chapters: CurriculumChapter[];
 }
 
+export interface V1Launch {
+  bookId: string;
+  bookLabel: string;
+  chapterId: string;
+  chapterNumber: number;
+  chapterTitle: string;
+  chapterLabel: string;
+  sectionIds: string[];
+}
+
 export interface MathCurriculum {
   version: string;
   subject: "math";
@@ -40,5 +50,6 @@ export interface MathCurriculum {
   stage: "junior_high";
   stageLabel: string;
   publisher: string;
+  v1Launch: V1Launch;
   books: CurriculumBook[];
 }
