@@ -26,6 +26,8 @@
 ├── DEMO_SCRIPT.md            # Demo 演示提纲（随功能追加）
 ├── deploy.sh                 # 后端一键部署
 ├── docs/
+│   ├── AI_CODE_AGENT_BRIEF.md # 首个可演示小闭环的 AI 执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND2.md # 第二轮后端 Mock 闭环执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
@@ -63,6 +65,27 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
 健康检查：`http://127.0.0.1:8001/health`  
 API 文档：`http://127.0.0.1:8001/docs`
+
+#### 讲题 Mock 接口（第二轮，固定 JSON）
+
+`POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解」时调用，后端返回固定的多 Agent 追问（小明 + 李老师），目前仅放行 16.1 / 16.2 / 16.3。本轮**不接真实 LLM / ASR / TTS**，只跑通前后端契约。
+
+```bash
+curl -X POST http://127.0.0.1:8001/lecture/submit \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "sectionId":"pep-g8-down-s16-3",
+    "questionId":"mock-radical-003",
+    "questionPrompt":"化简：\\sqrt{12}-\\sqrt{27}",
+    "studentSpeechText":"",
+    "steps":[{"stepId":"step_1","latex":"","plainText":"","strokeCount":3,
+              "boundingBox":{"x":120,"y":80,"width":360,"height":96}}]
+  }'
+```
+
+返回：`{ "questionId", "sectionId", "status", "masteryDelta", "turns": [...] }`，`turns[*].role` 使用稳定英文枚举 `xiaoming / teacher / daxiong / monitor / system`。
+
+错误码：未知 `sectionId` → 404；空 `steps` → 400；字段缺失 / 类型不符 → 422。
 
 ### Flutter 客户端（Mac 上执行）
 

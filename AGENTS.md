@@ -194,6 +194,14 @@ git push origin main
 - **用户级 localStorage 必须带 user id**：切换账号时不能用全局固定 key，否则偏好串号。
 - **LLM 结构化输出需持久化**：仅放 `useState` 的内容，用户切页再回来会丢失；应写入 session / DB 对应字段。
 
+### 前后端契约（第二轮 `/lecture/submit`）
+
+- **Pydantic v2 别名两套配置**：请求字段从前端驼峰（`sectionId`）映射到 Python 蛇形需要 `Field(..., alias='sectionId') + model_config = {"populate_by_name": True}`；响应字段则要用 `serialization_alias='sectionId'` + `response_model_by_alias=True`，否则后端会把蛇形吐回去，Flutter 一边 `json['sectionId']` 一边收到 `section_id` 直接拿到 null。
+- **错误必须走 `HTTPException`**：FastAPI 默认 `Exception` handler 会把异常压成 500（见 `middleware/error_handler.py`），但「未知 sectionId / 空 steps」这种业务错误应该是 404 / 400。所有 `lecture.py` 中的错误分支都用 `raise HTTPException(...)`，让 `http_exception_handler` 透出真实 status。
+- **Flutter 真机不能用 `localhost`**：`ApiConfig.baseUrl` 默认 `http://10.0.2.2:8001` 只对 Android 模拟器有效，真机调试必须 `--dart-define=API_BASE_URL=http://<局域网 IP>:8001`，否则 `SocketException`。`LectureService` 在 `catch (SocketException)` 时已把 baseUrl 写进错误提示里，方便学生发现是连不上。
+- **提交失败不要清空画布**：`lecture_page.dart` 的 `_sendRequest` 失败分支会把状态切到 `_LectureStatus.error`，但**不动 `_canvasController`**；这样学生重启后端后，点红色横幅里的「重试」按钮就能继续闭环，不用从头写。
+- **错误横幅复用已经追加的「系统占位气泡」需要回滚**：发起请求时我们立即在 `_turns` 末尾插一条「已收到第 N 轮讲解…」的 system 气泡，请求失败时必须把它弹掉，避免「正在让同学听讲… → 错误提示」叠在一起像 AI 自己在自言自语。
+
 ### Flutter 客户端（V1 闭环踩坑）
 
 - **CustomPainter 共享 List 不会自动重绘**：把 `Stroke` 列表直接传给 `CustomPainter` 并在原地 mutate，`shouldRepaint` 拿到的 old/new 是同一引用，等式恒成立，画布会出现「拖不出笔」。手写板需要在 Controller 里维护 `version` 计数器，painter 比对 `old.version != version` 才能正确触发重绘（见 `widgets/hand_canvas.dart`）。

@@ -2,11 +2,9 @@ import os
 import logging
 from datetime import datetime
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import chat, tts, asr, auth, sessions, upload
+from app.routers import chat, tts, asr, auth, sessions, upload, lecture
 from app.middleware import error_handler, rate_limit
 
 # 日志配置
@@ -21,9 +19,9 @@ logging.basicConfig(
 )
 
 app = FastAPI(
-    title="New Project",
-    description="FastAPI + React 全栈骨架（Kimi / DeepSeek / 豆包语音）",
-    version="0.1.0",
+    title="AI Feynman API",
+    description="Flutter Android 客户端后端（FastAPI + Kimi / 豆包语音）",
+    version="0.2.0",
 )
 
 # 注册中间件
@@ -48,35 +46,15 @@ app.include_router(asr.router)
 app.include_router(auth.router)
 app.include_router(sessions.router)
 app.include_router(upload.router)
-
-# 静态文件（React 构建产物）
-dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist")
-app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
-
+app.include_router(lecture.router)
 
 @app.get("/")
 async def root():
-    return FileResponse(os.path.join(dist_path, "index.html"))
-
-
-@app.get("/chat")
-async def chat_page():
-    return FileResponse(os.path.join(dist_path, "index.html"))
-
-
-@app.get("/tts")
-async def tts_page():
-    return FileResponse(os.path.join(dist_path, "index.html"))
-
-
-@app.get("/register")
-async def register_page():
-    return FileResponse(os.path.join(dist_path, "index.html"))
-
-
-@app.get("/diagnostics")
-async def diagnostics_page():
-    return FileResponse(os.path.join(dist_path, "index.html"))
+    return {
+        "name": "AI Feynman API",
+        "docs": "/docs",
+        "health": "/health",
+    }
 
 
 @app.get("/health")

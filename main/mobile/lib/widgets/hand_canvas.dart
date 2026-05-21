@@ -5,6 +5,19 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
+/// 单个 step 的笔迹信息，供后端 `boundingBox` 占位使用。
+class HandCanvasStepInfo {
+  const HandCanvasStepInfo({
+    required this.stepId,
+    required this.strokeCount,
+    required this.bounds,
+  });
+
+  final String stepId;
+  final int strokeCount;
+  final Rect bounds;
+}
+
 /// 手写笔迹的最小数据单元：一条由多个采样点组成的折线，绑定一个 `stepId`。
 class _Stroke {
   _Stroke({required this.stepId, required this.startedAt});
@@ -62,6 +75,26 @@ class HandCanvasController extends ChangeNotifier {
       if (seen.add(s.stepId)) ordered.add(s.stepId);
     }
     return ordered;
+  }
+
+  /// 每个 step 的笔迹并集包围盒 + 笔画数，按 step 顺序返回。
+  List<HandCanvasStepInfo> collectStepInfos() {
+    final boxes = <String, Rect>{};
+    final counts = <String, int>{};
+    for (final s in _strokes) {
+      if (s.points.isEmpty) continue;
+      counts.update(s.stepId, (v) => v + 1, ifAbsent: () => 1);
+      final r = s.bounds;
+      boxes.update(s.stepId, (prev) => prev.expandToInclude(r), ifAbsent: () => r);
+    }
+    return collectStepIds().map((id) {
+      final r = boxes[id] ?? Rect.zero;
+      return HandCanvasStepInfo(
+        stepId: id,
+        strokeCount: counts[id] ?? 0,
+        bounds: r,
+      );
+    }).toList(growable: false);
   }
 
   Set<String> get highlightStepIds => _highlight;
