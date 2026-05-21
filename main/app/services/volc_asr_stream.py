@@ -97,6 +97,8 @@ class VolcStreamingAsrClient:
     ) -> StreamAsrResult | None:
         if not self.enabled:
             return None
+        if force and not base64_data and self._ws is None:
+            return None
         try:
             audio_bytes = base64.b64decode(base64_data)
         except Exception as e:  # noqa: BLE001
@@ -346,6 +348,8 @@ def _parse_server_frame(raw: bytes | bytearray | str) -> _ParsedServerFrame:
         payload = gzip.decompress(payload)
     if serialization != _SERIALIZATION_JSON:
         return _ParsedServerFrame(text=payload.decode("utf-8", errors="ignore"), is_final=flags in (0x2, 0x3))
+    if not payload.strip():
+        return _ParsedServerFrame(text="", is_final=flags in (0x2, 0x3))
     body = json.loads(payload.decode("utf-8"))
     text, definite = _extract_text(body)
     return _ParsedServerFrame(text=text, is_final=definite or flags in (0x2, 0x3))

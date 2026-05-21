@@ -21,6 +21,25 @@ def test_streaming_asr_reports_fallback_when_unconfigured(monkeypatch) -> None:
     assert result is None
 
 
+def test_empty_final_chunk_without_stream_does_not_connect() -> None:
+    def fail_connect(*_args, **_kwargs):
+        raise AssertionError("empty final chunk should not open websocket")
+
+    client = VolcStreamingAsrClient(
+        api_key="volc-key",
+        resource_id="volc.seedasr.sauc.duration",
+        url="wss://example.test/asr",
+        connector=fail_connect,
+    )
+    result = client.accept_chunk(
+        seq=-1,
+        base64_data="",
+        recognize_fallback=lambda _audio, _fmt: {"text": "fallback"},
+        force=True,
+    )
+    assert result is None
+
+
 def test_streaming_asr_uses_new_console_headers() -> None:
     captured: dict[str, object] = {}
 
@@ -84,3 +103,10 @@ def test_parse_server_error_frame_raises() -> None:
         assert "45000151" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+def test_parse_empty_json_payload_returns_empty_result() -> None:
+    frame = bytes([0x11, 0x90, 0x10, 0x00]) + (0).to_bytes(4, "big")
+    parsed = _parse_server_frame(frame)
+    assert parsed.text == ""
+    assert parsed.is_final is False

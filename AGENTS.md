@@ -611,6 +611,13 @@ git push origin main
   间出现非法 padding。**正解**：`base64.b64decode(each)` 拿到 bytes，
   拼成一段连续 PCM，再 `base64.b64encode(...)` 一次性送给 ASR。这条逻辑
   封装在 `LiveAsrBuffer._drain` 里，任何接入流式音频的新协议都要走它。
+- **流式 ASR 空 final 包不能新开连接**：`pause_detected` 可能在没有任何
+  `audio_chunk` 时触发（例如学生只写白板后点「我讲到这里」）。如果这时
+  为了 flush 而新建火山流式 ASR 连接并发送空音频 final 包，火山可能返回
+  空 payload，`json.loads("")` 会穿透成 `session_handler_error`，实时讲题
+  直接卡死。正解：`force=True && base64_data=="" && _ws is None` 时直接
+  返回 `None`；解析服务端空 JSON payload 时也按空结果处理，绝不让 ASR
+  协议异常冒泡到 `/lecture/live`。
 - **OpenAI Python SDK `run_in_executor` 必须用 lambda 包**：在
   `live_lecture_session._invoke_lecture_agent` 里把同步阻塞的
   `generate_lecture_turns(...)` 丢到 threadpool 跑，必须写成
