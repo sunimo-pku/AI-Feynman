@@ -68,7 +68,16 @@ class _LecturePageState extends State<LecturePage> {
   /// 看不懂的反斜杠语法吓退。
   final Set<String> _stepLatexExpanded = <String>{};
 
+  /// 第七轮：本节题库与当前题目索引。
+  ///
+  /// `_questions` 在 [initState] 一次性从 [MockLectureRepository] 拉满，
+  /// 后续切题只动 `_questionIndex`（modulo 循环），不重复访问仓库。
+  /// `_question` 是 `_questions[_questionIndex]` 的快照，便于讨论区
+  /// AppBar 标题、题面卡片、intro 气泡同时引用同一份数据。
+  late List<LectureQuestion> _questions;
+  int _questionIndex = 0;
   late LectureQuestion _question;
+
   final List<AgentTurn> _turns = <AgentTurn>[];
 
   /// 本题的多轮对话历史，第五轮新增。仅包含 `student` / AI / `system` 角色的
@@ -102,7 +111,15 @@ class _LecturePageState extends State<LecturePage> {
   @override
   void initState() {
     super.initState();
-    _question = MockLectureRepository.instance.questionForSection(widget.section.id);
+    final repo = MockLectureRepository.instance;
+    // 第七轮：题库一次性加载，后续翻题只动 [_questionIndex] —— 仓库本身
+    // 是不可变 const list，多次调用 questionsForSection 也安全，但保留
+    // 一份快照能让讲题页所有 sub-widget 看到的题序保持一致。
+    _questions = repo.questionsForSection(widget.section.id);
+    _questionIndex = 0;
+    _question = _questions.isEmpty
+        ? repo.questionForSection(widget.section.id)
+        : _questions[_questionIndex];
     _turns.add(_introTurn());
     _canvasController.addListener(_onCanvasChanged);
   }
@@ -179,13 +196,19 @@ class _LecturePageState extends State<LecturePage> {
     return null;
   }
 
+  /// intro 文案随当前题目刷新：第七轮起每节有 3 道题，老师开场白也要点出
+  /// 「这是本节第几道题」+ 题目难度，让学生对接下来要讲的内容心里有数。
   AgentTurn _introTurn() {
+    final order = _questions.isEmpty ? 1 : (_questionIndex + 1);
+    final total = _questions.isEmpty ? 1 : _questions.length;
+    final levelLabel = MockLectureRepository.instance
+        .difficultyLabel(_question.difficulty);
     return AgentTurn(
       role: AgentRole.teacher,
       displayName: '李老师',
-      text:
-          '欢迎来到「${_question.sectionLabel}」讲题课。请你在右侧手写板上写出你的解题步骤，'
-          '边写边想；写完后点击「提交讲解」，小明和我会和你一起讨论。',
+      text: '欢迎来到「${_question.sectionLabel}」讲题课，这是本节的第 $order / $total 题（$levelLabel）。'
+          '请你在右侧手写板上写出你的解题步骤，边写边想；'
+          '写完后点击「提交讲解」，小明和我会和你一起讨论。',
       highlightStepIds: const [],
     );
   }
@@ -491,11 +514,18 @@ class _LecturePageState extends State<LecturePage> {
     _scrollToBottomSoon();
   }
 
-  void _onContinue() {
+  /// 把"切下一题 / 再讲一遍"两个入口共用的临时态清理动作集中到这里：
+  ///
+  /// - 画板、高亮、撤销栈
+  /// - 学生口述 + 每步说明 + LaTeX 展开
+  /// - 多轮 `_history`、`_turns`、`_round`
+  /// - 错误状态、最近一次失败请求快照
+  /// - 第六轮完成态卡片字段（progress / gain / summary）
+  ///
+  /// 注意：**不**清空 [ProgressRepository] 仓库（学生只是要换一题或复盘，
+  /// 不是要抹掉学习记录）。
+  void _resetTransientState() {
     _canvasController.clear();
-    // 「下一题」语义 = 重新开始一题，所以学生上一题的口述与步骤说明也清空。
-    // 第五轮：本题的多轮历史也一并清空（见 brief 6.1 节）。
-    // 提交失败 / 错误重试时**不**走这里，仍保留输入（见 `_sendRequest` 错误分支）。
     _speechController.clear();
     for (final c in _stepPlainControllers.values) {
       c.clear();
@@ -504,40 +534,42 @@ class _LecturePageState extends State<LecturePage> {
       c.clear();
     }
     _stepLatexExpanded.clear();
+    _status = _LectureStatus.idle;
+    _errorMessage = null;
+    _lastFailedRequest = null;
+    _history.clear();
+    _round = 0;
+    _lastResponseStatus = 'needs_explanation';
+    _sectionProgressAfterCompletion = null;
+    _lastMasteryGain = 0;
+    _lastSummary = '';
+  }
+
+  /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题
+  /// 回到第 1 题），同时清空所有临时态、重置 intro 气泡、引用新题面。
+  ///
+  /// 提交失败 / 错误重试时**不**走这里，仍保留输入（见 `_sendRequest` 错误分支）。
+  void _onContinue() {
+    _resetTransientState();
     setState(() {
-      _status = _LectureStatus.idle;
-      _errorMessage = null;
-      _lastFailedRequest = null;
+      if (_questions.isNotEmpty) {
+        _questionIndex = (_questionIndex + 1) % _questions.length;
+        _question = _questions[_questionIndex];
+      }
       _turns
         ..clear()
         ..add(_introTurn());
-      _history.clear();
-      _round = 0;
-      _lastResponseStatus = 'needs_explanation';
-      // 第六轮：清掉「上一题」的完成态卡片字段，但**不**清掉本地 progress
-      // 仓库（学生只是要继续做下一题，不是要抹掉学习记录）。
-      _sectionProgressAfterCompletion = null;
-      _lastMasteryGain = 0;
-      _lastSummary = '';
     });
   }
 
-  /// 「再讲一遍」：保留同一道题，但清空多轮历史 / 画布 / 输入区，让学生
-  /// 重新开口讲一遍。第五轮 `completed` 状态下提供这个入口，方便复盘。
+  /// 「再讲一遍」：保留**同一道题**，但清空多轮历史 / 画布 / 输入区,
+  /// 让学生重新开口讲一遍。第五轮 `completed` 状态下提供这个入口，方便复盘。
+  ///
+  /// 与 [_onContinue] 的关键差异：题目索引 [_questionIndex] **不**变化，
+  /// 题面、难度、标签都保持上一轮的内容。
   void _onReplay() {
-    _canvasController.clear();
-    _speechController.clear();
-    for (final c in _stepPlainControllers.values) {
-      c.clear();
-    }
-    for (final c in _stepLatexControllers.values) {
-      c.clear();
-    }
-    _stepLatexExpanded.clear();
+    _resetTransientState();
     setState(() {
-      _status = _LectureStatus.idle;
-      _errorMessage = null;
-      _lastFailedRequest = null;
       _turns
         ..clear()
         ..add(_introTurn())
@@ -547,12 +579,6 @@ class _LecturePageState extends State<LecturePage> {
           text: '好，再讲一遍。这次你可以试着用更精炼的语言总结，每一步都说清「为什么这样做」。',
           highlightStepIds: [],
         ));
-      _history.clear();
-      _round = 0;
-      _lastResponseStatus = 'needs_explanation';
-      _sectionProgressAfterCompletion = null;
-      _lastMasteryGain = 0;
-      _lastSummary = '';
     });
   }
 
@@ -571,10 +597,14 @@ class _LecturePageState extends State<LecturePage> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final isWide = media.size.width >= 720;
+    final total = _questions.isEmpty ? 1 : _questions.length;
+    final order = _questionIndex + 1;
     return Scaffold(
       backgroundColor: AppPalette.background,
       appBar: AppBar(
-        title: Text(widget.section.label),
+        // 第七轮：AppBar 标题同时点出小节与"第 N / M 题"，让学生即使
+        // 滚到对话区底部也能看清自己当前在哪道题；切下一题时随题面同步。
+        title: Text('${widget.section.label} · 第 $order / $total 题'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -649,7 +679,11 @@ class _LecturePageState extends State<LecturePage> {
             ],
           ),
           const SizedBox(height: 12),
-          _QuestionCard(question: _question),
+          _QuestionCard(
+            question: _question,
+            order: _questionIndex + 1,
+            total: _questions.isEmpty ? 1 : _questions.length,
+          ),
           const SizedBox(height: 14),
           Expanded(
             child: ListView.separated(
@@ -1289,12 +1323,28 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({required this.question});
+  const _QuestionCard({
+    required this.question,
+    required this.order,
+    required this.total,
+  });
 
   final LectureQuestion question;
 
+  /// 当前题在本节的序号（从 1 开始）。
+  final int order;
+
+  /// 本节总题数。
+  final int total;
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final difficultyLabel = MockLectureRepository.instance
+        .difficultyLabel(question.difficulty);
+    // 第七轮：标签数量已由 Mock 题库控制在 1-3 个；此处再做一次硬上限
+    // 防御未来题库走样，避免题面卡片被 chip 撑成 N 行挤压手写板主区。
+    final tags = question.tags.take(3).toList(growable: false);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1311,33 +1361,113 @@ class _QuestionCard extends StatelessWidget {
               const Icon(Icons.menu_book_outlined,
                   size: 16, color: AppPalette.primary),
               const SizedBox(width: 6),
-              Text(
-                '今日题目',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: AppPalette.primary,
-                    ),
+              Expanded(
+                child: Text(
+                  '${question.sectionLabel} · 第 $order / $total 题',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: AppPalette.primary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
+          // 难度 chip + 知识标签 chip。Wrap 让窄屏自动换行，不会挤压手写板。
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _DifficultyChip(label: difficultyLabel, level: question.difficulty),
+              for (final t in tags) _TagChip(label: t),
+            ],
+          ),
+          const SizedBox(height: 10),
           FormulaText(
             question.prompt,
-            style: Theme.of(context).textTheme.bodyLarge,
-            formulaStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: AppPalette.primary,
-                  fontWeight: FontWeight.w700,
-                ),
+            style: theme.textTheme.bodyLarge,
+            formulaStyle: theme.textTheme.bodyLarge?.copyWith(
+              color: AppPalette.primary,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 8),
           FormulaText(
             question.hint,
-            style: Theme.of(context).textTheme.bodySmall,
-            formulaStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppPalette.primaryAccent,
-                  fontWeight: FontWeight.w600,
-                ),
+            style: theme.textTheme.bodySmall,
+            formulaStyle: theme.textTheme.bodySmall?.copyWith(
+              color: AppPalette.primaryAccent,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 难度 chip：基础（湖青）/ 巩固（深蓝）/ 挑战（警示红）。
+///
+/// 配色范围严格限定在 `AppPalette` 已有的几个柔和色，**不**引入红橙渐变
+/// 等"游戏化徽章"风（见 `MOBILE_STYLE.md` 第 1 节远离清单）。
+class _DifficultyChip extends StatelessWidget {
+  const _DifficultyChip({required this.label, required this.level});
+
+  final String label;
+  final int level;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (level) {
+      3 => AppPalette.error,
+      2 => AppPalette.primary,
+      _ => AppPalette.primaryAccent,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: const BorderRadius.all(Radius.circular(AppRadius.chip)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+/// 知识标签 chip：纯文本、柔和湖青描边，仅前端展示用。
+///
+/// 与 `home_page.dart` 里的 `_Tag` 风格一致，但本控件刻意**不**复用 ——
+/// 那个是 home page 私有的，跨文件引用会变成隐性公共契约，得不偿失。
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    const color = AppPalette.primaryAccent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: const BorderRadius.all(Radius.circular(AppRadius.chip)),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

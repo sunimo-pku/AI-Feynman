@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/curriculum_repository.dart';
+import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
 import '../services/api_service.dart';
 import '../services/progress_repository.dart';
@@ -390,6 +391,7 @@ class _SectionPill extends StatelessWidget {
                 _SectionStatusBadge(
                   available: available,
                   progress: progress,
+                  sectionId: section.id,
                 ),
               ],
             ),
@@ -401,19 +403,23 @@ class _SectionPill extends StatelessWidget {
 }
 
 /// 小节 pill 右侧的状态徽标：
-///   * 未上线 → `即将上线`（保持灰色 + 锁形）
-///   * 可练习且无完成记录 → `可练习`
+///   * 未上线 → `即将上线`（保持灰色 + 锁形，**不**显示题量，避免对未上线
+///     章节误标 —— 见 ROUND7 brief 第 9 节）
+///   * 可练习且无完成记录 → `M 道题 · 可练习`（M 来自 [MockLectureRepository]，
+///     题库为空时回退到「可练习」单段文案）
 ///   * 可练习且至少完成一轮 → `已完成 N 轮 · X/100`
 ///
-/// 第六轮新增。
+/// 第六轮新增；第七轮加上「未完成时附带本节题量」。
 class _SectionStatusBadge extends StatelessWidget {
   const _SectionStatusBadge({
     required this.available,
     required this.progress,
+    required this.sectionId,
   });
 
   final bool available;
   final SectionProgress? progress;
+  final String sectionId;
 
   @override
   Widget build(BuildContext context) {
@@ -426,10 +432,15 @@ class _SectionStatusBadge extends StatelessWidget {
     }
     final p = progress;
     if (p == null || !p.hasAnyCompletion) {
+      // 第七轮：未完成态显示题量。题库为空（理论上不会发生，但防御未来
+      // 题库被误清空）时优雅退回「可练习」单段文案，不让用户看到 `0 道题`。
+      final count = MockLectureRepository.instance
+          .questionCountForSection(sectionId);
+      final text = count > 0 ? '$count 道题 · 可练习' : '可练习';
       return _badge(
         color: AppPalette.primaryAccent,
         bgAlpha: 0.15,
-        text: '可练习',
+        text: text,
       );
     }
     return _badge(

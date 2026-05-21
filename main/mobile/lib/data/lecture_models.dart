@@ -90,6 +90,8 @@ class LectureQuestion {
     required this.prompt,
     required this.hint,
     required this.referenceSteps,
+    this.difficulty = 1,
+    this.tags = const <String>[],
   });
 
   final String questionId;
@@ -104,6 +106,18 @@ class LectureQuestion {
 
   /// 老师内部记录的参考步骤（V1 仅用于 Mock 追问，前端不直接展示）。
   final List<String> referenceSteps;
+
+  /// 第七轮新增：题目难度（1=基础 / 2=巩固 / 3=挑战）。
+  ///
+  /// 仅作为开发字段，UI 中必须经 [MockLectureRepository.difficultyLabel]
+  /// 翻译成中文展示，禁止在页面里暴露 `1/2/3` 这种数值。
+  final int difficulty;
+
+  /// 第七轮新增：题目知识标签（如 `["取值范围", "非负条件"]`）。
+  ///
+  /// 仅前端展示用，**不**会作为后端 `/lecture/submit` 的请求字段。
+  /// 单题建议 1-3 个，避免题面卡片拥挤。
+  final List<String> tags;
 }
 
 /// 单条多轮上下文历史项。

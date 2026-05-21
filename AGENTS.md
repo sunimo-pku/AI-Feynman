@@ -152,6 +152,7 @@ git push origin main
 | 初中数学目录数据 | ✅ | 6 册 · 29 章 · 90 节；V1 上线 **第十六章 二次根式**（3 节 `available`） |
 | 学生端讲题闭环 | ⏳ | 手写 + 语音 + 多 Agent 讨论（二次根式章） |
 | 本地掌握度沉淀 | ✅ | 第六轮：`SectionProgress` 落 `shared_preferences`，首页/讲题页徽标实时刷新 |
+| 本地小题库与下一题轮换 | ✅ | 第七轮：16.1 / 16.2 / 16.3 各 3 道题（基础/巩固/挑战），讲题页显示题号 + 难度 chip + 知识标签 chip，「下一题」循环切题 |
 | 掌握度与出题 | ⏳ | 16.1 / 16.2 / 16.3 按知识点记录与调节难度 |
 | 家长端 | ⏳ | 弱项看板、海报、讲题回放 |
 | V1 上线章节 | ✅ | 八年级下册 · 第十六章 二次根式 |
@@ -335,6 +336,50 @@ git push origin main
   CI / 快速本地校验直接用
   `/opt/flutter/bin/cache/dart-sdk/bin/dart analyze lib/`，几秒钟出结果，
   不需要 flutter 壳子的锁，也不会被 `pub get` 的网络往返拖死。
+
+### 第七轮 · 本地小题库与下一题轮换闭环
+
+- **Dart 字符串里的 `$5`/`$x` 会触发内插 → 必须用 raw string**：第七轮加 16.1
+ / 16.3 的 `hint` 时直接写 `'提示：把不等式 $5 - x \ge 0$ ...'` 让 dart analyze
+ 直接 9 条 error（`Expected an identifier` / `Invalid constant value`）—— 因为
+ Dart 把 `$5` 解析成"用变量 `5` 做插值"。LaTeX `\sqrt{...}` 同理：`prompt`
+ 一律用 `r'...'` raw string；`hint` 只要包含 `$xxx` / `\xxx` 也必须 raw
+ string。已在题库里把 3 条违例统一改成 `r'...'`。
+- **`difficulty` 是开发字段，UI 不能直接渲染数字**：题库里存 `1/2/3` 为了
+ 排序 / 翻题 / 难度自适应做铺垫，但页面里**绝不**写 `Text('${q.difficulty}')`
+ 这种调试形态。统一经 `MockLectureRepository.instance.difficultyLabel(int)`
+ 翻译成「基础 / 巩固 / 挑战」中文标签。任何新加 chip 都走这条路径。
+- **「下一题」必须用 modulo 循环，禁止抛异常**：第七轮 brief 6.1 节明确
+ 要求「`index` 超出范围时用 modulo 循环」。Dart 的 `%` 对负数返回非负余数
+ （`-1 % 3 == 2`），所以 `index % list.length` 一行就够，不需要写
+ `if (index < 0)` 或 `if (index >= length)` 分支。已在 mock_lecture
+ _repository_test.dart 里用 `index=-1` / `index=-4` 锁死该行为。
+- **「下一题」与「再讲一遍」共享 95% 的临时态清理逻辑**：第六轮的
+ `_onContinue` 与 `_onReplay` 各自手抄了一份「画板 / 输入区 / history /
+ turns / round / errorMessage / progress 卡片字段全清空」，第七轮再加
+ 「题目索引 +1」很容易漏改一边导致两个入口不一致。已抽出
+ `_resetTransientState()` 集中处理；两个入口只在末尾分别决定 (a) 是否
+ 推进 `_questionIndex` (b) intro 之后是否再追加一条「再讲一遍」system 气泡。
+ 后续动两个按钮的清理动作时**都**应该走 `_resetTransientState()`。
+- **`_question` 必须随 `_questionIndex` 显式 setState**：在 [_onContinue]
+ 里把 `_questionIndex = (_questionIndex + 1) % len` 写在了 setState 里之前
+ 第一次实现时漏掉了 `_question = _questions[_questionIndex]` 这一行，结果
+ 切下一题时题面、难度、标签全没变 —— 因为 `_question` 是个独立 late
+ 字段，索引动了它不会自动跟随。每次动索引都要把题快照同步过去。
+- **`_QuestionCard` 的难度与标签 chip 用 `Wrap` 而不是 `Row`**：手机竖屏时
+ 三个 chip 排在一行经常溢出 RenderFlex；`Wrap(spacing: 6, runSpacing: 6)`
+ 让它在窄屏自动换行而不是裁断。同时 `tags.take(3)` 做硬上限防御未来
+ 题库走样把 5 个标签塞进来撑爆题面卡片高度。
+- **未上线章节首页 pill 不能显示题量**：第七轮 brief 第 9 节明确「未上线
+ 章节仍只显示『即将上线』，不要显示题量」。`_SectionStatusBadge` 的判定
+ 顺序必须是「先看 available，再看 progress / 题量」；写成「先看
+ progress 再看 available」会让未上线但 progress 仓库里恰好被脏数据写过
+ 的章节误显示「已完成 N 轮」，所以保持 `if (!available)` 早返回。
+- **题库为空兜底**：`questionCountForSection` 对未知章节返回 0，UI 据此
+ 隐藏题量徽标；`questionForSection(section, index: 0)` 对未知章节回退
+ 16.1 第 1 题。两条兜底路径合在一起防御「题库写错 / sectionId 拼错」时
+ 仍能进入讲题页 —— 这是 Demo 优先 > 严格校验，与第五轮 history 校验
+ 放宽口径一致。
 
 ### 第六轮 · 本地掌握度与总结闭环
 
