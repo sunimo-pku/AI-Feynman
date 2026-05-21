@@ -41,6 +41,10 @@ EVT_INK_SNAPSHOT = "ink_snapshot"
 EVT_PAUSE_DETECTED = "pause_detected"
 EVT_STUDENT_INTERRUPT = "student_interrupt"
 EVT_SESSION_END = "session_end"
+# 应用层 client→server 心跳：客户端 20s 一次发一个，目的是让运营商
+# NAT 看到上行流量，避免 60-90s 静默期被中间设备单边关连接。后端
+# 收到后只刷新 last_activity_at、不打 warning，也不要求 session 已 start。
+EVT_PING = "ping"
 
 CLIENT_EVENTS: tuple[str, ...] = (
     EVT_SESSION_START,
@@ -49,6 +53,7 @@ CLIENT_EVENTS: tuple[str, ...] = (
     EVT_PAUSE_DETECTED,
     EVT_STUDENT_INTERRUPT,
     EVT_SESSION_END,
+    EVT_PING,
 )
 
 # 服务端 → 客户端
@@ -147,6 +152,12 @@ class LiveLectureSession:
             return True
 
         self.last_activity_at = time.time()
+
+        # 应用层心跳：在 session_start 之前也允许（客户端可能在连接握手
+        # 完成后还没来得及发 session_start 就先 ping），不回任何事件，
+        # 只更新 last_activity_at 即可。
+        if evt_type == EVT_PING:
+            return True
 
         if evt_type == EVT_SESSION_START:
             await self._on_session_start(event, send=send)

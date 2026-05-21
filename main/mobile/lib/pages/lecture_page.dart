@@ -200,6 +200,14 @@ class _LecturePageState extends State<LecturePage> {
   bool _interruptOnCooldown = false;
   bool _stuckHintShownForPause = false;
 
+  /// 本轮 (上次 round_done 之后) 累计的 ASR 文本字符数。用来作为
+  /// 「自动追问触发」的最后一道门槛 —— 学生开口讲了 ≥ 5 个字之后再
+  /// 触发，避免学生只是清嗓子 / 思考几秒就把 LLM 调一次空炮。
+  /// 在 [_onLiveEvent] 收到 asrSegment 时累加，roundDone / start /
+  /// _resetTransientState 时清零。
+  int _currentRoundAsrChars = 0;
+  static const int _minAsrCharsForAutoAsk = 5;
+
   late final StreamSubscription _liveEventsSub;
   late final StreamSubscription _liveErrorsSub;
   late final StreamSubscription _liveConnSub;
@@ -851,6 +859,7 @@ class _LecturePageState extends State<LecturePage> {
     // 第八轮：进入新一轮后允许再次保存 review 记录（再讲一遍同题 / 下一题
     // 都属于「新一轮」语义；不重置会导致连续两题只留下第一题的回顾）。
     _reviewSavedForCurrentRound = false;
+    _currentRoundAsrChars = 0;
   }
 
   /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题
@@ -999,16 +1008,26 @@ class _LecturePageState extends State<LecturePage> {
     _replayService.appendAudioChunk(base64Encode(data));
   }
 
+  /// 收到 audio_service 的"自然停顿"信号 (默认 silenceMs ≥ 1500)。
+  ///
+  /// 第十二轮自动追问触发条件（修订）：
+  ///   1. 必须当前是 listening / paused（非 thinking / aiSpeaking）；
+  ///   2. **本轮已经累计 ≥ 5 个 ASR 字符**（[_currentRoundAsrChars]），
+  ///      避免学生只是清嗓子 / 翻书就被 LLM 调一次空炮；
+  ///   3. 笔迹 2s 内没有新落笔（之前 3s 太严，学生写完最后一笔抬手就被卡）；
+  ///   4. 总静音达到约 2.5s 后真正触发 sendPauseDetected。
+  ///
+  /// 对比第九轮原始 `4000 - silenceMs` 等待时间过长，且笔迹门槛过严，
+  /// 实测会让"边写边讲"的学生整节课都触发不到一次自动追问。
   void _onAudioPause(int silenceMs) {
     if (!_liveService.isConnected) return;
     if (_liveStatus == _LiveStatus.thinking ||
         _liveStatus == _LiveStatus.aiSpeaking) {
-      // brief 第 12 节"同一轮追问生成中忽略重复触发"
       return;
     }
     final lastStroke = _canvasController.lastStrokeAt;
     if (lastStroke != null &&
-        DateTime.now().difference(lastStroke) < const Duration(seconds: 3)) {
+        DateTime.now().difference(lastStroke) < const Duration(seconds: 2)) {
       return;
     }
     _stuckHintTimer?.cancel();
@@ -1018,17 +1037,22 @@ class _LecturePageState extends State<LecturePage> {
       _showStuckHintIfStillPaused,
     );
     _wrapUpTimer = Timer(
-      Duration(milliseconds: (4000 - silenceMs).clamp(0, 4000).toInt()),
+      Duration(milliseconds: (2500 - silenceMs).clamp(0, 2500).toInt()),
       () {
         if (!_liveService.isConnected || _liveStatus == _LiveStatus.thinking) {
           return;
         }
-        final last = _canvasController.lastStrokeAt;
-        if (last != null &&
-            DateTime.now().difference(last) < const Duration(seconds: 3)) {
+        if (_currentRoundAsrChars < _minAsrCharsForAutoAsk) {
+          // 本轮学生几乎没开口，不要烧 LLM。等学生再讲一段或主动按
+          // 「我讲到这里」。
           return;
         }
-        _liveService.sendPauseDetected(silenceMs: 4000);
+        final last = _canvasController.lastStrokeAt;
+        if (last != null &&
+            DateTime.now().difference(last) < const Duration(seconds: 2)) {
+          return;
+        }
+        _liveService.sendPauseDetected(silenceMs: 2500);
         setState(() {
           _liveStatus = _LiveStatus.thinking;
         });
@@ -1072,7 +1096,7 @@ class _LecturePageState extends State<LecturePage> {
       _turns.add(const AgentTurn(
         role: AgentRole.teacher,
         displayName: '李老师',
-        text: '卡住了也没关系。先想想：被开方数要满足什么条件？这一步为什么能这样化简？',
+        text: '卡住了也没关系。先把这一步用到的已知条件、定义或公式说出来，再检查推理是否等价。',
         highlightStepIds: [],
       ));
     });
@@ -1157,6 +1181,15 @@ class _LecturePageState extends State<LecturePage> {
         // 末尾，方便学生 / 演示者校对。
         final segment = (event.payload as LiveAsrSegmentPayload).text;
         if (segment.isEmpty) break;
+        // 累计本轮 ASR 字符数：自动追问触发的硬门槛，避免误触发。
+        // 用 setState 让「我讲到这里」按钮的 canManualPause 立刻刷新。
+        if (mounted) {
+          setState(() {
+            _currentRoundAsrChars += segment.length;
+          });
+        } else {
+          _currentRoundAsrChars += segment.length;
+        }
         if (_kShowLegacyTextInputByDefault) {
           final base = _speechController.text;
           _speechController.text =
@@ -1249,6 +1282,9 @@ class _LecturePageState extends State<LecturePage> {
         setState(() {
           _round += 1;
           _lastResponseStatus = p.status;
+          // 进入下一轮：清空本轮 ASR 字符计数，让「我讲到这里」按钮和
+          // 自动追问门槛重新等学生开口讲 ≥ 5 字之后才解锁。
+          _currentRoundAsrChars = 0;
           if (p.status == 'completed') {
             _status = _LectureStatus.finished;
             _turns.add(const AgentTurn(
@@ -1641,8 +1677,14 @@ class _LecturePageState extends State<LecturePage> {
           onEndQuestion: _onEndLiveSession,
           onManualPause: _onManualPause,
           onFallbackSubmit: _onFallbackTextSubmit,
-          canManualPause: _liveStatus == _LiveStatus.listening ||
-              _liveStatus == _LiveStatus.paused,
+          // 「我讲到这里」按钮：listening / paused 状态 + 本轮已经讲过
+          // 任意 ASR 文本时都允许学生主动触发 —— 体验上更接近「学生想
+          // 讲完一段就立刻问 AI」的预期，不再要求 ≥5 字才解锁。
+          canManualPause: (_liveStatus == _LiveStatus.listening ||
+                  _liveStatus == _LiveStatus.paused) &&
+              _currentRoundAsrChars > 0,
+          shouldHighlightManualPause:
+              _currentRoundAsrChars >= _minAsrCharsForAutoAsk,
           failureReason: _liveFailureReason,
         ),
         if (_debugOcr) ...[
@@ -1792,8 +1834,8 @@ class _LecturePageState extends State<LecturePage> {
     final speechSubtitle =
         hasFollowup ? 'AI 同伴会先评估你的回答' : 'AI 同伴会照着这段话追问';
     final speechHint = hasFollowup
-        ? '例如：因为 12=4×3，4 是完全平方数，所以可以把 2 提出来……'
-        : '例如：我先把 12 拆成 4×3，所以根号 12 可以化成 2 根号 3……';
+        ? '例如：我补充一下，这一步用到的条件是……所以可以这样推。'
+        : '例如：我先读题目条件，再说明第一步为什么能推出下一步。';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -1917,7 +1959,7 @@ class _LecturePageState extends State<LecturePage> {
                   minLines: 1,
                   maxLines: 2,
                   dense: true,
-                  hintText: '例如：根号 12 化成 2 根号 3',
+                  hintText: '例如：这一步用了题目里的已知条件',
                 ),
               ),
               const SizedBox(width: 6),
@@ -1959,7 +2001,7 @@ class _LecturePageState extends State<LecturePage> {
               maxLines: 2,
               dense: true,
               monospace: true,
-              hintText: r'可选 LaTeX：\sqrt{12}=2\sqrt{3}',
+              hintText: r'可选 LaTeX：x+1=3',
             ),
           ],
         ],

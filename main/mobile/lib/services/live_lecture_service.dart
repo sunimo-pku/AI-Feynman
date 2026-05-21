@@ -54,6 +54,24 @@ class LiveLectureService {
   int _audioSeq = 0;
   String _sessionId = '';
 
+  /// 应用层心跳 timer：每 20s 发一个 `{"type":"ping"}` 给后端，让运营商
+  /// NAT 看到上行流量。无任何重要副作用 —— 后端识别 ping 直接忽略。
+  Timer? _appPingTimer;
+  static const _appPingInterval = Duration(seconds: 20);
+
+  /// 自动重连相关：连接断开（onDone / onError / 发送失败）后，按
+  /// 1s, 2s, 4s, 8s 退避自动重试一次 `connectAndStart`，最多 4 次。
+  /// 任意 `connectAndStart` 主动调用 / `endSession` / `dispose` 都会取消
+  /// 重连定时器；用户主动「重新连接」按钮也走 `connectAndStart`，与重连
+  /// 路径合流。
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  static const _maxReconnectAttempts = 4;
+  // 最近一次 connectAndStart 的入参，用来在自动重连时复用。
+  String _lastSectionId = '';
+  String _lastQuestionId = '';
+  String _lastQuestionPrompt = '';
+
   /// 第十轮：TTS 淡出相关。
   ///
   /// `_ttsFadeTimer` 在 [stopTts] 时启动 200ms 渐降：每 25ms tick 调
@@ -89,11 +107,22 @@ class LiveLectureService {
     required String questionId,
     required String questionPrompt,
     List<String> referenceSteps = const <String>[],
+    bool isAutoRetry = false,
   }) async {
     if (_disposed) return false;
+    if (!isAutoRetry) {
+      // 用户主动调用：把"未来的退避重连"和"已用次数"都清空。
+      // 自动重连路径走 isAutoRetry=true，仅用本次 connect 的成败更新计数。
+      _cancelReconnect();
+    } else {
+      _reconnectTimer?.cancel();
+    }
     _currentSectionId = sectionId;
     _currentQuestionId = questionId;
     _currentReferenceSteps = List.unmodifiable(referenceSteps);
+    _lastSectionId = sectionId;
+    _lastQuestionId = questionId;
+    _lastQuestionPrompt = questionPrompt;
     if (_isConnected) {
       // 已连接：发送 session_start 切换到新会话。
       _sessionId = sessionId;
@@ -120,16 +149,19 @@ class LiveLectureService {
         onError: (Object err, StackTrace st) {
           _emitError('WebSocket 异常：$err');
           _markDisconnected();
+          _scheduleReconnectIfPossible();
         },
         onDone: () {
-          _emitError('WebSocket 已关闭，请重新开始讲题。');
+          _emitError('WebSocket 已关闭，正在尝试重新连接。');
           _markDisconnected();
+          _scheduleReconnectIfPossible();
         },
         cancelOnError: false,
       );
       _isConnected = true;
       _sessionId = sessionId;
       _audioSeq = 0;
+      _reconnectAttempts = 0;
       _connectionController.add(LiveConnectionState.connected);
       _sendJson(LiveClientEvent.sessionStart(
         sessionId: sessionId,
@@ -137,12 +169,74 @@ class LiveLectureService {
         questionId: questionId,
         questionPrompt: questionPrompt,
       ));
+      _startAppPing();
       return true;
     } catch (e) {
       _emitError('连接后端失败：$e');
       _markDisconnected();
+      _scheduleReconnectIfPossible();
       return false;
     }
+  }
+
+  void _startAppPing() {
+    _appPingTimer?.cancel();
+    _appPingTimer = Timer.periodic(_appPingInterval, (_) {
+      if (!_isConnected || _sessionId.isEmpty) return;
+      // 故意不走 _sendJson 的 _markDisconnected 链路：ping 失败时让
+      // onError / onDone 自然触发，避免双路径断连。
+      try {
+        _channel?.sink.add(jsonEncode(
+          LiveClientEvent.ping(sessionId: _sessionId),
+        ));
+      } catch (_) {
+        // swallow：失败也不需要立刻断，下一次 audio_chunk 会自然检测。
+      }
+    });
+  }
+
+  void _stopAppPing() {
+    _appPingTimer?.cancel();
+    _appPingTimer = null;
+  }
+
+  void _cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempts = 0;
+  }
+
+  /// 在 onDone / onError / 初次握手失败之后调用：按 1s / 2s / 4s / 8s 退避
+  /// 重新尝试一次 `connectAndStart`。最多 4 次后停手，让用户手动重试。
+  ///
+  /// 设计取舍（与 AGENTS.md 第九轮"WS 重连不要在 service 层做指数退避"
+  /// 的踩坑记录的兼容）：原文记录是因为"无脑重连刷日志、不能恢复服务挂掉"
+  /// 这条；现在我们：
+  ///   * 仅 4 次封顶（大约 15 秒后停手），不会无限刷；
+  ///   * `onError` / `onDone` 仍会立刻 emit `disconnected`，UI 仍能立刻
+  ///     看到"红色面板"，重连成功后 emit `connected` 自然把面板切回；
+  ///   * 用户主动点「重新连接」时 `_cancelReconnect()` 会清空进度，
+  ///     不会和定时器抢同一次连接。
+  void _scheduleReconnectIfPossible() {
+    if (_disposed) return;
+    if (_lastSectionId.isEmpty || _lastQuestionId.isEmpty) return;
+    if (_reconnectAttempts >= _maxReconnectAttempts) return;
+    _reconnectAttempts += 1;
+    final delaySec = 1 << (_reconnectAttempts - 1); // 1, 2, 4, 8
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(Duration(seconds: delaySec), () async {
+      if (_disposed || _isConnected) return;
+      final sessionId = 'sess-${DateTime.now().millisecondsSinceEpoch}-'
+          '$_lastSectionId-$_lastQuestionId';
+      await connectAndStart(
+        sessionId: sessionId,
+        sectionId: _lastSectionId,
+        questionId: _lastQuestionId,
+        questionPrompt: _lastQuestionPrompt,
+        referenceSteps: _currentReferenceSteps,
+        isAutoRetry: true,
+      );
+    });
   }
 
   /// 把一段 PCM16 字节流编码后通过 audio_chunk 事件发送。
@@ -237,6 +331,9 @@ class LiveLectureService {
   }
 
   Future<void> endSession() async {
+    // 用户主动结束本题：取消所有未来的自动重连，避免「学生关掉后端口又
+    // 被 service 自己拉起来」的鬼畜体验。
+    _cancelReconnect();
     if (_isConnected && _sessionId.isNotEmpty) {
       _sendJson(LiveClientEvent.sessionEnd(sessionId: _sessionId));
     }
@@ -361,6 +458,8 @@ class LiveLectureService {
     _disposed = true;
     _ttsFadeTimer?.cancel();
     _ttsFadeTimer = null;
+    _stopAppPing();
+    _cancelReconnect();
     try {
       await _channelSub?.cancel();
     } catch (_) {}
@@ -412,6 +511,7 @@ class LiveLectureService {
     } catch (e) {
       _emitError('发送事件失败：$e');
       _markDisconnected();
+      _scheduleReconnectIfPossible();
     }
   }
 
@@ -433,6 +533,7 @@ class LiveLectureService {
     if (!_isConnected) return;
     _isConnected = false;
     _audioSeq = 0;
+    _stopAppPing();
     if (!_connectionController.isClosed) {
       _connectionController.add(LiveConnectionState.disconnected);
     }

@@ -206,6 +206,19 @@ git push origin main
   `web_socket_channel` 可能在长时间没有服务端下行帧时触发 `onDone`，前端只会看到
   「连接断开，白板还在」。服务端每 8s 发送一次 `warning: heartbeat`，前端静默忽略；
   不要删除这个心跳，也不要把它当成用户可见错误。
+- **客户端 → 服务端心跳必须存在**（第十二轮补强）：仅服务端单向 8s heartbeat
+  在某些运营商 NAT 路径上不算"客户端在用这条连接"，60-90s 后中间设备会单边
+  关连接。`LiveLectureService` 维持一个 20s 一次的 `EVT_PING` 上行包，后端
+  `live_lecture_session.handle_event` 识别 `ping` 直接返回 True、**不**回任何
+  下行事件。两端都可在 session_start 之前就允许 ping，避免握手到 session_start
+  之间的窗口期被 NAT 超时。
+- **WS 断开后允许有限次自动重连**（修订第九轮"不要重连"的口径）：原口径担心
+  服务挂掉时无脑重连只刷日志，所以 V1 让用户手动点。但 V1 实测里学生根本看不出
+  "服务挂了" vs "网络抽风"的区别，红色面板让人直接放弃。第十二轮折中：service
+  层在 onError / onDone / 发送失败之后，按 1s/2s/4s/8s 退避**最多 4 次**自动
+  重连一次 `connectAndStart`；用户主动调用 `connectAndStart` / `endSession` /
+  `dispose` 都会清空 `_reconnectAttempts`。封顶 4 次保证服务真的挂掉时学生在
+  ~15s 内看到红色面板停下并展示「重新连接 / 用文字提交」按钮。
 - **讲题主路径统一使用 DeepSeek-V4-Flash 非思考模式**：`/lecture/submit`、
   `/lecture/live` 与通用 chat 默认模型都走 `Config.DEEPSEEK_MODEL`
   （默认 `deepseek-v4-flash`）。每次 OpenAI SDK 调用都必须带
@@ -638,7 +651,11 @@ git push origin main
   为了 flush 而新建火山流式 ASR 连接并发送空音频 final 包，火山可能返回
   空 payload，`json.loads("")` 会穿透成 `session_handler_error`，实时讲题
   直接卡死。正解：`force=True && base64_data=="" && _ws is None` 时直接
-  返回 `None`；解析服务端空 JSON payload 时也按空结果处理，绝不让 ASR
+  返回 `None`；**且 `_ws is not None` 也不要**发空 last 帧（第十二轮新增）——
+  火山会回一个 gzip 后非 JSON 的保活帧让 `json.loads` 炸；这条路径直接
+  `close()` + 返回空 `StreamAsrResult` 即可。`_parse_server_frame` 必须把
+  `gzip.decompress` 和 `json.loads` 全部包进 try/except，遇到非 JSON / 半截
+  / 空 payload 一律打 warning 后返回空 `_ParsedServerFrame`，绝不让 ASR
   协议异常冒泡到 `/lecture/live`。
 - **OpenAI Python SDK `run_in_executor` 必须用 lambda 包**：在
   `live_lecture_session._invoke_lecture_agent` 里把同步阻塞的
@@ -735,6 +752,25 @@ git push origin main
 - **全册题库以 JSON 为准**：`data/questions/pep-junior-math-questions.json` 由 `scripts/generate_section_questions.py` 生成并同步到 Flutter asset；当前口径是 90 个小节 × 基础/巩固/挑战 3 题，非 16 章用 `quality=generated_seed` 标记，后续逐章教研校对。
 - **题图 SVG 要走 asset 引用**：JSON 只写 `image.asset / image.alt`，SVG 文件放 `assets/questions/diagrams/` 并在 `pubspec.yaml` 声明目录；Flutter 端用 direct dependency `flutter_svg` 渲染，不能指望 `Image.asset` 直接显示 SVG。
 - **Python 生成 LaTeX 的 f-string 要转义花括号**：例如 `rf"$\\sqrt{{x-4}}$"`，否则 `{x-4}` 会被当成 Python 表达式导致生成脚本运行时报 `NameError`。
+- **自动追问触发条件不能太严**：第九轮原始口径"静音 1.5s + 再 2.5s 静默 +
+  3s 内不能落笔"在"边讲边写"的真实场景下几乎从不触发，学生看不到一次自动
+  追问就以为系统挂了。第十二轮口径：
+  - audio_service 仍按 1.5s 静音广播 `pauses`；
+  - 但 lecture_page `_wrapUpTimer` 改成 1000ms（合计 ~2.5s 总静音就追问）；
+  - 笔迹门槛从 3s 缩到 2s；
+  - 加硬门槛：本轮 ASR 累计 ≥ 5 字（`_currentRoundAsrChars`）才允许触发，
+    避免清嗓子 / 翻书就调一次空 LLM。
+  - 这条计数在 `roundDone` / `_resetTransientState` 时清零。
+- **「我讲到这里」按钮必须显眼**：自动追问门槛收紧之后，学生主动按这个按钮
+  仍然是最可靠的触发路径。第十二轮把按钮可点条件放宽（本轮 ASR > 0 即可点），
+  并在 ≥ 5 字之后给一圈金色呼吸描边 (`_BreathingHighlight`)，让学生在感觉
+  "讲完一段了" 的瞬间能看到清晰的视觉指引。听 panel 副文本也改成
+  "讲完一段就点「我讲到这里」让 AI 追问，或者自然静音 ~2 秒后 AI 也会主动
+  追问"。
+- **同时只允许一个 8001 uvicorn**：deploy.sh 只杀绑 8001 端口的 uvicorn，
+  历史上有人手动 `nohup uvicorn ... --port 8000` 起过老进程不会被它清理。
+  排查"反复 disconnect"时务必 `ps -ef | grep uvicorn` 确认只有 8001 在跑，
+  否则前端连的是新代码，但其它接口可能随机命中老代码。
 
 ---
 

@@ -25,6 +25,7 @@ class RealtimeAudioPanel extends StatelessWidget {
     this.onFallbackSubmit,
     this.failureReason,
     this.canManualPause = false,
+    this.shouldHighlightManualPause = false,
   });
 
   final RealtimeAudioPanelState state;
@@ -36,6 +37,11 @@ class RealtimeAudioPanel extends StatelessWidget {
   /// "我讲到这里，请 AI 追问"按钮可用条件：state 是 listening 且有最少
   /// 几秒音频缓冲 —— 由调用方计算后传入。
   final bool canManualPause;
+
+  /// 是否给「我讲到这里」按钮加呼吸高亮 —— 学生本轮已经讲过 ≥ 5 字
+  /// ASR 时打开，提示学生「现在按这里 AI 就会追问」。视觉上是描边 +
+  /// 低频呼吸，不替换 listening 状态的整体语气。
+  final bool shouldHighlightManualPause;
 
   /// 录音失败 / 权限拒绝时的"换一种方式"兜底入口：调用方可以打开传统
   /// 「提交讲解」表单（基于打字 + 手写）。
@@ -108,14 +114,17 @@ class RealtimeAudioPanel extends StatelessWidget {
         );
       case RealtimeAudioPanelState.listening:
       case RealtimeAudioPanelState.paused:
+        final manualPauseButton = OutlinedButton.icon(
+          onPressed: canManualPause ? onManualPause : null,
+          icon: const Icon(Icons.front_hand_outlined),
+          label: const Text('我讲到这里'),
+        );
         return Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: canManualPause ? onManualPause : null,
-                icon: const Icon(Icons.front_hand_outlined),
-                label: const Text('我讲到这里'),
-              ),
+              child: shouldHighlightManualPause && canManualPause
+                  ? _BreathingHighlight(child: manualPauseButton)
+                  : manualPauseButton,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -238,7 +247,8 @@ class RealtimeAudioPanel extends StatelessWidget {
       case RealtimeAudioPanelState.idle:
         return '点击「开始讲题」，一边写白板一边口头讲解你的思路。';
       case RealtimeAudioPanelState.listening:
-        return '你可以一边写一边讲，自然停顿后 AI 同伴会追问。';
+        return '一边写一边讲。讲完一段就点「我讲到这里」让 AI 追问，'
+            '或者自然静音 ~2 秒后 AI 也会主动追问。';
       case RealtimeAudioPanelState.paused:
         return '保持安静一会儿，AI 同伴马上来追问；想说就直接说话。';
       case RealtimeAudioPanelState.thinking:
@@ -349,6 +359,58 @@ class _PulseDot extends StatefulWidget {
 
   @override
   State<_PulseDot> createState() => _PulseDotState();
+}
+
+/// 给「我讲到这里」按钮加一圈低频呼吸描边，仅在学生已经讲过 ≥ 5 字
+/// ASR 时显示。视觉上是 1.4s 一周期的金色描边，不替换按钮本体配色。
+class _BreathingHighlight extends StatefulWidget {
+  const _BreathingHighlight({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_BreathingHighlight> createState() => _BreathingHighlightState();
+}
+
+class _BreathingHighlightState extends State<_BreathingHighlight>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppPalette.primaryAccent.withValues(alpha: 0.35 + 0.45 * t),
+              width: 1.5 + 1.0 * t,
+            ),
+          ),
+          child: child,
+        );
+      },
+      child: widget.child,
+    );
+  }
 }
 
 class _PulseDotState extends State<_PulseDot>

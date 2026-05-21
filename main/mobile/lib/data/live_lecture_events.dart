@@ -20,7 +20,10 @@ enum LiveClientEventType {
   inkSnapshot('ink_snapshot'),
   pauseDetected('pause_detected'),
   studentInterrupt('student_interrupt'),
-  sessionEnd('session_end');
+  sessionEnd('session_end'),
+  // 应用层心跳：客户端 20s 一次发空 ping，让运营商 NAT 看到上行流量；
+  // 后端 EVT_PING 静默忽略，不会回任何下行事件。
+  ping('ping');
 
   const LiveClientEventType(this.wire);
   final String wire;
@@ -282,6 +285,13 @@ class LiveClientEvent {
   static Map<String, dynamic> sessionEnd({required String sessionId}) {
     return {
       'type': LiveClientEventType.sessionEnd.wire,
+      'sessionId': sessionId,
+    };
+  }
+
+  static Map<String, dynamic> ping({required String sessionId}) {
+    return {
+      'type': LiveClientEventType.ping.wire,
       'sessionId': sessionId,
     };
   }
