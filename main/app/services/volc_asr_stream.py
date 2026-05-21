@@ -97,8 +97,16 @@ class VolcStreamingAsrClient:
     ) -> StreamAsrResult | None:
         if not self.enabled:
             return None
+        # AGENTS.md 第十轮铁律：force=True && 没有任何音频 && 没活跃连接时，
+        # 不要新开火山流去发空 last 帧 —— 火山会回非 JSON 让我们炸掉。
         if force and not base64_data and self._ws is None:
             return None
+        # 进一步：force=True && 空音频 && 已有连接，也不要发空 last 帧。
+        # 我们已经有的 ws 上一次 chunk 已经送过音频了，直接关掉连接、返回
+        # 空文本即可，不需要再让火山 echo 一个保活帧。
+        if force and not base64_data and self._ws is not None:
+            self.close()
+            return StreamAsrResult(text="", is_final=True, mode="stream")
         try:
             audio_bytes = base64.b64decode(base64_data)
         except Exception as e:  # noqa: BLE001
@@ -317,11 +325,21 @@ def _audio_request_frame(audio_bytes: bytes, *, is_last: bool) -> bytes:
 
 
 def _parse_server_frame(raw: bytes | bytearray | str) -> _ParsedServerFrame:
+    """解析火山流式 ASR 服务端二进制帧。
+
+    设计铁律（见 ``AGENTS.md`` 第十轮踩坑记录）：
+    **绝不让 ASR 协议层异常冒泡到 ``/lecture/live``**。火山在保活/确认/
+    特殊心跳帧上偶发返回非 JSON、空 JSON、半截 gzip、超出 payload_size
+    的字节，这里全部按"空结果"兜底，仅在 ``_MSG_ERROR`` 这种"火山明确
+    告诉我们出错"的情况上抛 RuntimeError，让上层切到 error 状态。
+    """
+
     if isinstance(raw, str):
         raw = raw.encode("utf-8")
     data = bytes(raw)
     if len(data) < 8:
-        raise RuntimeError("volc_stream_frame_too_short")
+        logger.warning("[asr-stream] frame too short len=%d; treat as empty", len(data))
+        return _ParsedServerFrame(text="", is_final=False)
     header_size = (data[0] & 0x0F) * 4
     message_type = data[1] >> 4
     flags = data[1] & 0x0F
@@ -340,17 +358,43 @@ def _parse_server_frame(raw: bytes | bytearray | str) -> _ParsedServerFrame:
     if flags in (0x1, 0x3):
         offset += 4
     if len(data) < offset + 4:
-        raise RuntimeError("volc_stream_payload_size_missing")
+        logger.warning(
+            "[asr-stream] payload_size header missing; treat as empty (len=%d offset=%d)",
+            len(data),
+            offset,
+        )
+        return _ParsedServerFrame(text="", is_final=flags in (0x2, 0x3))
     payload_size = int.from_bytes(data[offset:offset + 4], "big", signed=False)
     offset += 4
     payload = data[offset:offset + payload_size]
     if compression == _COMPRESSION_GZIP:
-        payload = gzip.decompress(payload)
+        try:
+            payload = gzip.decompress(payload)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "[asr-stream] gzip decompress failed err=%s; treat as empty",
+                e,
+            )
+            return _ParsedServerFrame(text="", is_final=flags in (0x2, 0x3))
     if serialization != _SERIALIZATION_JSON:
-        return _ParsedServerFrame(text=payload.decode("utf-8", errors="ignore"), is_final=flags in (0x2, 0x3))
+        return _ParsedServerFrame(
+            text=payload.decode("utf-8", errors="ignore"),
+            is_final=flags in (0x2, 0x3),
+        )
     if not payload.strip():
         return _ParsedServerFrame(text="", is_final=flags in (0x2, 0x3))
-    body = json.loads(payload.decode("utf-8"))
+    try:
+        body = json.loads(payload.decode("utf-8", errors="replace"))
+    except Exception as e:  # noqa: BLE001
+        # 火山偶发返回的 keepalive/ack/half-frame 等非 JSON 字符串：
+        # 静默兜底成空文本，绝不让 JSONDecodeError 冒泡杀掉整条 session。
+        logger.warning(
+            "[asr-stream] non-json payload (len=%d head=%r) err=%s; treat as empty",
+            len(payload),
+            payload[:32],
+            e,
+        )
+        return _ParsedServerFrame(text="", is_final=flags in (0x2, 0x3))
     text, definite = _extract_text(body)
     return _ParsedServerFrame(text=text, is_final=definite or flags in (0x2, 0x3))
 
