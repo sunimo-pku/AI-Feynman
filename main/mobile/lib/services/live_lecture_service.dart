@@ -122,6 +122,7 @@ class LiveLectureService {
           _markDisconnected();
         },
         onDone: () {
+          _emitError('WebSocket 已关闭，请重新开始讲题。');
           _markDisconnected();
         },
         cancelOnError: false,

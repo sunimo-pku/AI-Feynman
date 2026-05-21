@@ -202,6 +202,10 @@ git push origin main
 
 ### DeepSeek-V4-Flash LLM（当前讲题主路径）
 
+- **`/lecture/live` 必须发应用层 heartbeat**：移动网络 / Flutter
+  `web_socket_channel` 可能在长时间没有服务端下行帧时触发 `onDone`，前端只会看到
+  「连接断开，白板还在」。服务端每 8s 发送一次 `warning: heartbeat`，前端静默忽略；
+  不要删除这个心跳，也不要把它当成用户可见错误。
 - **讲题主路径统一使用 DeepSeek-V4-Flash 非思考模式**：`/lecture/submit`、
   `/lecture/live` 与通用 chat 默认模型都走 `Config.DEEPSEEK_MODEL`
   （默认 `deepseek-v4-flash`）。每次 OpenAI SDK 调用都必须带

@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -40,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(tags=["LectureLive"])
+_HEARTBEAT_SECONDS = 8.0
 
 
 def _extract_user_from_ws(websocket: WebSocket) -> User | None:
@@ -81,6 +83,20 @@ async def lecture_live(websocket: WebSocket) -> None:
 
     async def send(payload: dict[str, Any]) -> None:
         await websocket.send_json(payload)
+
+    async def heartbeat() -> None:
+        while True:
+            await asyncio.sleep(_HEARTBEAT_SECONDS)
+            try:
+                await send({
+                    "type": "warning",
+                    "sessionId": session.session_id,
+                    "message": "heartbeat",
+                })
+            except Exception:  # noqa: BLE001
+                return
+
+    heartbeat_task = asyncio.create_task(heartbeat())
 
     try:
         while True:
@@ -156,6 +172,12 @@ async def lecture_live(websocket: WebSocket) -> None:
         try:
             await websocket.close()
         except Exception:  # noqa: BLE001
+            pass
+    finally:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
             pass
 
 
