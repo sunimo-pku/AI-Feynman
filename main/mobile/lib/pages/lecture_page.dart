@@ -198,7 +198,6 @@ class _LecturePageState extends State<LecturePage> {
   Timer? _wrapUpTimer;
   Timer? _voiceDebounceTimer;
   bool _interruptOnCooldown = false;
-  bool _stuckHintShownForPause = false;
 
   /// 本轮 (上次 round_done 之后) 累计的 ASR 文本字符数。用来作为
   /// 「自动追问触发」的最后一道门槛 —— 学生开口讲了 ≥ 5 个字之后再
@@ -328,7 +327,6 @@ class _LecturePageState extends State<LecturePage> {
   void _onCanvasChanged() {
     _stuckHintTimer?.cancel();
     _wrapUpTimer?.cancel();
-    _stuckHintShownForPause = false;
     if (_canvasController.isEmpty) {
       for (final c in _stepPlainControllers.values) {
         if (c.text.isNotEmpty) c.clear();
@@ -1032,10 +1030,9 @@ class _LecturePageState extends State<LecturePage> {
     }
     _stuckHintTimer?.cancel();
     _wrapUpTimer?.cancel();
-    _stuckHintTimer = Timer(
-      Duration(milliseconds: (2500 - silenceMs).clamp(0, 2500).toInt()),
-      _showStuckHintIfStillPaused,
-    );
+    // stuck hint 通用文案在第十二轮被彻底删除（见 _showStuckHintIfStillPaused
+    // 注释）—— UI 上不再插入任何"不调 LLM 的伪追问"，避免学生看到与本节
+    // 知识点无关、且反复弹出的废话。自动追问完全交给下面的 _wrapUpTimer。
     _wrapUpTimer = Timer(
       Duration(milliseconds: (2500 - silenceMs).clamp(0, 2500).toInt()),
       () {
@@ -1065,7 +1062,6 @@ class _LecturePageState extends State<LecturePage> {
     if (active) {
       _stuckHintTimer?.cancel();
       _wrapUpTimer?.cancel();
-      _stuckHintShownForPause = false;
     }
     if (active && (_ttsPlaying || _liveStatus == _LiveStatus.aiSpeaking)) {
       _voiceDebounceTimer?.cancel();
@@ -1083,25 +1079,11 @@ class _LecturePageState extends State<LecturePage> {
     }
   }
 
-  void _showStuckHintIfStillPaused() {
-    if (!mounted || _stuckHintShownForPause) return;
-    if (_liveStatus == _LiveStatus.thinking || _liveStatus == _LiveStatus.aiSpeaking) return;
-    final last = _canvasController.lastStrokeAt;
-    if (last != null &&
-        DateTime.now().difference(last) < const Duration(seconds: 3)) {
-      return;
-    }
-    _stuckHintShownForPause = true;
-    setState(() {
-      _turns.add(const AgentTurn(
-        role: AgentRole.teacher,
-        displayName: '李老师',
-        text: '卡住了也没关系。先把这一步用到的已知条件、定义或公式说出来，再检查推理是否等价。',
-        highlightStepIds: [],
-      ));
-    });
-    _scrollToBottomSoon();
-  }
+  // 第九轮加过的 _showStuckHintIfStillPaused 通用文案插入逻辑在第十二轮
+  // 被彻底删除：跨章节弹"卡住了..."模板严重出戏，且会因 voice / canvas
+  // 事件反复重置 flag 而连续弹同一句。"静音后追问"完全交给 _wrapUpTimer
+  // 走真实 LLM 路径；如果未来想恢复"卡住"体感，要走 sendPauseDetected
+  // + 后端 LLM，而不是前端写死。
 
   void _onAudioStatus(AudioStreamStatus status) {
     if (!mounted) return;
