@@ -165,7 +165,7 @@ class LectureService {
             ? detail
             : '画板还没有内容，先写一两行思路再提交。';
       case 404:
-        return '当前章节还没有上线后端 Mock（仅 16.1 / 16.2 / 16.3 已就绪）。';
+        return '当前章节暂时无法提交讲题，请换一个小节再试。';
       case 422:
         return '提交字段不完整，请刷新页面重试。';
       case 429:

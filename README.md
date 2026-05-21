@@ -309,14 +309,16 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
     `POST /learning/progress/sync`；服务端返回的合并结果回灌本地仓库。
   - `services/parent_service.dart` + `data/parent_models.dart`：家长端
     dashboard / poster / reviews 强类型客户端。
-  - `pages/auth_page.dart`：登录 / 注册同页 Tab 切换；登录成功后 pop(true)。
+  - `pages/auth_page.dart`：登录 / 注册同页 Tab 切换；作为启动门禁时登录成功后
+    直接进入学生首页，作为二级页面时仍可 pop(true) 返回调用方。
   - `pages/parent_dashboard_page.dart`：家长端入口页 + DraggableScrollableSheet
     总结海报。
   - `widgets/realtime_audio_panel.dart` / `services/live_lecture_service.dart`:
     `stopTts` 实现 ~200ms 渐隐 fade-out（25ms tick + `setVolume`）,
     并发打断幂等。
-- **首页 AppBar** 新增「家长端」入口：未登录 → AuthPage → 登录后 →
-  ParentDashboardPage；同步与同时刷新订阅 ProgressRepository 的小节徽标。
+- **启动门禁**：App 首屏先加载登录态；未登录时停留在 AuthPage，登录 /
+  注册成功后才进入学生首页。首页 AppBar 保留「家长端」入口，已登录用户可直接
+  进入 ParentDashboardPage。
 
 新增测试：
 - 后端 `main/tests/test_round10_endpoints.py`（11 个用例）：覆盖 401 /
@@ -380,7 +382,7 @@ Flutter 侧同步完成：
 
 第十二轮把 Round 11 的 V2 API 接到平板 App 产品路径：
 
-- 首页新增 5 个学生端入口：今日悬赏、晶石商城、排行榜、拍照识题、我的战力。
+- 首页新增 5 个学习工具入口：每日挑战、晶石奖励、学习榜单、拍照识题、我的成长。
 - 新增/接线 Flutter 页面：`BountyPage`、`ShopPage`、`GeekShopPage`、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
 - 回放闭环：`ReplayService` 记录 live 讲题的音频片段、白板时间轴和气泡时间轴，登录后 `POST /replays`；家长端「精彩回放」可点进播放器。
 - 家长端多孩子：`/parent/dashboard`、`/parent/reviews`、`/parent/poster` 和 `/parent/replays` 支持 `studentId` / `X-Student-Id`，App 内可绑定和切换孩子。

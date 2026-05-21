@@ -635,7 +635,7 @@ class _BountyCard extends StatelessWidget {
             controller: transcript,
             minLines: 2,
             maxLines: 4,
-            decoration: const InputDecoration(labelText: '语音纠错文字（Demo 可手输）'),
+            decoration: const InputDecoration(labelText: '把你的纠错讲解写在这里'),
           ),
           const SizedBox(height: 8),
           FilledButton.icon(

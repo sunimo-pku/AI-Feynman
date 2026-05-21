@@ -4,13 +4,11 @@ import '../data/curriculum_models.dart';
 import '../data/curriculum_repository.dart';
 import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
-import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/learning_sync_service.dart';
 import '../services/progress_repository.dart';
 import '../services/review_repository.dart';
 import '../theme/app_theme.dart';
-import 'auth_page.dart';
 import 'lecture_page.dart';
 import 'parent_dashboard_page.dart';
 import 'privacy_notice_page.dart';
@@ -27,12 +25,10 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late final Future<MathCurriculum> _curriculumFuture =
       CurriculumRepository.instance.load();
-  bool? _apiHealthy;
 
   @override
   void initState() {
     super.initState();
-    _checkApi();
     // 第六轮：异步预热本地进度仓库。任何失败都被仓库吞掉打 log，
     // 这里不阻塞课程目录展示 —— FutureBuilder 仍以 curriculum 为主线。
     // 仓库本身是 ChangeNotifier，加载成功后 _ProgressAwareSectionPill 会
@@ -54,11 +50,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  Future<void> _checkApi() async {
-    final ok = await ApiService().checkHealth();
-    if (mounted) setState(() => _apiHealthy = ok);
-  }
-
   Future<void> _onSectionTap(CurriculumSection section) async {
     final hasQuestion =
         MockLectureRepository.instance.questionCountForSection(section.id) > 0;
@@ -77,27 +68,13 @@ class _HomePageState extends State<HomePage> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('该章节内容制作中，请先体验「八年级下册 · 第十六章 二次根式」。'),
+        content: Text('这一节正在整理练习内容，先选一个可练习小节开始吧。'),
       ),
     );
   }
 
-  /// 第十轮：右上角「家长端」入口。
-  ///
-  /// - 未登录 → 先跳 AuthPage；登录成功后再跳家长端；
-  /// - 已登录 → 直接打开家长端 dashboard。
   Future<void> _onParentEntryTap(BuildContext context) async {
     final navigator = Navigator.of(context);
-    await AuthService.instance.load();
-    if (!mounted) return;
-    if (!AuthService.instance.isLoggedIn) {
-      final ok = await navigator.push<bool>(
-        MaterialPageRoute(builder: (_) => const AuthPage()),
-      );
-      if (!mounted) return;
-      if (ok != true) return;
-    }
-    if (!mounted) return;
     await navigator.push(
       MaterialPageRoute(builder: (_) => const ParentDashboardPage()),
     );
@@ -147,10 +124,7 @@ class _HomePageState extends State<HomePage> {
             ),
             icon: const Icon(Icons.privacy_tip_outlined),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(child: _ApiStatusBadge(healthy: _apiHealthy)),
-          ),
+          const SizedBox(width: 10),
         ],
       ),
       body: SafeArea(
@@ -169,7 +143,7 @@ class _HomePageState extends State<HomePage> {
               children: [
                 _HeroBanner(curriculum: curriculum),
                 const SizedBox(height: AppSpacing.moduleGap),
-                const _V2EntrySection(),
+                const _LearningToolsSection(),
                 const SizedBox(height: AppSpacing.moduleGap),
                 ...curriculum.books.map(
                   (book) => Padding(
@@ -198,46 +172,66 @@ class _HeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
       decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
+        color: AppPalette.primary.withValues(alpha: 0.06),
+        borderRadius: AppRadius.largeR,
+        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.10)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Container(
-                width: 6,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: AppPalette.primary,
-                  borderRadius: BorderRadius.circular(3),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '把题讲明白，才是真的会',
+                      style: Theme.of(context).textTheme.displaySmall,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '${curriculum.publisher} · ${curriculum.stageLabel}${curriculum.subjectLabel}全册练习。'
+                      '写步骤、开口讲，AI 同伴会追问你的依据、条件和易错点。',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: AppPalette.textSecondary,
+                          ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                '${curriculum.publisher} · ${curriculum.stageLabel}${curriculum.subjectLabel}',
-                style: Theme.of(context).textTheme.titleMedium,
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: AppPalette.surface,
+                  borderRadius: AppRadius.largeR,
+                  border: Border.all(color: AppPalette.outlineSoft),
+                ),
+                child: const Icon(
+                  Icons.edit_note_outlined,
+                  size: 44,
+                  color: AppPalette.primary,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            '第十二轮已开放 V2 演示闭环：完整目录可练习，二次根式内容精讲，悬赏、商城、排行榜与拍照识题都可从首页进入。',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           const Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _Tag(label: '今日开放：二次根式', color: AppPalette.primary, filled: true),
-              _Tag(label: '16.1 二次根式', color: AppPalette.primaryAccent),
-              _Tag(label: '16.2 乘除', color: AppPalette.primaryAccent),
-              _Tag(label: '16.3 加减', color: AppPalette.primaryAccent),
+              _Tag(label: '全册可练', color: AppPalette.primary, filled: true),
+              _Tag(label: '手写讲题', color: AppPalette.primaryAccent),
+              _Tag(label: '语音追问', color: AppPalette.primaryAccent),
+              _Tag(label: '家长报告', color: AppPalette.primaryAccent),
             ],
           ),
         ],
@@ -246,20 +240,20 @@ class _HeroBanner extends StatelessWidget {
   }
 }
 
-class _V2EntrySection extends StatelessWidget {
-  const _V2EntrySection();
+class _LearningToolsSection extends StatelessWidget {
+  const _LearningToolsSection();
 
   @override
   Widget build(BuildContext context) {
-    final entries = <_V2Entry>[
-      _V2Entry('今日悬赏', Icons.where_to_vote_outlined, () => const BountyPage()),
-      _V2Entry('晶石商城', Icons.diamond_outlined, () => const ShopPage()),
-      _V2Entry('排行榜', Icons.emoji_events_outlined, () => const LeaderboardPage()),
-      _V2Entry('拍照识题', Icons.document_scanner_outlined, () => const PhotoQuestionPage()),
-      _V2Entry('我的战力', Icons.bolt_outlined, () => const PowerProfilePage()),
+    final entries = <_LearningToolEntry>[
+      _LearningToolEntry('每日挑战', Icons.where_to_vote_outlined, () => const BountyPage()),
+      _LearningToolEntry('晶石奖励', Icons.diamond_outlined, () => const ShopPage()),
+      _LearningToolEntry('学习榜单', Icons.emoji_events_outlined, () => const LeaderboardPage()),
+      _LearningToolEntry('拍照识题', Icons.document_scanner_outlined, () => const PhotoQuestionPage()),
+      _LearningToolEntry('我的成长', Icons.bolt_outlined, () => const PowerProfilePage()),
     ];
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: AppRadius.cardR,
@@ -268,23 +262,19 @@ class _V2EntrySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('V2 产品入口', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 10),
+          Text('学习工具', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            '先练题，再用挑战、回顾和家长报告把薄弱点补上。',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
           Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing: 12,
+            runSpacing: 12,
             children: entries
                 .map(
-                  (e) => SizedBox(
-                    width: 150,
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => e.builder()),
-                      ),
-                      icon: Icon(e.icon, size: 18),
-                      label: Text(e.label),
-                    ),
-                  ),
+                  (e) => _LearningToolButton(entry: e),
                 )
                 .toList(),
           ),
@@ -294,8 +284,53 @@ class _V2EntrySection extends StatelessWidget {
   }
 }
 
-class _V2Entry {
-  const _V2Entry(this.label, this.icon, this.builder);
+class _LearningToolButton extends StatelessWidget {
+  const _LearningToolButton({required this.entry});
+
+  final _LearningToolEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 158,
+      child: Material(
+        color: AppPalette.primary.withValues(alpha: 0.06),
+        borderRadius: AppRadius.buttonR,
+        child: InkWell(
+          borderRadius: AppRadius.buttonR,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => entry.builder()),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: AppRadius.buttonR,
+              border: Border.all(color: AppPalette.primary.withValues(alpha: 0.14)),
+            ),
+            child: Row(
+              children: [
+                Icon(entry.icon, size: 18, color: AppPalette.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    entry.label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: AppPalette.primary,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LearningToolEntry {
+  const _LearningToolEntry(this.label, this.icon, this.builder);
   final String label;
   final IconData icon;
   final Widget Function() builder;
@@ -333,12 +368,7 @@ class _Tag extends StatelessWidget {
   }
 }
 
-/// 第十轮：首页 AppBar 上的「家长端」入口。
-///
-/// 设计：
-///   * 已登录 → 显示「家长端 · 用户名」；点击直接进入 dashboard；
-///   * 未登录 → 显示「家长端 · 未登录」；点击触发登录跳转；
-///   * 视觉风格与 `_ApiStatusBadge` 一致，整张 AppBar 不引入电竞色。
+/// 首页 AppBar 上的「家长端」入口。
 class _ParentEntryButton extends StatelessWidget {
   const _ParentEntryButton({required this.onTap});
   final VoidCallback onTap;
@@ -382,33 +412,6 @@ class _ParentEntryButton extends StatelessWidget {
   }
 }
 
-class _ApiStatusBadge extends StatelessWidget {
-  const _ApiStatusBadge({required this.healthy});
-
-  final bool? healthy;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = switch (healthy) {
-      true => ('API 已连接', AppPalette.primaryAccent),
-      false => ('API 未连接', AppPalette.error),
-      null => ('检测中…', AppPalette.textSecondary),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}
-
 class _BookCard extends StatelessWidget {
   const _BookCard({
     required this.book,
@@ -440,8 +443,8 @@ class _BookCard extends StatelessWidget {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               hasAvailable
-                  ? 'V1 已开放章节'
-                  : '即将上线',
+                  ? '本册可练习'
+                  : '内容整理中',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: hasAvailable
                         ? AppPalette.primaryAccent
@@ -728,7 +731,7 @@ class _SectionStatusBadge extends StatelessWidget {
       return _badge(
         color: AppPalette.comingSoon,
         bgAlpha: 0.18,
-        text: '即将上线',
+        text: '整理中',
       );
     }
     final p = progress;

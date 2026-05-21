@@ -11,9 +11,16 @@ import '../theme/app_theme.dart';
 ///   * 失败原因显示在表单下方的红色提示条，可点重试。
 ///   * 登录成功后 pop(true)，调用方据此触发同步 / 跳家长端等下一步动作。
 class AuthPage extends StatefulWidget {
-  const AuthPage({super.key, this.initialMode = AuthPageMode.login});
+  const AuthPage({
+    super.key,
+    this.initialMode = AuthPageMode.login,
+    this.showBackButton = true,
+    this.onAuthenticated,
+  });
 
   final AuthPageMode initialMode;
+  final bool showBackButton;
+  final VoidCallback? onAuthenticated;
 
   @override
   State<AuthPage> createState() => _AuthPageState();
@@ -83,7 +90,10 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       setState(() => _errorMessage = result.message);
       return;
     }
-    if (mounted) {
+    final callback = widget.onAuthenticated;
+    if (callback != null) {
+      callback();
+    } else if (mounted) {
       Navigator.of(context).pop(true);
     }
   }
@@ -93,7 +103,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     return Scaffold(
       backgroundColor: AppPalette.background,
       appBar: AppBar(
-        title: const Text('登录 · 同步学习数据'),
+        automaticallyImplyLeading: widget.showBackButton,
+        title: const Text('AI 费曼'),
       ),
       body: SafeArea(
         child: Center(
@@ -105,13 +116,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    '登录后可在不同设备之间同步学习进度，\n'
-                    '家长端也可以查看孩子的弱项和最近讲题。',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppPalette.textSecondary,
-                        ),
-                  ),
+                  const _AuthHeader(),
                   const SizedBox(height: AppSpacing.moduleGap),
                   TabBar(
                     controller: _tabController,
@@ -175,8 +180,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: AppSpacing.tightGap),
                   Text(
-                    '提示：可以用任意 3-32 位用户名 + 6 位以上密码注册新账号。'
-                    '示例：xiaoming123 / abcdef123。',
+                    '请使用家长或学生账号进入。新账号注册后会自动登录。',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -184,6 +188,51 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AuthHeader extends StatelessWidget {
+  const _AuthHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.largeR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppPalette.primary.withValues(alpha: 0.10),
+              borderRadius: AppRadius.buttonR,
+            ),
+            child: const Icon(
+              Icons.school_outlined,
+              color: AppPalette.primary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '先登录，再开始讲题',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '登录后会保存练习进度、讲题回顾和家长端报告。换设备学习时，也能继续接上上一次的记录。',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppPalette.textSecondary,
+                ),
+          ),
+        ],
       ),
     );
   }

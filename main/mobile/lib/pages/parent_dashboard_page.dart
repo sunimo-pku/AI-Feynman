@@ -672,7 +672,7 @@ class _RecentReviewsCard extends StatelessWidget {
           const SizedBox(height: 12),
           if (reviews.isEmpty)
             const Text(
-              '最近还没有讲题记录，可以让孩子先在 16.3 二次根式的加减练一题。',
+              '最近还没有讲题记录，可以让孩子先选一个小节讲一题。',
               style: TextStyle(color: AppPalette.textSecondary),
             )
           else
