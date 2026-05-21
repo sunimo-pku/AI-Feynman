@@ -20,8 +20,8 @@ venv/
 # 日志
 *.log
 
-# 数据库
-data/
+# 数据库与运行时数据（课程静态目录 data/curriculum/ 需纳入版本控制）
+main/data/
 *.db
 *.sqlite
 *.sqlite3

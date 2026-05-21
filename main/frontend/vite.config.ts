@@ -9,6 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      '@curriculum': resolve(__dirname, '../../data/curriculum'),
     },
   },
   server: {
