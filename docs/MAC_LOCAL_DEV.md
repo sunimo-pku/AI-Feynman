@@ -206,7 +206,7 @@ flutter run \
 ```
 
 - 拍照识题：第十二轮引入 `image_picker`，Android 真机首次访问相册/相机时会触发系统权限。若权限被拒绝，需要到系统设置中允许「照片和视频」/「相机」。
-- Qwen-VL 视觉识题：在 `.env` 配置 `ALIYUN_API_KEY` 后，`/questions/upload-image` 会优先调用阿里云 DashScope OpenAI 兼容接口（默认模型 `qwen-vl-plus`）；失败时才回到 `vision_fallback`。
+- Qwen-VL 视觉识题：在 `.env` 配置 `ALIYUN_API_KEY` 后，`/questions/upload-image` 会调用阿里云 DashScope OpenAI 兼容接口（默认模型 `qwen-vl-plus`）；失败时返回 502。
 - WebSocket：`/lecture/live` 需要 nginx 透传 Upgrade 头；本地直连时确认 `ws://<IP>:8001/lecture/live` 可建立连接。
 - 流式 ASR：实时讲题必须配置 `VOLC_ASR_STREAM_*`。完全未配置时前端应收到明确错误，不再降级成窗口式 ASR。
 - OCR/HWR：接 HWR 供应商时配置 `OCR_HWR_API_KEY`。未配置任何 HWR key 时，有 `referenceSteps` 才返回 `reference_step`，否则返回空识别结果。

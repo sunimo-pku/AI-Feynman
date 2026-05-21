@@ -1,7 +1,7 @@
 """第十一轮：游戏化、回放、商城、识题、知识检索与多孩子绑定 API。
 
-这些接口都走真实表持久化；外部 OCR/Embedding/物流等依赖缺失时使用可观测
-fallback，保证 Demo 链路完整但不伪装外部能力已经接通。
+这些接口都走真实表持久化；外部 OCR/Embedding/物流等核心依赖缺失时显式报错，
+避免用演示数据伪装真实能力已经接通。
 """
 
 from __future__ import annotations
@@ -476,15 +476,10 @@ async def upload_question_image(file: UploadFile = File(...), user: User = Depen
     )
     if not vision.get("error"):
         return {**vision, "debugPreview": preview}
-    return {
-        "sectionId": "unknown",
-        "knowledgeTags": ["图片识题", "初中数学"],
-        "questionPrompt": "请确认图片中的初中数学题目，并先讲你能看清的条件、图形或算式。",
-        "confidence": 0.62 if data else 0.35,
-        "source": "vision_fallback",
-        "fallbackReason": vision.get("error", ""),
-        "debugPreview": preview,
-    }
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"Question vision failed: {vision.get('error')}",
+    )
 
 
 @router.get("/questions")
