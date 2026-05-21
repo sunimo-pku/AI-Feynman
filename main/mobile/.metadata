@@ -1,0 +1,7 @@
+# This file tracks properties of this Flutter project.
+# Used by tool: Flutter CLI.
+version:
+  revision: "stable"
+  channel: "stable"
+
+project_type: app

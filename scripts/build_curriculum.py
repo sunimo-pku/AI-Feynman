@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_JSON = ROOT / "data" / "curriculum" / "pep-junior-math.json"
+MOBILE_ASSET_JSON = ROOT / "main" / "mobile" / "assets" / "curriculum" / "pep-junior-math.json"
 
 # (book_key, grade, semester, semester_label, chapters)
 # chapter: (num, title, sections)  section: (num, title)
@@ -292,16 +293,17 @@ def _cn_num(n: int) -> str:
 def main() -> None:
     data = build()
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    OUT_JSON.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    OUT_JSON.write_text(payload, encoding="utf-8")
+    MOBILE_ASSET_JSON.parent.mkdir(parents=True, exist_ok=True)
+    MOBILE_ASSET_JSON.write_text(payload, encoding="utf-8")
     section_count = sum(
         len(ch["sections"])
         for book in data["books"]
         for ch in book["chapters"]
     )
     print(f"Wrote {OUT_JSON}")
+    print(f"Synced {MOBILE_ASSET_JSON}")
     print(f"Books: {len(data['books'])}, Chapters: 29, Sections: {section_count}")
 
 

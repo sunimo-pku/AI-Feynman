@@ -1,0 +1,2 @@
+# 复制为 local.properties（勿提交），填写本机 Flutter SDK 路径
+# flutter.sdk=/path/to/flutter
