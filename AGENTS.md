@@ -550,6 +550,13 @@ git push origin main
  学生听不到任何声音 —— 只能看到气泡，体感超出戏剧效果。正解：
  `requestTts` 进入时先 `_audioPlayer.stop()` + `setVolume(1.0)`,
  然后才 `play(BytesSource(...))`，无论 fade timer 当前在哪一步都安全。
+- **TTS speaker 必须和 resource id 同属一个资源**：火山会返回
+  `resource ID is mismatched with speaker related resource`，HTTP 仍是 200，
+  但响应只有 `error`、没有 `audio_base64`，前端就只显示文字不播声音。
+  当前 `volc.service_type.10029` 已验证可用：
+  `zh_male_wennuanahu_moon_bigtts`、`zh_female_qingchezizi_moon_bigtts`、
+  `zh_female_wanwanxiaohe_moon_bigtts`；`zh_male_xiaoming_moon_bigtts`
+  不匹配，不能作为默认小明音色。
 - **`use_build_context_synchronously` lint 在 async 后 push 新 route 必崩**：
  第十轮新加家长端入口 `_onParentEntryTap(context)` 第一版直接在 await
  后再 `Navigator.of(context).push(...)`，dart_lints 立刻 warning。

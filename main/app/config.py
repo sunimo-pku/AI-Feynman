@@ -46,7 +46,7 @@ class Config:
     VOLC_TTS_RESOURCE_ID = "volc.service_type.10029"
     VOLC_DEFAULT_SPEAKER = "zh_female_qingchezizi_moon_bigtts"
     SPEAKER_BY_ROLE = {
-        "xiaoming": os.getenv("VOLC_TTS_SPEAKER_XIAOMING", "zh_male_xiaoming_moon_bigtts"),
+        "xiaoming": os.getenv("VOLC_TTS_SPEAKER_XIAOMING", "zh_male_wennuanahu_moon_bigtts"),
         "daxiong": os.getenv("VOLC_TTS_SPEAKER_DAXIONG", "zh_male_wennuanahu_moon_bigtts"),
         "monitor": os.getenv("VOLC_TTS_SPEAKER_MONITOR", "zh_female_qingchezizi_moon_bigtts"),
         "teacher": os.getenv("VOLC_TTS_SPEAKER_TEACHER", "zh_female_wanwanxiaohe_moon_bigtts"),
