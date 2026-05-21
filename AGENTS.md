@@ -204,7 +204,7 @@ git push origin main
 
 - **K2.6 默认思考模式，单次 30-90s，不能直接接讲题闭环**：默认开思考时
   K2.6 会先把推理塞 `reasoning_content` 再写 `content`，`max_tokens=1200`
-  经常 `finish_reason=length` + `content=''`，全部被解析层当失败回退到 Mock。
+  经常 `finish_reason=length` + `content=''`，现在应直接报错而不是回退 Mock。
 - **K2.6 关思考是当前最优解**：在请求 body 传 `thinking={"type":"disabled"}`
   即可让 K2.6 跳过推理直出答案，实测 5-15s 一次往返、偶发 25s 拖尾，
   且**输出质量显著高于 `moonshot-v1-*` 经典模型**——K2.6 关思考能给出
@@ -224,9 +224,9 @@ git push origin main
   没法关 K2.6 思考。所以 `services/lecture_agent.py` 选择**复用** `kimi.kimi_client`
   直连 `chat.completions.create(...)`，**不新建** OpenAI client（避免双客户端
   导致 base_url / key 漂移）。
-- **OpenAI Python SDK 默认 `max_retries=2`，会把"超时即回退"翻倍/三倍**：
-  我们的设计是「LLM 25-28s 没出结果就落 Mock」，但 SDK 默认遇 timeout / 5xx
-  会自动重试 2 次，一次 28s 超时被翻成 60-90s 真实卡顿，前端早就报错了。
+- **OpenAI Python SDK 默认 `max_retries=2`，会把"超时即报错"翻倍/三倍**：
+  后端设计是「LLM 25-28s 没出结果就显式报错」，但 SDK 默认遇 timeout / 5xx
+  会自动重试 2 次，一次 28s 超时被翻成 60-90s 真实卡顿，前端错误反馈会严重延迟。
   必须 `kimi_client.with_options(max_retries=0).chat.completions.create(...)`。
 - **必须开 `response_format={"type": "json_object"}` 双保险**：Prompt 里写
   "只输出 JSON" 还不够，模型偶尔会包 ```json``` 三重反引号。`response_format`
@@ -235,11 +235,11 @@ git push origin main
 - **`highlightStepIds` 必须再做一次白名单过滤**：LLM 即使被反复告知"只用白名单里的
   stepId"，仍偶尔编出 `step_99` / `step_0`。后端必须比对请求里的真实 `stepId`，
   命中不到时回落到首个 `step_id`，否则前端画布点不亮，体感比"没追问"还糟。
-- **LLM 异常不要抛 HTTPException**：抛了前端会出红色错误条破坏 Demo。
-  统一在 `lecture_agent` 内 `try/except` 后 `return _fallback_payload()`，
-  路由层只在日志里区分 `source=llm` / `source=fallback`，对前端始终返回 200。
+- **LLM 异常必须显式暴露**：不要用 Mock 文案伪装成功。`lecture_agent`
+  抛 `LectureAgentError`，`/lecture/submit` 返回 502，实时讲题发送 WebSocket
+  `error` 事件，前端保留学生输入供重试。
 - **前端 timeout 必须严格大于后端 timeout**：实施时把后端 SDK timeout 设 28s，
-  Flutter `LectureService._timeout` 设 35s，确保「后端先 timeout 落 Mock」
+  Flutter `LectureService._timeout` 设 35s，确保「后端先 timeout 返回 502」
   而非「前端先报错但后端继续跑」——前后端 timeout 反过来时会让学生看到
   红色错误条但日志里实际拿到了 LLM 回复，非常误导。
 
@@ -318,11 +318,9 @@ git push origin main
   「`safe_round <= 1 and final_status == 'completed'` → 强制改回
   `needs_explanation` + `mastery_delta=0`」做硬防御，并打 `warning` 日志
   方便观测频率。如果以后这条警告频繁出现，要回 prompt 加更强约束。
-- **fallback 必须按 round 切文案**：第二轮的固定 Mock 在多轮里会触发「学生
-  连点两次都看到一模一样的小明追问」的鬼畜，体感比"没追问"还糟。第五轮
-  fallback 在 `round_index >= 2 || has_history` 时改走「李老师顺势收束」
-  + `status: "completed"` + `mastery_delta: 1`，让 KIMI_API_KEY 缺失或
-  LLM 抽风时也能演示完整闭环。
+- **历史记录：fallback 曾按 round 切文案，但现已禁用**：第五轮曾为 Demo
+  完整性在 KIMI_API_KEY 缺失或 LLM 抽风时生成固定追问。当前口径已改为
+  “讲题主链路失败必须显式报错”，不要恢复这类 Mock 文案。
 - **history 校验放宽不放严**：按 brief 7.3，「不要因为 history 缺失或格式
   异常直接 500」。`history` 不在路由层做严格枚举校验，service 层
   `_sanitize_history()` 直接静默丢掉非 dict / 陌生 role / 空 text 的项 ——
@@ -691,9 +689,9 @@ git push origin main
 
 ### 第十一轮 · 全量收口（流式 / 回放 / 游戏化）
 
-- **LLM 流式 NDJSON 必须逐行容错**：Kimi 流式主路径输出
+- **LLM 流式 NDJSON 必须逐行校验**：Kimi 流式主路径输出
   `turn_start/delta/turn_done/round_meta`；任何一行解析失败或整流无有效事件，
-  只能切 `stream_fallback`，不能让 `/lecture/live` 直接断开。
+  必须发送 WebSocket `error`，不能切 Mock/非流式替代路径。
 - **本地学习数据 key 必须带 namespace**：`guest`、`userA`、`userB` 分别写
   `ai_feynman.section_progress.v1.<namespace>` 与
   `ai_feynman.lecture_reviews.v1.<namespace>`；logout 只是切回 guest，不删旧账号桶。
@@ -703,14 +701,19 @@ git push origin main
   `(scope, section_id, week_id, student_id)` 唯一；脚本或启动补偿重复跑不能插重复名次。
 - **晶石流水必须先校验余额再扣减**：`CrystalWallet.balance + amount < 0` 要返回 400；
   禁止出现负余额，也禁止任何充值/打赏入口。
-- **商业 OCR/HWR 失败只能降级 source，不阻塞讲题**：`/ocr/ink mode=hwr`
-  没 key 或供应商失败时回 `reference_step/template`，响应仍带 `confidence/source`
-  供 debug 面板和日志核对。
+- **商业 OCR/HWR 失败不能编造公式**：`/ocr/ink mode=hwr` 没 key 或供应商失败时，
+  有 `referenceSteps` 才回 `reference_step`，否则返回空 `latex/plainText`
+  和 `source=empty`，供 debug 面板和日志核对。
 
 ### 第十二轮 · V2 产品闭环与 App 接线
 
+- **讲题主链路禁止 Mock / fallback 伪装成功**：`/lecture/submit` 的 LLM 调用、
+  实时讲题的流式 Agent、流式 ASR、TTS 都必须在失败时显式返回 HTTP 502 或
+  WebSocket `error` 事件。不要再用固定 Mock 追问、窗口式 ASR、模板 OCR 或
+  “李老师通用文案”把真实故障盖过去；否则产品看起来像还能跑，实际会把题目
+  污染成错误章节，调试体验比直接报错更差。
 - **回放上传必须吞失败**：`ReplayService.finishAndUpload()` 只服务家长端回看，失败不能影响学生完成态、进度写入或下一题。调试看 `ai_feynman.replay` 日志。
-- **流式 ASR 接线要标明 mode**：有 `VOLC_ASR_STREAM_*` 时走 `asr_mode=stream`，未配置时必须显式 `asr_mode=window_fallback`，不能静默伪装成流式。
+- **流式 ASR 接线要标明 mode**：有 `VOLC_ASR_STREAM_*` 时走 `asr_mode=stream`；未配置或调用失败时必须显式报错，不能静默伪装成流式，也不能降级成窗口式 ASR。
 - **商城皮肤是本地 prefs + 画笔渲染联动**：兑换 `pen-gold` 后写 `UserCosmeticsPrefs`，讲题页 `HandCanvas` 订阅并立即变成金色粗笔；不要只扣晶石不改白板。
 - **全册题库以 JSON 为准**：`data/questions/pep-junior-math-questions.json` 由 `scripts/generate_section_questions.py` 生成并同步到 Flutter asset；当前口径是 90 个小节 × 基础/巩固/挑战 3 题，非 16 章用 `quality=generated_seed` 标记，后续逐章教研校对。
 - **题图 SVG 要走 asset 引用**：JSON 只写 `image.asset / image.alt`，SVG 文件放 `assets/questions/diagrams/` 并在 `pubspec.yaml` 声明目录；Flutter 端用 direct dependency `flutter_svg` 渲染，不能指望 `Image.asset` 直接显示 SVG。

@@ -21,10 +21,9 @@ class LectureService {
       : _client = client ?? http.Client(),
         _ocrService = ocrService ?? OcrService(),
         // 第三轮起 `/lecture/submit` 内部走真实 Kimi K2.6（关思考模式），
-        // 端到端中位数 5-15s、偶发 25s 拖尾；后端层自己有 28s timeout，
-        // 失败会自动落 Mock fallback。前端 timeout 给 35s，**严格大于**
-        // 后端 28s，确保「后端先 timeout 落 Mock」而不是「前端先报错
-        // 但后端继续跑」。差出 7s 留给 JSON 校验 + 网络往返。
+        // 端到端中位数 5-15s、偶发 25s 拖尾；后端层自己有 28s timeout。
+        // 前端 timeout 给 35s，严格大于后端 28s，确保后端能先返回明确错误，
+        // 而不是前端先断开但后端继续跑。
         _timeout = timeout ?? const Duration(seconds: 35);
 
   final http.Client _client;
@@ -173,7 +172,7 @@ class LectureService {
       case 500:
       case 502:
       case 503:
-        return '后端暂时不可用，请稍后再试。';
+        return detail.isNotEmpty ? '讲题服务失败：$detail' : '讲题服务失败，请稍后再试。';
     }
     if (status >= 500) {
       return '后端暂时不可用（HTTP $status），请稍后再试。';

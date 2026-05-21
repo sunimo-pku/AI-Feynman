@@ -208,8 +208,8 @@ flutter run \
 - 拍照识题：第十二轮引入 `image_picker`，Android 真机首次访问相册/相机时会触发系统权限。若权限被拒绝，需要到系统设置中允许「照片和视频」/「相机」。
 - Qwen-VL 视觉识题：在 `.env` 配置 `ALIYUN_API_KEY` 后，`/questions/upload-image` 会优先调用阿里云 DashScope OpenAI 兼容接口（默认模型 `qwen-vl-plus`）；失败时才回到 `vision_fallback`。
 - WebSocket：`/lecture/live` 需要 nginx 透传 Upgrade 头；本地直连时确认 `ws://<IP>:8001/lecture/live` 可建立连接。
-- 流式 ASR：默认复用 `VOLC_API_KEY`；只有具体 SDK 要独立凭证时才额外配置 `VOLC_ASR_STREAM_APP_ID` / `VOLC_ASR_STREAM_ACCESS_TOKEN`。完全未配置火山 key 时日志应出现 `asr_mode=window_fallback`，仍不阻塞讲题。
-- OCR/HWR：默认复用 `VOLC_API_KEY`；接其他 HWR 供应商时再配置 `OCR_HWR_API_KEY`。未配置任何 HWR key 时 source 会回落 `reference_step` 或 `template`。
+- 流式 ASR：实时讲题必须配置 `VOLC_ASR_STREAM_*`。完全未配置时前端应收到明确错误，不再降级成窗口式 ASR。
+- OCR/HWR：接 HWR 供应商时配置 `OCR_HWR_API_KEY`。未配置任何 HWR key 时，有 `referenceSteps` 才返回 `reference_step`，否则返回空识别结果。
 - 回放：结构化时间轴通过 `/replays` 保存，服务端默认存数据库 JSON；如后续落文件，路径用 `.env` 的 `REPLAY_STORAGE_DIR`。当前 App 端在 `ReplayService` 内临时缓存本次 live 的音频 chunk、白板 timeline 与气泡 timeline，完成或退出时尽力上传。
 
 nginx 反代示例：

@@ -1,9 +1,9 @@
 """讲题 / 多 Agent 追问路由。
 
-- 第二轮：返回固定 JSON Mock。
+- 第二轮：曾返回固定 JSON Mock。
 - 第三轮：交由 `services.lecture_agent.generate_lecture_turns(...)`
   调用真实 LLM 生成强结构化多 Agent 追问；LLM 不可用 / 解析失败 / 校验失败时
-  自动回退到第二轮的固定 Mock，保证 Demo 链路不中断。
+  直接返回 502，让调用方看到真实故障。
 - 第四轮：请求体新增 `studentSpeechText` 与 `steps[*].plainText / latex` 三个学生语义字段。
 - 第五轮（当前）：请求体新增可选 `roundIndex` 与 `history` 两个字段，让后端能感知
   「学生这次到底是在回答上一轮 AI 的哪个问题」，并据此判定是继续追问还是 `completed`。
@@ -17,8 +17,7 @@
 - 错误：参数缺失走 422（由 FastAPI / Pydantic 自动产生）；
        空步骤数组走 400 —— 经 HTTPException 抛出，
        不走 `return {"error": ...}` 假 200。
-- LLM 错误**不**抛 HTTPException：会让前端看到红色错误条，破坏 Demo；
-  统一由 service 回落 fallback，路由层只看 `source` 字段写日志。
+- LLM 错误必须显式暴露：失败返回 502，禁止用 Mock 文案伪装成功。
 - `history` 我们刻意**不**做严格枚举校验：陌生 role 字符串会被 `lecture_agent`
   在 prompt 拼装阶段静默忽略，避免某天前端打错 role 名直接让整次 /submit 走
   422 破坏 Demo 体感。
@@ -43,7 +42,7 @@ from app.db import (
     get_db,
 )
 from app.middleware.auth import get_current_user
-from app.services.lecture_agent import generate_lecture_turns
+from app.services.lecture_agent import LectureAgentError, generate_lecture_turns
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +164,7 @@ class LectureSubmitResponse(BaseModel):
     "/submit",
     response_model=LectureSubmitResponse,
     response_model_by_alias=True,
-    summary="提交学生讲解 → LLM 生成多 Agent 追问（失败回退固定 Mock）",
+    summary="提交学生讲解 → LLM 生成多 Agent 追问（失败返回 502）",
 )
 async def submit_lecture(
     req: LectureSubmitRequest,
@@ -201,15 +200,27 @@ async def submit_lecture(
         for h in req.history
     ]
 
-    result = generate_lecture_turns(
-        section_id=req.section_id,
-        question_id=req.question_id,
-        question_prompt=req.question_prompt,
-        student_speech_text=req.student_speech_text,
-        steps=steps_payload,
-        round_index=req.round_index,
-        history=history_payload,
-    )
+    try:
+        result = generate_lecture_turns(
+            section_id=req.section_id,
+            question_id=req.question_id,
+            question_prompt=req.question_prompt,
+            student_speech_text=req.student_speech_text,
+            steps=steps_payload,
+            round_index=req.round_index,
+            history=history_payload,
+        )
+    except LectureAgentError as e:
+        logger.exception(
+            "[lecture] /submit agent failed section=%s question=%s round=%d",
+            req.section_id,
+            req.question_id,
+            req.round_index,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Lecture agent failed: {e}",
+        ) from e
 
     logger.info(
         "[lecture] /submit section=%s question=%s round=%d steps=%d "

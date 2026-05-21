@@ -1,7 +1,7 @@
 """Token/行级流式多 Agent 追问。
 
 主路径要求 Kimi 输出 NDJSON：turn_start/delta/turn_done/round_meta。解析失败时
-调用非流式 `generate_lecture_turns`，由 session 层继续按 fallback 切片。
+直接抛错，由 session 层向前端发送 error 事件。
 """
 
 from __future__ import annotations
@@ -42,16 +42,7 @@ def generate_turn_events(
         if str(s.get("stepId") or s.get("step_id") or "").strip()
     ]
     if not Config.KIMI_API_KEY or Config.KIMI_API_KEY == "your_kimi_api_key_here":
-        yield from _fallback_events(
-            section_id=section_id,
-            question_id=question_id,
-            question_prompt=question_prompt,
-            student_speech_text=student_speech_text,
-            steps=steps,
-            round_index=round_index,
-            history=history,
-        )
-        return
+        raise lecture_agent.LectureAgentError("KIMI_API_KEY is not configured")
 
     cleaned_history = lecture_agent._sanitize_history(history)  # noqa: SLF001
     user_prompt = lecture_agent._build_user_prompt(  # noqa: SLF001
@@ -102,16 +93,8 @@ def generate_turn_events(
             raise ValueError("stream produced no valid NDJSON events")
         logger.info("[lecture-agent-stream] source=llm_stream section=%s", section_id)
     except Exception as e:  # noqa: BLE001
-        logger.exception("[lecture-agent-stream] stream failed; source=stream_fallback err=%s", e)
-        yield from _fallback_events(
-            section_id=section_id,
-            question_id=question_id,
-            question_prompt=question_prompt,
-            student_speech_text=student_speech_text,
-            steps=steps,
-            round_index=round_index,
-            history=history,
-        )
+        logger.exception("[lecture-agent-stream] stream failed err=%s", e)
+        raise lecture_agent.LectureAgentError(f"LLM stream failed: {e}") from e
 
 
 def _parse_line(line: str, allowed_step_ids: list[str]) -> dict[str, Any] | None:
@@ -150,23 +133,3 @@ def _parse_line(line: str, allowed_step_ids: list[str]) -> dict[str, Any] | None
     return None
 
 
-def _fallback_events(**kwargs: Any) -> Iterator[dict[str, Any]]:
-    payload = lecture_agent.generate_lecture_turns(**kwargs)
-    for turn in payload.get("turns", []):
-        turn_id = str(turn.get("turn_id") or "turn_1")
-        yield {
-            "type": "turn_start",
-            "turnId": turn_id,
-            "role": turn.get("role", "teacher"),
-            "displayName": turn.get("display_name", "李老师"),
-            "highlightStepIds": list(turn.get("highlight_step_ids") or []),
-            "source": "stream_fallback",
-        }
-        yield {"type": "delta", "turnId": turn_id, "delta": str(turn.get("text") or "")}
-        yield {"type": "turn_done", "turnId": turn_id}
-    yield {
-        "type": "round_meta",
-        "status": payload.get("status", "needs_explanation"),
-        "masteryDelta": int(payload.get("mastery_delta", 0) or 0),
-        "source": "stream_fallback",
-    }

@@ -17,6 +17,7 @@ from app.services.live_lecture_session import (
     EVT_AGENT_TURN_DONE,
     EVT_AGENT_TURN_START,
     EVT_ASR_SEGMENT,
+    EVT_ERROR,
     EVT_LISTENING,
     EVT_ROUND_DONE,
     EVT_THINKING,
@@ -24,6 +25,7 @@ from app.services.live_lecture_session import (
     LiveLectureSession,
     _split_text_into_deltas,
 )
+from app.services.volc_asr_stream import StreamAsrResult
 
 
 def _b64_pcm(seconds: float, sample_rate: int = 16000) -> str:
@@ -122,6 +124,14 @@ async def test_unknown_event_emits_warning_but_keeps_session() -> None:
 @pytest.mark.asyncio
 async def test_audio_chunk_then_pause_yields_asr_thinking_turns_done() -> None:
     session = LiveLectureSession()
+    session.asr_buffer.stream_client.enabled = True
+
+    def accept_chunk(**kwargs: Any) -> StreamAsrResult:
+        if kwargs.get("force"):
+            return StreamAsrResult(text="", is_final=True, mode="stream")
+        return StreamAsrResult(text="我先讲这一题", is_final=False, mode="stream")
+
+    session.asr_buffer.stream_client.accept_chunk = accept_chunk  # type: ignore[method-assign]
     sent: list[dict[str, Any]] = []
 
     async def send(payload: dict[str, Any]) -> None:
@@ -174,6 +184,32 @@ async def test_audio_chunk_then_pause_yields_asr_thinking_turns_done() -> None:
     # round_done payload 校验
     round_done = next(s for s in sent if s["type"] == EVT_ROUND_DONE)
     assert round_done["status"] == "needs_explanation"
+
+
+@pytest.mark.asyncio
+async def test_audio_chunk_without_streaming_asr_emits_error() -> None:
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-no-asr",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        lecture_agent_fn=_fake_lecture_agent_needs_explanation,
+    )
+    sent.clear()
+
+    await session.handle_event(
+        {"type": "audio_chunk", "seq": 0, "base64": _b64_pcm(0.2)},
+        send=send, recognize_fn=_fake_recognize,
+        lecture_agent_fn=_fake_lecture_agent_needs_explanation,
+    )
+
+    assert sent[-1]["type"] == EVT_ERROR
+    assert sent[-1]["message"] == "streaming_asr_not_configured"
 
 
 @pytest.mark.asyncio

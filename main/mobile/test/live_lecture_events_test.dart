@@ -85,10 +85,10 @@ void main() {
       final e = LiveServerEvent.fromJson({
         'type': 'warning',
         'sessionId': 'sess-1',
-        'message': 'asr_window_failed',
+        'message': 'minor_protocol_warning',
       });
       expect(e.type, LiveServerEventType.warning);
-      expect((e.payload as LiveWarningPayload).message, 'asr_window_failed');
+      expect((e.payload as LiveWarningPayload).message, 'minor_protocol_warning');
     });
 
     test('error fallback message when missing', () {

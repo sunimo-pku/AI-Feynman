@@ -116,7 +116,7 @@ class OcrStepGuess {
       latex: json['latex'] as String? ?? '',
       plainText: json['plainText'] as String? ?? '',
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
-      source: json['source'] as String? ?? 'fallback',
+      source: json['source'] as String? ?? 'empty',
       mode: json['mode'] as String? ?? 'rule',
     );
   }

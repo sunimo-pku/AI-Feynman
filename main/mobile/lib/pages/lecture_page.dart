@@ -93,7 +93,7 @@ const bool _debugOcr = bool.fromEnvironment('DEBUG_OCR');
 ///   * `permissionDenied`：麦克风权限被拒绝；
 ///   * `failed`：录音库 / WS 严重错误；
 ///
-/// **不**与 [_LectureStatus] 合并：后者描述非实时 fallback 路径的提交
+/// **不**与 [_LectureStatus] 合并：后者描述文字提交路径的提交
 /// 状态机；这两个状态机互相独立、可同时存在。
 enum _LiveStatus {
   idle,
@@ -1234,10 +1234,10 @@ class _LecturePageState extends State<LecturePage> {
               _history.length - _maxHistoryItems,
             );
           }
-          // 触发 TTS。失败由 LiveLectureService 自己写到 errors 流。
+          // 触发 TTS。失败由 LiveLectureService 写到 errors 流并显示为失败态。
           unawaited(_liveService.requestTts(
             doneTurn.text,
-            role: doneTurn.role.name,
+            role: agentRoleWire(doneTurn.role),
           ));
         }
         if (_activeStreamingTurnId == p.turnId) {
@@ -1283,11 +1283,13 @@ class _LecturePageState extends State<LecturePage> {
         _scrollToBottomSoon();
         break;
       case LiveServerEventType.warning:
-        // 静默：UI 上不弹红条；后端常用 warning 来传"asr_window_failed"
-        // 这种可忽略错误。开发者可以从日志 / debug overlay 看到。
+        // warning 只用于非致命协议提示；真实链路错误走 error。
         break;
       case LiveServerEventType.error:
         setState(() {
+          _liveStatus = _LiveStatus.failed;
+          _activeStreamingTurnId = '';
+          _ttsPlaying = false;
           _liveFailureReason =
               (event.payload as LiveErrorPayload).message;
         });
@@ -1300,6 +1302,9 @@ class _LecturePageState extends State<LecturePage> {
   void _onLiveServiceError(String message) {
     if (!mounted) return;
     setState(() {
+      _liveStatus = _LiveStatus.failed;
+      _activeStreamingTurnId = '';
+      _ttsPlaying = false;
       _liveFailureReason = message;
     });
   }
@@ -1711,23 +1716,22 @@ class _LecturePageState extends State<LecturePage> {
     );
   }
 
-  /// 实时面板的"用文字提交"兜底入口。
+  /// 实时面板的"用文字提交"入口。
   ///
-  /// 第九轮：当 WS / 麦克风 / 录音库出问题时，学生仍能通过传统的
-  /// `/lecture/submit` 路径完成本题。此入口会**强制**展示底部文字
+  /// 当 WS / 麦克风 / 录音库出问题时，学生可以手动改用
+  /// `/lecture/submit` 路径提交本题。此入口会**强制**展示底部文字
   /// 输入区（与 `_kShowLegacyTextInputByDefault` 等效），让学生
   /// 把口述写进去后点「提交讲解」。
   void _onFallbackTextSubmit() {
     if (_canvasController.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('先在白板上写一两行思路，再用文字提交兜底。'),
+          content: Text('先在白板上写一两行思路，再用文字提交。'),
         ),
       );
       return;
     }
-    // 直接走原有 _onSubmit：它会根据当前白板 / 文字输入区做一次提交，
-    // 失败时也能落回 `/lecture/submit` 的 fallback 文案。
+    // 直接走原有 _onSubmit：它会根据当前白板 / 文字输入区做一次提交。
     unawaited(_onSubmit());
   }
 

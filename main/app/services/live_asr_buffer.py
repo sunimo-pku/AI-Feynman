@@ -4,12 +4,9 @@
 
 - 每个 session 维护 base64 音频 chunk，drain 时先 decode 再合并，避免
   base64 padding 拼接错误。
-- 配置 `VOLC_ASR_STREAM_*` 时优先走 ``VolcStreamingAsrClient``，日志标记
-  ``asr_mode=stream``；未配置时显式回落窗口式 ASR，日志标记
-  ``asr_mode=window_fallback``。
-- ASR 调用失败时**不丢弃**窗口、不终止 session —— 把窗口推回缓冲下一轮再试，
-  并由 session 层把错误透传成 ``listening``+warning 状态（"AI 没听清，
-  继续讲就好"），保证体感不中断。
+- 配置 `VOLC_ASR_STREAM_*` 时走 ``VolcStreamingAsrClient``，日志标记
+  ``asr_mode=stream``；实时讲题不再把流式 ASR 失败降级成窗口式 ASR。
+- ASR 调用失败时由 session 层透传 ``error``，让前端显示真实故障。
 """
 
 from __future__ import annotations
@@ -218,8 +215,11 @@ class LiveAsrBuffer:
                     "mode": stream_result.mode,
                     "isFinal": stream_result.is_final,
                 }
-            logger.info("[asr-stream] asr_mode=window_fallback seconds=%.2f", seconds)
-            result = recognize_fn(b64, self.audio_format)
+            return {
+                "text": "",
+                "seconds": seconds,
+                "error": "streaming_asr_not_configured",
+            }
         except Exception as e:  # noqa: BLE001
             logger.exception("[asr-buffer] recognize_fn 抛异常：%s", e)
             return {"text": "", "seconds": seconds, "error": f"asr_exception:{e}"}

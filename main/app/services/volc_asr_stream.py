@@ -3,7 +3,7 @@
 新版控制台走 ``X-Api-Key`` 鉴权，WebSocket payload 使用火山专用二进制
 协议：4 字节 header + payload size + gzip payload。这里把实时讲题已经
 收到的 PCM 窗口送到 ``bigmodel_async``，拿到流式 ASR 文本；未配置流式
-资源或调用失败时由上层继续走窗口式 fallback。
+资源或调用失败时由上层显式报错。
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ class VolcStreamingAsrClient:
         """Recognize a drained PCM window through Volc streaming ASR."""
 
         if not self.enabled:
-            logger.info("[asr-stream] asr_mode=window_fallback reason=no_credentials")
+            logger.info("[asr-stream] disabled reason=no_credentials")
             return None
         try:
             audio_bytes = base64.b64decode(audio_base64)

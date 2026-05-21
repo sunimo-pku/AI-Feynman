@@ -262,7 +262,7 @@
 | 能力 | 状态 | App 可演示 | 工程落点 |
 |------|------|------------|----------|
 | 学生端讲题闭环 | 已落地 | 是 | Flutter `LecturePage` + FastAPI `/lecture/submit` / `/lecture/live` |
-| 真 LLM 流式 | 已落地 | 是 | `lecture_agent_stream.py` NDJSON 事件；异常走 `stream_fallback` |
+| 真 LLM 流式 | 已落地 | 是 | `lecture_agent_stream.py` NDJSON 事件；异常发送 WebSocket `error` |
 | 账号级本地隔离 | 已落地 | 是 | `AuthService.storageNamespace` + progress/review namespaced prefs |
 | 原生公式渲染 | 已落地 | 是 | `flutter_math_fork` 封装在 `FormulaText` |
 | 实时礼貌策略 | 已落地 | 是 | 写字 3s 内不追问、2.5s 提示、4s 收束、300ms 声音打断防抖 |

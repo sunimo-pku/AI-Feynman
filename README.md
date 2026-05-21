@@ -89,7 +89,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 健康检查：`http://127.0.0.1:8001/health`  
 API 文档：`http://127.0.0.1:8001/docs`
 
-#### 讲题接口（第五轮：本地多轮上下文 + LLM 追问 + Mock fallback；第六轮：completed 后端到端学习沉淀）
+#### 讲题接口（本地多轮上下文 + LLM 追问 + completed 后端到端学习沉淀）
 
 `POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解 / 回答追问」时调用。
 
@@ -113,16 +113,15 @@ API 文档：`http://127.0.0.1:8001/docs`
   （旗舰模型 `kimi-k2.6` + `thinking.type=disabled` 关思考模式，
   `temperature=0.6`、`response_format=json_object`、`max_retries=0`），
   让 Kimi 在单次调用内扮演小明 / 大雄 / 班长 / 李老师中的 1-2 个角色。
-  实测中位数 5-15s 即可返回；后端层 28s timeout + 自动回退 Mock 兜底。
+  实测中位数 5-15s 即可返回；后端层 28s timeout，失败直接返回 502。
 - LLM 返回的 JSON 经过严格校验：`role` 白名单、`text` 非空且 ≤180 中文字符、
   `highlightStepIds` 必须命中请求里真实存在的 `stepId`、`masteryDelta ∈ {-1, 0, 1}`。
   额外防御：第一轮若 LLM 直接返回 `completed` 会被强制改回 `needs_explanation`，
   避免学生还没解释就被收束。
-- **任意环节失败**（`KIMI_API_KEY` 缺失、LLM 超时、返回非 JSON、字段不合规、
-  history 格式异常）都会**自动回退** Mock 剧本：第 1 轮走第二轮固定追问、
-  第 2+ 轮（或带 history）走老师收束 `completed` 文案。**Demo 链路永不中断**,
-  后端日志会打 `source=fallback` 便于排查。
-- 全册 90 节均可提交讲题，并进入同一套多 Agent 追问链路。16.1 / 16.2 / 16.3 目前额外有本地知识库增强；其余章节同样由 LLM 根据题面、学生口述和手写步骤追问。只有在 LLM 不可用时，才会走 fallback 兜底文案。
+- **任意核心环节失败**（`KIMI_API_KEY` 缺失、LLM 超时、返回非 JSON、字段不合规）
+  都会显式报错；`/lecture/submit` 返回 502，实时讲题发送 WebSocket `error` 事件。
+  不再用 Mock 追问或老师通用文案伪装成功。
+- 全册 90 节均可提交讲题，并进入同一套多 Agent 追问链路。16.1 / 16.2 / 16.3 目前额外有本地知识库增强；其余章节同样由 LLM 根据题面、学生口述和手写步骤追问。
 - 旧客户端（不传 `history` / `roundIndex`）继续兼容：默认 `roundIndex=1`、`history=[]`。
 
 ```bash
@@ -153,8 +152,7 @@ curl -X POST http://127.0.0.1:8001/lecture/submit \
 `turns[*].role` 使用稳定英文枚举 `xiaoming / daxiong / monitor / teacher / system`，
 `turns[*].highlightStepIds` 一定是请求里 `stepId` 的子集。
 
-错误码：未知 `sectionId` → 404；空 `steps` → 400；字段缺失 / 类型不符 / `roundIndex < 1` → 422。
-LLM 失败**不**抛 HTTP 错误，统一在 200 响应内走 Mock fallback。
+错误码：空 `steps` → 400；字段缺失 / 类型不符 / `roundIndex < 1` → 422；LLM / TTS 等外部能力失败 → 502。
 
 ### Flutter 客户端（Mac 上执行）
 
@@ -362,7 +360,7 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
 
 第十一轮把 `planV1.md` 中 V1 缺口与 V2 能力统一落地，当前后端新增/扩展：
 
-- 真 LLM NDJSON 流式：`main/app/services/lecture_agent_stream.py`，`/lecture/live` 默认消费 `turn_start/delta/turn_done/round_meta`；失败时才走 `stream_fallback`。
+- 真 LLM NDJSON 流式：`main/app/services/lecture_agent_stream.py`，`/lecture/live` 默认消费 `turn_start/delta/turn_done/round_meta`；失败时发送 WebSocket `error`。
 - 学习数据：`GET/PATCH /learning/profile`、`POST /learning/reviews`、`POST /learning/progress/sync` 支持 `mode=merge|overwrite`。
 - 游戏化：`GET /gamification/me`、`POST /gamification/power/adjust`、`GET /leaderboard`、`GET /leaderboard/my-titles`。
 - 悬赏与晶石：`GET /bounty/today`、`POST /bounty/submit`、`GET /shop/catalog`、`POST /shop/redeem`、`GET /shop/orders`。

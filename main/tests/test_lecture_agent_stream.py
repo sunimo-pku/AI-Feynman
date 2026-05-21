@@ -1,23 +1,21 @@
 from __future__ import annotations
 
+import pytest
+
 from app.services import lecture_agent_stream
 from app.services import lecture_agent
 
 
-def test_stream_fallback_event_order(monkeypatch) -> None:
+def test_stream_requires_kimi_key(monkeypatch) -> None:
     monkeypatch.setattr("app.services.lecture_agent_stream.Config.KIMI_API_KEY", "")
-    events = list(
-        lecture_agent_stream.generate_turn_events(
+    with pytest.raises(lecture_agent.LectureAgentError):
+        list(lecture_agent_stream.generate_turn_events(
             section_id="pep-g8-down-s16-3",
             question_id="q",
             question_prompt="化简",
             student_speech_text="",
             steps=[{"stepId": "step_1", "strokeCount": 1}],
-        )
-    )
-    assert [e["type"] for e in events[:3]] == ["turn_start", "delta", "turn_done"]
-    assert events[-1]["type"] == "round_meta"
-    assert events[-1]["source"] == "stream_fallback"
+        ))
 
 
 def test_parse_ndjson_line_filters_highlight() -> None:
@@ -45,16 +43,13 @@ def test_non_radical_empty_input_prompt_is_generic() -> None:
     assert "函数关系" in prompt
 
 
-def test_fallback_turns_do_not_use_radical_script_for_ch16(monkeypatch) -> None:
+def test_lecture_agent_requires_kimi_key(monkeypatch) -> None:
     monkeypatch.setattr("app.services.lecture_agent.Config.KIMI_API_KEY", "")
-    payload = lecture_agent.generate_lecture_turns(
-        section_id="pep-g8-down-s16-1",
-        question_id="q-s16-1-001",
-        question_prompt=r"判断 $\sqrt{2x-6}$ 在实数范围内有意义时，$x$ 的取值范围。",
-        student_speech_text="",
-        steps=[{"stepId": "step_1", "strokeCount": 1}],
-    )
-    text = "\n".join(str(t.get("text") or "") for t in payload["turns"])
-    assert "被开方数" not in text
-    assert r"\sqrt" not in text
-    assert "2x-6" not in text
+    with pytest.raises(lecture_agent.LectureAgentError):
+        lecture_agent.generate_lecture_turns(
+            section_id="pep-g8-down-s16-1",
+            question_id="q-s16-1-001",
+            question_prompt=r"判断 $\sqrt{2x-6}$ 在实数范围内有意义时，$x$ 的取值范围。",
+            student_speech_text="",
+            steps=[{"stepId": "step_1", "strokeCount": 1}],
+        )

@@ -8,16 +8,15 @@
   双保险；解析时还要再做 markdown 去壳 + 字段白名单校验。
 - **highlightStepIds 必须命中真实 stepId**：模型最爱编造 `step_99`，路由层会把
   真实白名单注入 Prompt，service 还会再过滤一次，命中不到的直接落回画板首步。
-- **Fallback 优先于报错**：讲题链路不能因为 Kimi 抽风、JSON 抽风、网络抽风而中断；
-  解析失败一律回落到固定追问剧本，保留 `source=fallback` 日志便于排查。
+- **失败显式暴露**：Kimi 未配置、超时、返回非 JSON 或结构不合规时直接抛错；
+  上层返回 HTTP 502 或 WebSocket error，让调试时能看到真实故障。
 - **不持有路由层依赖**：本模块只产出 `dict`（与 Pydantic schema 对齐的字段），
   由 `routers/lecture.py` 负责套上 `LectureSubmitResponse`。这样 service 既可
   被路由调用，也方便后续单测。
 - **多轮上下文**：`generate_lecture_turns(...)` 接收 `round_index` 与 `history`。
   Prompt 用最近 6 条历史让 LLM 评估学生当前输入是
   「在回答上一轮 AI 追问」还是「重新讲一遍」，并据此决定 `status` 是
-  `needs_explanation` 还是 `completed`。Fallback 也按 `round_index` 切换文案，
-  避免学生连点两次都看到一模一样的兜底追问。
+  `needs_explanation` 还是 `completed`。
 """
 
 from __future__ import annotations
@@ -38,6 +37,10 @@ from app.services.kimi import kimi_client
 from app.services import knowledge_index
 
 logger = logging.getLogger(__name__)
+
+
+class LectureAgentError(RuntimeError):
+    """Raised when the LLM lecture agent cannot produce a valid turn."""
 
 
 # Kimi 旗舰模型 K2.6 + **关闭思考模式**：
@@ -542,74 +545,6 @@ def _coerce_mastery_delta(raw_value: Any) -> int:
 
 
 # ---------------------------------------------------------------------------
-# LLM 不可用时的兜底追问剧本
-# ---------------------------------------------------------------------------
-
-
-def _fallback_turns(
-    _section_id: str,
-    _question_prompt: str,
-    step_ids: list[str],
-    *,
-    round_index: int = 1,
-    has_history: bool = False,
-) -> list[dict[str, Any]]:
-    """LLM 失败时的兜底剧本。
-
-    作为「讲题链路不中断」的安全网，会按 `round_index` 输出不同文案：
-      * `round_index <= 1` 或没有历史：保持原第一轮固定追问。
-      * `round_index >= 2`：切到「老师顺势收束 + 让学生确认」的兜底文案，
-        避免学生连点两次都被同样的话追问。
-
-    Fallback 的 status 仍由调用方（`generate_lecture_turns`）决定 ——
-    多轮 fallback 默认改为 `completed`，让重复点击的体感更平滑。
-    """
-
-    first_step = step_ids[0] if step_ids else "step_1"
-    mid_step = step_ids[len(step_ids) // 2] if step_ids else first_step
-    last_step = step_ids[-1] if step_ids else first_step
-
-    multi_round = round_index >= 2 or has_history
-    if multi_round:
-        # 多轮兜底：老师做温和收束，避免重复第一轮原问题。
-        return [
-            {
-                "turn_id": "turn_1",
-                "role": "teacher",
-                "display_name": "李老师",
-                "text": (
-                    "嗯，从你刚才补的解释看，思路已经顺多了。我们这一题先到这里，"
-                    "下次遇到类似的题，记得把「为什么这一步可以这么做」也念出来。"
-                ),
-                "highlight_step_ids": [mid_step],
-            }
-        ]
-
-    return [
-        {
-            "turn_id": "turn_1",
-            "role": "xiaoming",
-            "display_name": "小明",
-            "text": (
-                "我想先确认你刚才这一步：它为什么能从上一行推出？"
-                "请结合题目条件，说出用到的定义、公式或图形关系。"
-            ),
-            "highlight_step_ids": [first_step],
-        },
-        {
-            "turn_id": "turn_2",
-            "role": "teacher",
-            "display_name": "李老师",
-            "text": (
-                "我们先把这道题的关键步骤讲扎实：已知条件是什么、"
-                "这一步依据是什么、计算或推理有没有漏检查。"
-            ),
-            "highlight_step_ids": [last_step],
-        },
-    ]
-
-
-# ---------------------------------------------------------------------------
 # 对外入口
 # ---------------------------------------------------------------------------
 
@@ -641,7 +576,7 @@ def generate_lecture_turns(
             },
             ...
         ],
-        "source": "llm" | "fallback",
+        "source": "llm",
     }
     ```
 
@@ -658,33 +593,16 @@ def generate_lecture_turns(
 
     cleaned_history = _sanitize_history(history)
     has_history = bool(cleaned_history)
-    # round_index 防御：< 1 视为 1，避免上游打错数字让 fallback 文案错乱。
+    # round_index 防御：< 1 视为 1，避免上游打错数字污染多轮判断。
     safe_round = max(1, int(round_index or 1))
 
-    def _fallback_payload() -> dict[str, Any]:
-        # 多轮 fallback：第 2+ 轮默认收束，避免重复同一组追问。
-        is_multi = safe_round >= 2 or has_history
-        return {
-            "status": "completed" if is_multi else "needs_explanation",
-            "mastery_delta": 1 if is_multi else 0,
-            "turns": _fallback_turns(
-                section_id,
-                question_prompt,
-                allowed_step_ids,
-                round_index=safe_round,
-                has_history=has_history,
-            ),
-            "source": "fallback",
-        }
-
-    # KIMI_API_KEY 缺失时直接走 fallback，省一次失败请求。
     if not Config.KIMI_API_KEY or Config.KIMI_API_KEY == "your_kimi_api_key_here":
-        logger.info(
-            "[lecture-agent] KIMI_API_KEY 未配置，使用 fallback section=%s round=%d",
+        logger.error(
+            "[lecture-agent] KIMI_API_KEY 未配置 section=%s round=%d",
             section_id,
             safe_round,
         )
-        return _fallback_payload()
+        raise LectureAgentError("KIMI_API_KEY is not configured")
 
     user_prompt = _build_user_prompt(
         section_id=section_id,
@@ -706,10 +624,9 @@ def generate_lecture_turns(
     #   - 用 `kimi-k2.6` 旗舰模型，靠 `extra_body.thinking.type=disabled` 关思考。
     #   - `response_format={"type":"json_object"}` 双保险地约束 LLM 输出 JSON。
     #   - `timeout` 走 OpenAI SDK 自带的 per-request 超时（秒），超时即抛
-    #     `APITimeoutError`，被外层 `except Exception` 接住后回落 fallback。
+    #     `APITimeoutError`，被外层 `except Exception` 接住后显式返回错误。
     #   - `.with_options(max_retries=0)`：OpenAI Python SDK 默认遇 timeout /
-    #     5xx 会自动 retry 2 次，对我们的"超时即回退"语义是反作用力 ——
-    #     一次 25s 超时会被 SDK 翻成 50-75s 真实卡顿，前端早就报错了。
+    #     5xx 会自动 retry 2 次，会把一次 25s 超时翻成 50-75s 真实卡顿。
     #     显式关掉，让超时只发生一次。
     try:
         resp = kimi_client.with_options(max_retries=0).chat.completions.create(
@@ -724,26 +641,25 @@ def generate_lecture_turns(
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
     except Exception as e:  # noqa: BLE001 — Moonshot SDK 可能抛任意异常
         logger.exception("[lecture-agent] LLM 调用异常：%s", e)
-        return _fallback_payload()
+        raise LectureAgentError(f"LLM request failed: {e}") from e
 
     turns = _parse_and_validate(raw or "", allowed_step_ids=allowed_step_ids)
     if not turns:
         logger.warning(
-            "[lecture-agent] 解析/校验失败，使用 fallback section=%s raw_head=%r",
+            "[lecture-agent] 解析/校验失败 section=%s raw_head=%r",
             section_id,
             (raw or "")[:120],
         )
-        return _fallback_payload()
+        raise LectureAgentError("LLM response could not be parsed into valid turns")
 
-    # 现在再次尝试读 status/masteryDelta；解析失败时已经在上面 fallback 了，
-    # 所以这里 raw 一定是合法 JSON 字符串。
+    # 现在再次尝试读 status/masteryDelta；若失败则显式报错。
     payload_obj: dict[str, Any]
     try:
         payload_obj = json.loads(_strip_markdown_fence(raw))
         if not isinstance(payload_obj, dict):
             payload_obj = {}
-    except json.JSONDecodeError:
-        payload_obj = {}
+    except json.JSONDecodeError as e:
+        raise LectureAgentError("LLM response JSON was invalid") from e
 
     final_status = _coerce_status(payload_obj.get("status"))
     final_delta = _coerce_mastery_delta(payload_obj.get("masteryDelta"))

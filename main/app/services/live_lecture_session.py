@@ -11,9 +11,8 @@
   汉字一条，给前端"逐步显示"的体感，即便底层 LLM 不是真正 token 流）；
 - 在收到 ``student_interrupt`` 时打断本轮 thinking / TTS（state 标志即可，
   TTS 播放由前端控制；后端只负责不再继续推送当前 turn 的剩余 delta）；
-- 任意阶段失败时**绝不**让 session 崩溃：只把 warning 通过 ``listening``
-  事件透传，让前端继续 listening、复用已有非实时 fallback（前端层面
-  可以在 WS 失败时回落到 ``POST /lecture/submit``）。
+- 任意核心阶段失败时发送 ``error`` 事件，不再静默降级；warning 只用于
+  非致命协议提示。
 
 并发模型：本模块只暴露 ``async`` 方法。路由层把每条 WS 连接放进一个
 独立 asyncio task，每个 session 内部所有 handler 串行；ASR / LLM 这种
@@ -76,7 +75,7 @@ _INTER_TURN_DELAY_MS = 80
 _INTER_DELTA_DELAY_MS = 40
 
 # 一次 thinking → 第一条 delta 之间最少给前端展示"AI 正在想问题"的时长，
-# 防御 fallback 路径下 LLM 已经返回但前端来不及切换状态。
+# 防御 LLM 很快返回时前端来不及看见 thinking 状态。
 _MIN_THINKING_VISIBLE_MS = 240
 
 # 一个 session 内 history 最多保留多少条；与 lecture_agent._HISTORY_KEEP_LAST 同步。
@@ -256,18 +255,9 @@ class LiveLectureSession:
                 await self._handle_asr_result(result.__dict__, send=send)
                 return
             if result is not None and result.error:
-                logger.warning(
-                    "[live-session] streaming ASR failed session=%s err=%s; using fallback buffer",
-                    self.session_id,
-                    result.error,
-                )
-        self.asr_buffer.push(
-            seq=seq,
-            base64_data=base64_data,
-            sample_rate=sample_rate,
-        )
-        # 累计满一个窗口就 flush；不阻塞客户端继续发 chunk。
-        await self._maybe_flush_asr(send=send, recognize_fn=recognize_fn)
+                await self._send_error(send, f"streaming_asr_failed:{result.error}")
+                return
+        await self._send_error(send, "streaming_asr_not_configured")
 
     async def _on_ink_snapshot(
         self,
@@ -366,20 +356,11 @@ class LiveLectureSession:
                 response = await self._invoke_lecture_agent(lecture_agent_fn)
         except Exception as e:  # noqa: BLE001
             logger.exception("[live-session] lecture_agent 失败：%s", e)
-            await self._safe_send(send, {
-                "type": EVT_WARNING,
-                "sessionId": self.session_id,
-                "message": "agent_unavailable",
-            })
+            await self._send_error(send, f"lecture_agent_failed:{e}")
             self.is_thinking = False
-            await self._safe_send(send, {
-                "type": EVT_LISTENING,
-                "sessionId": self.session_id,
-            })
             return
 
-        # 保证 thinking 状态至少可见一段时间，避免 fallback 路径下
-        # 前端 thinking → done 切换过快显得"假"。
+        # 保证 thinking 状态至少可见一段时间，避免 thinking → done 切换过快。
         elapsed_ms = time.monotonic() * 1000 - thinking_start_ms
         if elapsed_ms < _MIN_THINKING_VISIBLE_MS:
             await asyncio.sleep((_MIN_THINKING_VISIBLE_MS - elapsed_ms) / 1000)
@@ -440,17 +421,8 @@ class LiveLectureSession:
             if result is not None:
                 await self._handle_asr_result(result.__dict__, send=send)
             return
-        if not self.asr_buffer.should_flush(force=force):
-            return
-        # ASR 是阻塞 I/O，丢到 threadpool 跑。
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: self.asr_buffer.flush_to_text(recognize_fn, force=force),
-        )
-        if result is None:
-            return
-        await self._handle_asr_result(result, send=send)
+        if force:
+            await self._send_error(send, "streaming_asr_not_configured")
 
     async def _handle_asr_result(
         self,
@@ -460,15 +432,11 @@ class LiveLectureSession:
     ) -> None:
         if result.get("error"):
             logger.warning(
-                "[live-session] ASR window failed session=%s err=%s",
+                "[live-session] ASR failed session=%s err=%s",
                 self.session_id,
                 result.get("error"),
             )
-            await self._safe_send(send, {
-                "type": EVT_WARNING,
-                "sessionId": self.session_id,
-                "message": "asr_window_failed",
-            })
+            await self._send_error(send, f"asr_failed:{result.get('error')}")
             return
         text = (result.get("text") or "").strip()
         if not text:
@@ -675,6 +643,17 @@ class LiveLectureSession:
                 payload.get("type"),
                 e,
             )
+
+    async def _send_error(
+        self,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+        message: str,
+    ) -> None:
+        await self._safe_send(send, {
+            "type": EVT_ERROR,
+            "sessionId": self.session_id,
+            "message": message,
+        })
 
 
 def _split_text_into_deltas(text: str, chunk_chars: int) -> list[str]:

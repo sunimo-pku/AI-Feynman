@@ -9,7 +9,7 @@ from app.services.volc_asr_stream import (
 )
 
 
-def test_streaming_asr_reports_fallback_when_unconfigured(monkeypatch) -> None:
+def test_streaming_asr_returns_none_when_unconfigured(monkeypatch) -> None:
     monkeypatch.setattr("app.services.volc_asr_stream.Config.VOLC_ASR_STREAM_API_KEY", "")
     monkeypatch.setattr("app.services.volc_asr_stream.Config.VOLC_ASR_STREAM_RESOURCE_ID", "")
     client = VolcStreamingAsrClient()

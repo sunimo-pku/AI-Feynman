@@ -307,7 +307,7 @@ def test_ocr_ink_returns_latex_for_each_step(client: TestClient) -> None:
     assert "根号" in body["steps"][0]["plainText"]
 
 
-def test_ocr_ink_template_fallback_without_reference(client: TestClient) -> None:
+def test_ocr_ink_without_reference_does_not_invent_latex(client: TestClient) -> None:
     resp = client.post(
         "/ocr/ink",
         json={
@@ -322,8 +322,9 @@ def test_ocr_ink_template_fallback_without_reference(client: TestClient) -> None
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["steps"]) == 1
-    assert body["steps"][0]["latex"]  # template 兜底
-    assert body["steps"][0]["source"] == "template"
+    assert body["steps"][0]["latex"] == ""
+    assert body["steps"][0]["plainText"] == ""
+    assert body["steps"][0]["source"] == "empty"
 
 
 def test_ocr_hwr_without_reference_does_not_invent_radical(
@@ -350,17 +351,41 @@ def test_ocr_hwr_without_reference_does_not_invent_radical(
     assert body["steps"][0]["confidence"] == 0.0
 
 
+def test_tts_error_returns_502(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.routers.tts.synthesize",
+        lambda _text, _speaker: {"error": "tts failed"},
+    )
+    resp = client.post("/tts", json={"text": "测试", "role": "teacher"})
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "tts failed"
+
+
 # ------------------------------------------------------------------ #
 # /lecture/submit + auth → progress 自动落库
 # ------------------------------------------------------------------ #
 
 
-def test_lecture_submit_with_auth_persists_progress(client: TestClient) -> None:
+def test_lecture_submit_with_auth_persists_progress(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.routers.lecture.generate_lecture_turns",
+        lambda **_kwargs: {
+            "status": "completed",
+            "mastery_delta": 1,
+            "turns": [
+                {
+                    "turn_id": "turn_1",
+                    "role": "teacher",
+                    "display_name": "李老师",
+                    "text": "这次解释清楚了。",
+                    "highlight_step_ids": ["step_1"],
+                }
+            ],
+            "source": "llm",
+        },
+    )
     token = _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}
-    # 提交一次：让后端 LLM fallback 写一条 LearningProgress
-    # （第二轮起 fallback `status` 由 service 决定，多轮场景才会 completed；
-    # 这里手动模拟「学生第二轮已经答上来」由 round_index=2）
     resp = client.post(
         "/lecture/submit",
         headers=headers,
@@ -404,18 +429,16 @@ def test_lecture_submit_with_auth_persists_progress(client: TestClient) -> None:
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    # 多轮 fallback 默认走 completed
-    assert body["status"] in ("completed", "needs_explanation")
-    # 进度查询应当至少有一行（即便 LLM fallback 也会写）
-    if body["status"] == "completed":
-        resp_p = client.get("/learning/progress", headers=headers)
-        assert resp_p.status_code == 200
-        rows = resp_p.json()
-        section_ids = [r["sectionId"] for r in rows]
-        assert "pep-g8-down-s16-3" in section_ids
+    assert body["status"] == "completed"
+    resp_p = client.get("/learning/progress", headers=headers)
+    assert resp_p.status_code == 200
+    rows = resp_p.json()
+    section_ids = [r["sectionId"] for r in rows]
+    assert "pep-g8-down-s16-3" in section_ids
 
 
-def test_lecture_submit_anonymous_still_works(client: TestClient) -> None:
+def test_lecture_submit_without_llm_key_returns_502(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr("app.services.lecture_agent.Config.KIMI_API_KEY", "")
     resp = client.post(
         "/lecture/submit",
         json={
@@ -436,4 +459,5 @@ def test_lecture_submit_anonymous_still_works(client: TestClient) -> None:
             "history": [],
         },
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 502
+    assert "Lecture agent failed" in resp.json()["detail"]
