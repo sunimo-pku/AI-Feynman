@@ -33,6 +33,7 @@
 │   ├── AI_CODE_AGENT_BRIEF_ROUND5.md # 第五轮多轮追问上下文闭环执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND6.md # 第六轮本地掌握度与总结闭环执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND7.md # 第七轮本地小题库与下一题轮换执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND8.md # 第八轮本地讲题回顾与错因卡片执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
@@ -194,6 +195,34 @@ JSON 容错、`masteryScore` 加分 / 封顶 / fallback 加 8 分、跨章节独
 - 单元测试 `main/mobile/test/mock_lecture_repository_test.dart`：15 个用例覆盖
   题库结构（每节 3 题、难度递增、tags 数量、questionId 唯一）、modulo 循环
   （正/负 index）、未知 section 兜底、`difficultyLabel` 翻译、各小节题面关键短语。
+
+#### 本地讲题回顾与错因卡片（第八轮新增）
+
+- 每当后端返回 `status: "completed"` 且第六轮 progress 写入成功 / 完成，讲题页：
+  - 落地一条 `LectureReviewRecord` 到 `shared_preferences`
+    （key：`ai_feynman.lecture_reviews.v1`）。
+  - 字段包含：`id` / `sectionId` / `questionId` / `questionPrompt` / `difficulty` /
+    `tags` / `completedAt` / `summary` / `agentHighlights`（最多 3 条 AI 追问摘要）/
+    `cautionPoints`（最多 3 条本地规则待注意点）。
+  - `cautionPoints` 由 `ReviewRepository.derivCautionPoints` 按题目标签生成，
+    **不**再调一次 LLM；命中规则示例：含「合并同类项」→「先化成最简二次根式，
+    再合并同类项系数」；未命中任何规则时给「回看高亮步骤，确认每一步为什么成立」。
+- 容量控制：全局最多保留最近 30 条；单小节回顾页最多展示最近 10 条。
+- 首页可练习小节 pill 旁新增「回顾」入口（湖青色 = 有记录，浅灰色 = 仍可点
+  但只看到空状态文案）。
+- 新增回顾页 (`pages/review_page.dart`)：按时间倒序展示当前小节最近完成的题目，
+  卡片包含题目（LaTeX）+ 难度 chip + 标签 chip + 完成时间 + 本题总结 +
+  AI 追问摘要 + 待注意点 + 「再讲这题」按钮。
+- 「再讲这题」回到 `LecturePage` 并通过 `initialQuestionId` 定位到对应题目；
+  题库找不到（极端情况：老 review 残留 / 题库重命名）时回落到本节第 1 题。
+  画板、`history`、`turns`、`_round` 全新；progress / review 不被擦除。
+- 仓库 `ReviewRepository` 基于 `ChangeNotifier`，首页徽标与回顾页都订阅它，
+  写入新记录后自动重建。任何读 / 写失败只在 `developer.log` 记录，不抛回 UI;
+  按 brief「写入失败只打 log，不影响 completed 体验」口径执行。
+- 单元测试 `main/mobile/test/review_repository_test.dart`：19 个用例覆盖
+  encode/decode 字段完整、容错（坏字段 / 负 difficulty / 非 list payload）、
+  倒序排序、全局 30 条裁剪、单小节 10 条上限、按 sectionId 过滤、`derivCautionPoints`
+  规则命中 / 去重 / 3 条上限 / 兜底文案、模拟 App 重启后仍能读出。
 
 ## 环境配置
 

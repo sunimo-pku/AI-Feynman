@@ -6,8 +6,10 @@ import '../data/curriculum_models.dart';
 import '../data/lecture_models.dart';
 import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
+import '../data/review_models.dart';
 import '../services/lecture_service.dart';
 import '../services/progress_repository.dart';
+import '../services/review_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/agent_message_bubble.dart';
 import '../widgets/formula_text.dart';
@@ -32,9 +34,22 @@ class LecturePage extends StatefulWidget {
   const LecturePage({
     super.key,
     required this.section,
+    this.initialQuestionId,
+    this.initialQuestionIndex,
   });
 
   final CurriculumSection section;
+
+  /// 第八轮：可选的初始 `questionId`，用于「再讲这题」回到指定题目。
+  ///
+  /// 命中题库时优先于 [initialQuestionIndex]；未命中（题库被改 / 老 review
+  /// 残留）时回落到 [initialQuestionIndex]，再不行回落到第 1 题。
+  final String? initialQuestionId;
+
+  /// 第八轮：可选的初始题目索引（0 起算）。当 [initialQuestionId] 未提供
+  /// 或未命中时使用。允许任意整数，超出范围时按 modulo 循环（与第七轮
+  /// `MockLectureRepository.questionForSection` 的 index 行为一致）。
+  final int? initialQuestionIndex;
 
   @override
   State<LecturePage> createState() => _LecturePageState();
@@ -105,6 +120,14 @@ class _LecturePageState extends State<LecturePage> {
   /// 本次 completed 的小结文案（前端拼装：最后一条 teacher / AI turn）。
   String _lastSummary = '';
 
+  /// 第八轮：本轮 completed 是否已经写过 review 记录。
+  ///
+  /// `_persistCompletion` 只会在 `_sendRequest` 成功分支里被调用，理论上不会
+  /// 在 setState 重建里被重复触发；这个 flag 是双保险：万一未来代码改成
+  /// 「在 listener 里轮询 completed」也不至于一秒内连续写多条 review 记录。
+  /// 在 [_resetTransientState]（下一题 / 再讲一遍）里被重置为 false。
+  bool _reviewSavedForCurrentRound = false;
+
   /// 本地历史最多保留多少条。后端也会再做一次硬上限。
   static const int _maxHistoryItems = 6;
 
@@ -116,12 +139,33 @@ class _LecturePageState extends State<LecturePage> {
     // 是不可变 const list，多次调用 questionsForSection 也安全，但保留
     // 一份快照能让讲题页所有 sub-widget 看到的题序保持一致。
     _questions = repo.questionsForSection(widget.section.id);
-    _questionIndex = 0;
+    // 第八轮：优先用 widget.initialQuestionId 定位（来自回顾页「再讲这题」）,
+    // 命中失败时回落 widget.initialQuestionIndex，再不行回落第 1 题。
+    _questionIndex = _resolveInitialQuestionIndex();
     _question = _questions.isEmpty
         ? repo.questionForSection(widget.section.id)
         : _questions[_questionIndex];
     _turns.add(_introTurn());
     _canvasController.addListener(_onCanvasChanged);
+  }
+
+  /// 解析 [LecturePage.initialQuestionId] / [LecturePage.initialQuestionIndex]
+  /// 为合法的 `_questionIndex`（已经做过 modulo 与空题库防御）。
+  ///
+  /// 第八轮新增。被 [initState] 一次性调用，并不暴露给后续切题逻辑。
+  int _resolveInitialQuestionIndex() {
+    if (_questions.isEmpty) return 0;
+    final wantedId = widget.initialQuestionId;
+    if (wantedId != null && wantedId.isNotEmpty) {
+      for (var i = 0; i < _questions.length; i++) {
+        if (_questions[i].questionId == wantedId) return i;
+      }
+    }
+    final raw = widget.initialQuestionIndex;
+    if (raw == null) return 0;
+    // 与第七轮 `MockLectureRepository.questionForSection` 同口径：负数 /
+    // 越界都走 modulo，不抛异常 —— Dart 的 `%` 对负数返回非负余数。
+    return raw % _questions.length;
   }
 
   @override
@@ -459,6 +503,84 @@ class _LecturePageState extends State<LecturePage> {
       _lastMasteryGain = result.gained;
       _lastSummary = summary;
     });
+    // 第八轮：progress 落库（成功或失败都已经走完）之后再写 review 记录。
+    // 仓库内部已经吞掉所有写入异常，这里不需要 try/catch；按 brief 第 8
+    // 节「如果保存 review 失败，掌握度仍应正常更新」—— progress 已先更新。
+    if (!_reviewSavedForCurrentRound) {
+      _reviewSavedForCurrentRound = true;
+      await _persistReview(response: response, summary: summary);
+    }
+  }
+
+  /// 第八轮：保存本题的回顾记录。
+  ///
+  /// 设计：
+  ///   * `agentHighlights` 从「本轮 response.turns + 已有 _turns 历史」按
+  ///     倒序找最近 1-3 条非 system 的 AI turn，截短到约 80 字，避免回顾
+  ///     卡片被一段长追问撑成多行；
+  ///   * `cautionPoints` 调用 `ReviewRepository.derivCautionPoints` —— 纯
+  ///     标签规则，不引入 LLM；
+  ///   * `id` 用 `'$questionId-$millis'`，便于人眼对账。
+  Future<void> _persistReview({
+    required LectureSubmitResponse response,
+    required String summary,
+  }) async {
+    final highlights = _composeAgentHighlights(response.turns);
+    final cautions = ReviewRepository.derivCautionPoints(
+      tags: _question.tags,
+      summary: summary,
+    );
+    final now = DateTime.now();
+    final record = LectureReviewRecord(
+      id: '${_question.questionId}-${now.millisecondsSinceEpoch}',
+      sectionId: widget.section.id,
+      questionId: _question.questionId,
+      questionPrompt: _question.prompt,
+      difficulty: _question.difficulty,
+      tags: List<String>.unmodifiable(_question.tags),
+      completedAt: now,
+      summary: summary,
+      agentHighlights: highlights,
+      cautionPoints: cautions,
+    );
+    await ReviewRepository.instance.append(record);
+  }
+
+  /// 从本轮 + 历史 turns 中抽取 1-3 条「AI 同伴聊了什么」短文本。
+  ///
+  /// 规则：
+  ///   * 倒序遍历，先看本轮 `latestTurns`，再看页面已有的 `_turns`；
+  ///   * 过滤 system / 空文本；
+  ///   * 去重（按整段文本）；
+  ///   * 每条截断到 80 字以内，末尾加省略号；
+  ///   * 最多保留 3 条 —— 与回顾卡片设计一致，避免拥挤。
+  List<String> _composeAgentHighlights(List<AgentTurn> latestTurns) {
+    const int maxItems = 3;
+    const int maxChars = 80;
+    final out = <String>[];
+
+    void consider(AgentTurn t) {
+      if (out.length >= maxItems) return;
+      if (t.role == AgentRole.system) return;
+      final text = t.text.trim();
+      if (text.isEmpty) return;
+      final clipped =
+          text.length <= maxChars ? text : '${text.substring(0, maxChars)}…';
+      if (out.contains(clipped)) return;
+      out.add(clipped);
+    }
+
+    for (final t in latestTurns.reversed) {
+      consider(t);
+      if (out.length >= maxItems) break;
+    }
+    if (out.length < maxItems) {
+      for (final t in _turns.reversed) {
+        consider(t);
+        if (out.length >= maxItems) break;
+      }
+    }
+    return List.unmodifiable(out);
   }
 
   /// 优先级：本轮最后一条 teacher turn → 本轮最后一条 AI turn →
@@ -543,6 +665,9 @@ class _LecturePageState extends State<LecturePage> {
     _sectionProgressAfterCompletion = null;
     _lastMasteryGain = 0;
     _lastSummary = '';
+    // 第八轮：进入新一轮后允许再次保存 review 记录（再讲一遍同题 / 下一题
+    // 都属于「新一轮」语义；不重置会导致连续两题只留下第一题的回顾）。
+    _reviewSavedForCurrentRound = false;
   }
 
   /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题

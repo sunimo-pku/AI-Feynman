@@ -6,8 +6,10 @@ import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
 import '../services/api_service.dart';
 import '../services/progress_repository.dart';
+import '../services/review_repository.dart';
 import '../theme/app_theme.dart';
 import 'lecture_page.dart';
+import 'review_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -30,6 +32,9 @@ class _HomePageState extends State<HomePage> {
     // 仓库本身是 ChangeNotifier，加载成功后 _ProgressAwareSectionPill 会
     // 自动重建展示「已完成 N 轮 · 掌握度 X/100」。
     ProgressRepository.instance.load();
+    // 第八轮：预热回顾仓库，让小节 pill 上的「回顾」入口能立即反映「有/无
+    // 历史记录」。失败同样被仓库吞掉打 log，不阻塞首页。
+    ReviewRepository.instance.load();
   }
 
   Future<void> _checkApi() async {
@@ -56,6 +61,18 @@ class _HomePageState extends State<HomePage> {
         content: Text('该章节内容制作中，请先体验「八年级下册 · 第十六章 二次根式」。'),
       ),
     );
+  }
+
+  /// 第八轮：从首页进入指定小节的讲题回顾页。
+  ///
+  /// 只对 `available` 的小节开放（未上线小节既没法练习也没法回顾，避免
+  /// 在置灰 pill 旁边放一个能点进去的「回顾」按钮造成迷惑）。
+  Future<void> _onSectionReview(CurriculumSection section) async {
+    if (!section.isAvailable) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ReviewPage(section: section)),
+    );
+    if (mounted) setState(() {});
   }
 
   @override
@@ -90,7 +107,11 @@ class _HomePageState extends State<HomePage> {
                 ...curriculum.books.map(
                   (book) => Padding(
                     padding: const EdgeInsets.only(bottom: AppSpacing.itemGap),
-                    child: _BookCard(book: book, onSectionTap: _onSectionTap),
+                    child: _BookCard(
+                      book: book,
+                      onSectionTap: _onSectionTap,
+                      onSectionReview: _onSectionReview,
+                    ),
                   ),
                 ),
               ],
@@ -221,10 +242,12 @@ class _BookCard extends StatelessWidget {
   const _BookCard({
     required this.book,
     required this.onSectionTap,
+    required this.onSectionReview,
   });
 
   final CurriculumBook book;
   final ValueChanged<CurriculumSection> onSectionTap;
+  final ValueChanged<CurriculumSection> onSectionReview;
 
   @override
   Widget build(BuildContext context) {
@@ -256,7 +279,11 @@ class _BookCard extends StatelessWidget {
             ),
           ),
           children: book.chapters.map((chapter) {
-            return _ChapterBlock(chapter: chapter, onSectionTap: onSectionTap);
+            return _ChapterBlock(
+              chapter: chapter,
+              onSectionTap: onSectionTap,
+              onSectionReview: onSectionReview,
+            );
           }).toList(),
         ),
       ),
@@ -268,10 +295,12 @@ class _ChapterBlock extends StatelessWidget {
   const _ChapterBlock({
     required this.chapter,
     required this.onSectionTap,
+    required this.onSectionReview,
   });
 
   final CurriculumChapter chapter;
   final ValueChanged<CurriculumSection> onSectionTap;
+  final ValueChanged<CurriculumSection> onSectionReview;
 
   @override
   Widget build(BuildContext context) {
@@ -303,7 +332,11 @@ class _ChapterBlock extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: chapter.sections
-                .map((s) => _SectionPill(section: s, onTap: onSectionTap))
+                .map((s) => _SectionPill(
+                      section: s,
+                      onTap: onSectionTap,
+                      onReview: onSectionReview,
+                    ))
                 .toList(),
           ),
         ],
@@ -316,10 +349,12 @@ class _SectionPill extends StatelessWidget {
   const _SectionPill({
     required this.section,
     required this.onTap,
+    required this.onReview,
   });
 
   final CurriculumSection section;
   final ValueChanged<CurriculumSection> onTap;
+  final ValueChanged<CurriculumSection> onReview;
 
   @override
   Widget build(BuildContext context) {
@@ -329,8 +364,14 @@ class _SectionPill extends StatelessWidget {
     if (!available) {
       return _buildPill(context, progress: null);
     }
+    // 第八轮：同时订阅 ReviewRepository，让「回顾」入口在写入新记录后
+    // 立即从灰色变为可点击。两个 ChangeNotifier 用 Listenable.merge 合并,
+    // 避免嵌套两层 AnimatedBuilder。
     return AnimatedBuilder(
-      animation: ProgressRepository.instance,
+      animation: Listenable.merge([
+        ProgressRepository.instance,
+        ReviewRepository.instance,
+      ]),
       builder: (context, _) {
         final progress =
             ProgressRepository.instance.progressFor(section.id);
@@ -350,7 +391,11 @@ class _SectionPill extends StatelessWidget {
         : AppPalette.outline;
     final textColor = available ? AppPalette.primary : AppPalette.comingSoon;
 
-    return ConstrainedBox(
+    // 第八轮：仅可练习小节才挂回顾入口；未上线小节既没法练习也没法回顾。
+    final hasReview = available &&
+        ReviewRepository.instance.hasRecordsForSection(section.id);
+
+    final pill = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: AppSpacing.touchMin),
       child: Material(
         color: Colors.transparent,
@@ -392,6 +437,86 @@ class _SectionPill extends StatelessWidget {
                   available: available,
                   progress: progress,
                   sectionId: section.id,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (!available) return pill;
+
+    // 第八轮：在 pill 旁加一个小入口「回顾」。
+    //   * 仍没有任何回顾记录时仍可点（学生需要看到入口才会去补练），但视觉
+    //     置灰 + 副文案；
+    //   * 至少有一条时高亮成可点击的湖青色，并展示总条数。
+    //
+    // 用 Row 而不是 Stack：触控热区分离，回顾按钮不会被 pill 的 InkWell
+    // 误吸走点击；同时 pill 自身仍然占满主行宽度便于学生主操作。
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        pill,
+        const SizedBox(width: 6),
+        _SectionReviewButton(
+          section: section,
+          hasReview: hasReview,
+          onReview: onReview,
+        ),
+      ],
+    );
+  }
+}
+
+/// 小节 pill 旁的「回顾」入口。
+///
+/// 第八轮新增。
+///   * 没有任何回顾记录时显示「回顾」+ 浅描边，仍可点（学生只是看到空状态）；
+///   * 至少一条时附带数量 chip，文字变 primaryAccent，告诉学生有内容可看。
+class _SectionReviewButton extends StatelessWidget {
+  const _SectionReviewButton({
+    required this.section,
+    required this.hasReview,
+    required this.onReview,
+  });
+
+  final CurriculumSection section;
+  final bool hasReview;
+  final ValueChanged<CurriculumSection> onReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        hasReview ? AppPalette.primaryAccent : AppPalette.textSecondary;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppSpacing.touchMin),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: AppRadius.buttonR,
+          onTap: () => onReview(section),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: hasReview ? 0.10 : 0.05),
+              borderRadius: AppRadius.buttonR,
+              border: Border.all(
+                color: color.withValues(alpha: hasReview ? 0.4 : 0.22),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.history_edu_outlined, size: 16, color: color),
+                const SizedBox(width: 4),
+                Text(
+                  '回顾',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),

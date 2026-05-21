@@ -337,6 +337,65 @@ git push origin main
   `/opt/flutter/bin/cache/dart-sdk/bin/dart analyze lib/`，几秒钟出结果，
   不需要 flutter 壳子的锁，也不会被 `pub get` 的网络往返拖死。
 
+### 第八轮 · 本地讲题回顾与错因卡片闭环
+
+- **`_persistCompletion` 必须先把 `_reviewSavedForCurrentRound = true`
+  设上再 await**：第八轮 review 写入是异步串行的，进入 `_persistCompletion`
+  到拿到结果之间可能间隔几十毫秒 —— 如果在这个窗口里有人改成「在 turn
+  listener 里轮询是否 completed」（未来重构很可能这么做），同一秒就会
+  连续触发两次 `_persistCompletion`，于是同一道题在回顾页出现两条几乎
+  一样的记录。正解：进入 `_persistCompletion` 后**先**把 flag 翻成 true
+  再 await ProgressRepository / ReviewRepository，让二次进入立刻早返回。
+  flag 在 `_resetTransientState`（下一题 / 再讲一遍）里翻回 false，确保
+  「再讲一遍同题」仍能产生新记录。
+- **`_questions.indexOf(initialQuestionId)` 比 `Map<String,int>` 更稳**：
+  本节只有 3 道题，O(n) 线性查找完全够；改成 Map 反而要在 `initState`
+  里多算一次，且日后题库扩容到 10+ 题前不会有任何感知差异。坚持 O(n)
+  的真正原因：题目命中失败时 LecturePage 必须**回落到第 1 题**而不是
+  抛异常 —— 用 Map 写漏 `containsKey` 兜底分支会直接 `null`，体感
+  比"没追问"还糟。
+- **`initialQuestionIndex` 必须走 modulo 而不是 clamp**：第八轮新增可选
+  `initialQuestionIndex` 入参；若调用方传 `index=99`，clamp 到 `length-1`
+  会让所有"越界进入"都映射到最后一题（挑战题），学生体感是"AI 总让我
+  做难题"。改成 `index % length`（Dart 的 `%` 对负数返回非负余数）与
+  第七轮 `MockLectureRepository.questionForSection` 的口径完全一致，
+  「越界 = 循环」语义统一。
+- **`ReviewRepository.append` 不要在写盘失败时 propagate 异常**：按 brief
+  第 8 节「如果保存 review 失败，掌握度仍应正常更新」。`append` 内部
+  `try/catch` 后 **completer.complete()** 而不是 completeError —— 这样
+  `_persistCompletion` 里 `await ...append(...)` 不会被异常打断，setState
+  把 progress 字段写进 UI 这一步永远走得到。如果以后想区分「写盘成功 / 失败」
+  做更细粒度反馈，要专门加一个 `Future<bool>` 接口，**不要**改 `append`
+  的 swallow 行为。
+- **`recordsForSection` 默认 `limit=10` 不是 `0`**：第八轮 brief 第 7 节
+  「单小节回顾页只展示该小节最近 10 条」。曾经写过 `limit = 0` 让调用方
+  自己显式传 limit，结果回顾页第一次开发时漏传 → 列表永远空 → 学生
+  以为「completed 没写盘成功」，浪费 20min 排查。改成默认 10 + 调用方
+  可覆盖，比"显式优于隐式"更适合 V1 demo 优先口径。
+- **回顾卡公式渲染必须用 `FormulaText`**：summary / agentHighlights /
+  cautionPoints 都可能含 `\sqrt{12}=2\sqrt{3}` / `\frac{a}{b}` 之类 LaTeX
+  片段。任何位置写成 `Text(...)` 会显示成裸反斜杠，体感与第六轮完成态卡
+  早期 bug 一致。已经在回顾卡 4 个含数学文本的位置全部用 `FormulaText`,
+  并在 `_ReviewBullet` 里也走 `FormulaText` —— bullet 是公式高发区,
+  绝不能用 `Text`。
+- **首页两个 ChangeNotifier 用 `Listenable.merge` 合一**：可练习 pill
+  既要订阅 `ProgressRepository`（看「已完成 N 轮」徽标），也要订阅
+  `ReviewRepository`（看「回顾」入口高亮），但**不**要嵌套两层
+  `AnimatedBuilder`，那样 build 树深一倍且 hot reload 容易状态错乱。
+  `Listenable.merge([a, b])` 一行解决，且 dispose 由 Flutter 自动管理。
+- **`hasRecordsForSection` 不要返回 cache.length > 0**：必须遍历过滤
+  sectionId。如果偷懒返回全局是否有任意记录，在用户在 16.1 完成一题之后,
+  16.2 / 16.3 的「回顾」按钮也会变高亮，进去却是空状态，体感更糟。
+- **回顾页用 `AnimatedBuilder(animation: ReviewRepository.instance)` 包整页**：
+  第一版只在 `initState` 里 load 完成后 setState，结果在回顾页停留时
+  从其他页面（如「再讲这题」回来再返回）写入的新记录不会即时刷新。
+  AnimatedBuilder 包整页能保证仓库 notifyListeners 后立即 rebuild,
+  不需要 push/pop 监听。
+- **`_formatCompletedAt` 不要引入 `intl` 依赖**：单纯一行相对时间需求,
+  `intl` 包 +2MB APK、+1s 启动时间，划不来。手写一段「刚刚 / N 分钟前 /
+  今天 HH:mm / MM-DD HH:mm / YYYY-MM-DD」的分支即可，平板学生看的就是
+  "大概什么时候做的"，不需要严格本地化。
+
 ### 第七轮 · 本地小题库与下一题轮换闭环
 
 - **Dart 字符串里的 `$5`/`$x` 会触发内插 → 必须用 raw string**：第七轮加 16.1
