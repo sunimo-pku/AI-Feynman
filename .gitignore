@@ -4,9 +4,19 @@
 # 项目工具脚本
 .tools/
 
-# Node.js
+# Node.js（历史遗留，React 已移除）
 node_modules/
 dist/
+
+# Flutter / Dart
+main/mobile/.dart_tool/
+main/mobile/.flutter-plugins
+main/mobile/.flutter-plugins-dependencies
+main/mobile/.packages
+main/mobile/build/
+main/mobile/android/local.properties
+main/mobile/**/.symlinks/
+*.iml
 *.log
 
 # Python
