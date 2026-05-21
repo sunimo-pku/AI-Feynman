@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AIIC Challenge — 多模态语音工作站</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Major+Mono+Display&family=Onest:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      (function() {
+        const t = localStorage.getItem('theme');
+        if (t === 'light' || (!t && window.matchMedia('(prefers-color-scheme: light)').matches)) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+    <style>
+      html { background: oklch(0.16 0.02 250); }
+      html[data-theme="light"] { background: oklch(0.97 0.005 250); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
