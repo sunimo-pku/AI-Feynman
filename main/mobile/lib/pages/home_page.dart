@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/curriculum_repository.dart';
+import '../data/progress_models.dart';
 import '../services/api_service.dart';
+import '../services/progress_repository.dart';
 import '../theme/app_theme.dart';
 import 'lecture_page.dart';
 
@@ -22,6 +24,11 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _checkApi();
+    // 第六轮：异步预热本地进度仓库。任何失败都被仓库吞掉打 log，
+    // 这里不阻塞课程目录展示 —— FutureBuilder 仍以 curriculum 为主线。
+    // 仓库本身是 ChangeNotifier，加载成功后 _ProgressAwareSectionPill 会
+    // 自动重建展示「已完成 N 轮 · 掌握度 X/100」。
+    ProgressRepository.instance.load();
   }
 
   Future<void> _checkApi() async {
@@ -29,13 +36,18 @@ class _HomePageState extends State<HomePage> {
     if (mounted) setState(() => _apiHealthy = ok);
   }
 
-  void _onSectionTap(CurriculumSection section) {
+  Future<void> _onSectionTap(CurriculumSection section) async {
     if (section.isAvailable) {
-      Navigator.of(context).push(
+      await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => LecturePage(section: section),
         ),
       );
+      // 第六轮：从讲题页返回后强制 setState 触发首页重建。
+      // 仓库在 completed 时已经 notifyListeners，AnimatedBuilder 会自动
+      // 刷新进度徽标；这里多做一次 setState 是为了万一返回路径里 progress
+      // 还没写盘完成（异步），下一帧仍能拿到最新缓存。
+      if (mounted) setState(() {});
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
@@ -311,6 +323,24 @@ class _SectionPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final available = section.isAvailable;
+    // 第六轮：可练习小节订阅 ProgressRepository，展示「已完成 N 轮 · 掌握度
+    // X/100」。未上线小节仍保持原样，不挂订阅、不展示进度。
+    if (!available) {
+      return _buildPill(context, progress: null);
+    }
+    return AnimatedBuilder(
+      animation: ProgressRepository.instance,
+      builder: (context, _) {
+        final progress =
+            ProgressRepository.instance.progressFor(section.id);
+        return _buildPill(context, progress: progress);
+      },
+    );
+  }
+
+  Widget _buildPill(BuildContext context, {required SectionProgress? progress}) {
+    final available = section.isAvailable;
+    final hasProgress = progress != null && progress.hasAnyCompletion;
     final bg = available
         ? AppPalette.primary.withValues(alpha: 0.08)
         : AppPalette.comingSoon.withValues(alpha: 0.08);
@@ -337,9 +367,15 @@ class _SectionPill extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  available ? Icons.play_circle_outline : Icons.lock_outline,
+                  available
+                      ? (hasProgress
+                          ? Icons.check_circle
+                          : Icons.play_circle_outline)
+                      : Icons.lock_outline,
                   size: 18,
-                  color: textColor,
+                  color: hasProgress
+                      ? AppPalette.primaryAccent
+                      : textColor,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -351,28 +387,75 @@ class _SectionPill extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: available
-                        ? AppPalette.primaryAccent.withValues(alpha: 0.15)
-                        : AppPalette.comingSoon.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    available ? '可练习' : '即将上线',
-                    style: TextStyle(
-                      color: available
-                          ? AppPalette.primaryAccent
-                          : AppPalette.comingSoon,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                _SectionStatusBadge(
+                  available: available,
+                  progress: progress,
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 小节 pill 右侧的状态徽标：
+///   * 未上线 → `即将上线`（保持灰色 + 锁形）
+///   * 可练习且无完成记录 → `可练习`
+///   * 可练习且至少完成一轮 → `已完成 N 轮 · X/100`
+///
+/// 第六轮新增。
+class _SectionStatusBadge extends StatelessWidget {
+  const _SectionStatusBadge({
+    required this.available,
+    required this.progress,
+  });
+
+  final bool available;
+  final SectionProgress? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!available) {
+      return _badge(
+        color: AppPalette.comingSoon,
+        bgAlpha: 0.18,
+        text: '即将上线',
+      );
+    }
+    final p = progress;
+    if (p == null || !p.hasAnyCompletion) {
+      return _badge(
+        color: AppPalette.primaryAccent,
+        bgAlpha: 0.15,
+        text: '可练习',
+      );
+    }
+    return _badge(
+      color: AppPalette.primaryAccent,
+      bgAlpha: 0.18,
+      text: '已完成 ${p.completedRounds} 轮 · ${p.masteryScore}/100',
+    );
+  }
+
+  Widget _badge({
+    required Color color,
+    required double bgAlpha,
+    required String text,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: bgAlpha),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

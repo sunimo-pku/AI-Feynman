@@ -31,6 +31,7 @@
 │   ├── AI_CODE_AGENT_BRIEF_ROUND3.md # 第三轮真实 LLM 结构化追问执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND4.md # 第四轮学生语义输入闭环执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND5.md # 第五轮多轮追问上下文闭环执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND6.md # 第六轮本地掌握度与总结闭环执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
@@ -69,9 +70,13 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 健康检查：`http://127.0.0.1:8001/health`  
 API 文档：`http://127.0.0.1:8001/docs`
 
-#### 讲题接口（第五轮：本地多轮上下文 + LLM 追问 + Mock fallback）
+#### 讲题接口（第五轮：本地多轮上下文 + LLM 追问 + Mock fallback；第六轮：completed 后端到端学习沉淀）
 
 `POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解 / 回答追问」时调用。
+
+> 后端接口与第五轮**完全兼容**，第六轮没有改变契约：客户端拿到 `status: "completed"`
+> 之后**本地**沉淀掌握度 / 完成次数 / 本题小结到 `shared_preferences`,
+> 不需要后端做账号级持久化。
 
 - **第五轮**起，讲题页在本题内维护一份「最近 6 条」的本地对话历史。
   每次提交时，前端把现存历史 + 本轮 student 发言快照一并放入请求体的
@@ -142,6 +147,27 @@ flutter pub get
 ```
 
 详见 [`docs/MAC_LOCAL_DEV.md`](./docs/MAC_LOCAL_DEV.md)。
+
+#### 学生端学习沉淀（第六轮新增）
+
+- 每当后端返回 `status: "completed"`，讲题页：
+  - 落地一条 `SectionProgress` 到 `shared_preferences`
+    （key：`ai_feynman.section_progress.v1`）。
+  - 累加 `completedRounds`、按 `max(8, masteryDelta * 10)` 加掌握度（上限 100）。
+  - 抓取最后一条 teacher / AI turn 作为 `lastSummary`，**不**再调一次 LLM。
+  - 展示「本题讲清楚了」小结卡（标题 + 本轮小结 + 「本节掌握度 +X · 当前 N/100」+
+    「再讲一遍 / 下一题」两个对等动作；不自动清空画板）。
+- 首页可练习小节展示：
+  - 未完成：`可练习`
+  - 已完成 ≥1 轮：`已完成 N 轮 · X/100`
+- 仓库基于 `ChangeNotifier`，首页 / 讲题页 AppBar 徽标自动跟随刷新。
+- 任何读 / 写失败仅 `developer.log` 记录，不抛回 UI；学生看到的最差情况是
+  「进度回到 0」，**不会**因此看不到课程目录。
+- 仅本地持久化，**不**跨设备同步，**不**接后端 DB —— 与第五轮 brief 边界一致。
+
+详细单元测试见 `main/mobile/test/progress_repository_test.dart`：12 个用例覆盖
+JSON 容错、`masteryScore` 加分 / 封顶 / fallback 加 8 分、跨章节独立、
+重启 App 仍能读出之前进度等关键路径。
 
 ## 环境配置
 

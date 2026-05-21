@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/lecture_models.dart';
 import '../data/mock_lecture_repository.dart';
+import '../data/progress_models.dart';
 import '../services/lecture_service.dart';
+import '../services/progress_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/agent_message_bubble.dart';
 import '../widgets/formula_text.dart';
@@ -81,6 +85,16 @@ class _LecturePageState extends State<LecturePage> {
   /// 后端最近一次返回的 status。`needs_explanation` 默认；`completed` 触发
   /// 「这一题讲清楚了」收束态。第五轮新增。
   String _lastResponseStatus = 'needs_explanation';
+
+  /// 第六轮：本节最新本地进度快照（来自 [ProgressRepository]），用于完成态
+  /// 卡片显示「本节掌握度 +X，当前 N/100」。`null` 表示尚未发生过 completed。
+  SectionProgress? _sectionProgressAfterCompletion;
+
+  /// 本次 completed 实际加了多少掌握度（已考虑 100 上限）。
+  int _lastMasteryGain = 0;
+
+  /// 本次 completed 的小结文案（前端拼装：最后一条 teacher / AI turn）。
+  String _lastSummary = '';
 
   /// 本地历史最多保留多少条。后端也会再做一次硬上限。
   static const int _maxHistoryItems = 6;
@@ -369,6 +383,15 @@ class _LecturePageState extends State<LecturePage> {
         _canvasController.setHighlight(highlightFromFirst);
       }
       _scrollToBottomSoon();
+
+      // 第六轮：completed 时落地本地进度。
+      //   * 不阻塞 UI：仓库内部串行化写盘，仅在写盘完成后通知首页订阅者
+      //     刷新「已完成 N 轮 · 掌握度 X/100」。
+      //   * 本题小结优先取「本轮 + 历史」里最后一条 teacher turn，没有就取
+      //     最后一条 AI turn；都没有用兜底文案。
+      if (isCompleted) {
+        unawaited(_persistCompletion(response));
+      }
     } on LectureApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -392,6 +415,66 @@ class _LecturePageState extends State<LecturePage> {
       });
       _scrollToBottomSoon();
     }
+  }
+
+  /// 把 [response] 折算为本节本地进度并落库，同时把「本题讲题小结」相关
+  /// 字段写入 state，供完成态卡片渲染。
+  ///
+  /// 第六轮新增。所有失败都被仓库吞掉并打 log，**不**抛回 UI —— brief 第 8
+  /// 节明确要求「不要因为 progress 读取失败影响课程目录展示。失败时可以当
+  /// 作空进度」，这里在写入侧也保持同样口径。
+  Future<void> _persistCompletion(LectureSubmitResponse response) async {
+    final summary = _composeCompletionSummary(response.turns);
+    final result = await ProgressRepository.instance.applyCompleted(
+      sectionId: widget.section.id,
+      masteryDelta: response.masteryDelta,
+      summary: summary,
+    );
+    if (!mounted) return;
+    setState(() {
+      _sectionProgressAfterCompletion = result.next;
+      _lastMasteryGain = result.gained;
+      _lastSummary = summary;
+    });
+  }
+
+  /// 优先级：本轮最后一条 teacher turn → 本轮最后一条 AI turn →
+  /// 本题历史里最后一条 teacher → 历史里最后一条 AI → 兜底文案。
+  ///
+  /// 不为了总结再调一次 LLM（brief 第 7 节明确禁止），所以拼装逻辑必须
+  /// **稳定** —— 任何一道 16.x 题在 completed 时都要能拼出一条「像样的
+  /// 小结」给学生看。
+  String _composeCompletionSummary(List<AgentTurn> latestTurns) {
+    String? findTeacher(Iterable<AgentTurn> turns) {
+      for (final t in turns.toList().reversed) {
+        if (t.role == AgentRole.teacher && t.text.trim().isNotEmpty) {
+          return t.text.trim();
+        }
+      }
+      return null;
+    }
+
+    String? findAnyAi(Iterable<AgentTurn> turns) {
+      for (final t in turns.toList().reversed) {
+        if (t.role != AgentRole.system && t.text.trim().isNotEmpty) {
+          return t.text.trim();
+        }
+      }
+      return null;
+    }
+
+    final teacherInLatest = findTeacher(latestTurns);
+    if (teacherInLatest != null) return teacherInLatest;
+    final aiInLatest = findAnyAi(latestTurns);
+    if (aiInLatest != null) return aiInLatest;
+
+    // 历史里的 AgentTurn 已经在 _turns 里追加过；从 _turns 里再扫一遍即可。
+    final teacherInAll = findTeacher(_turns);
+    if (teacherInAll != null) return teacherInAll;
+    final aiInAll = findAnyAi(_turns);
+    if (aiInAll != null) return aiInAll;
+
+    return '本题已完成一轮讲解，建议回看高亮步骤，总结这一步为什么成立。';
   }
 
   void _onUnderstood() {
@@ -431,6 +514,11 @@ class _LecturePageState extends State<LecturePage> {
       _history.clear();
       _round = 0;
       _lastResponseStatus = 'needs_explanation';
+      // 第六轮：清掉「上一题」的完成态卡片字段，但**不**清掉本地 progress
+      // 仓库（学生只是要继续做下一题，不是要抹掉学习记录）。
+      _sectionProgressAfterCompletion = null;
+      _lastMasteryGain = 0;
+      _lastSummary = '';
     });
   }
 
@@ -462,6 +550,9 @@ class _LecturePageState extends State<LecturePage> {
       _history.clear();
       _round = 0;
       _lastResponseStatus = 'needs_explanation';
+      _sectionProgressAfterCompletion = null;
+      _lastMasteryGain = 0;
+      _lastSummary = '';
     });
   }
 
@@ -487,7 +578,18 @@ class _LecturePageState extends State<LecturePage> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Center(child: _MasteryBadge(round: _round)),
+            child: Center(
+              child: AnimatedBuilder(
+                // 第六轮：徽标既反映「本题第几轮」也反映「本节当前掌握度」。
+                // ProgressRepository notify 时（completed 写盘成功）自动重建。
+                animation: ProgressRepository.instance,
+                builder: (context, _) {
+                  final p = ProgressRepository.instance
+                      .progressFor(widget.section.id);
+                  return _MasteryBadge(round: _round, progress: p);
+                },
+              ),
+            ),
           ),
         ],
       ),
@@ -575,13 +677,17 @@ class _LecturePageState extends State<LecturePage> {
             const SizedBox(height: 12),
             _ErrorBanner(message: _errorMessage!, onRetry: _onRetry),
           ],
-          // 第五轮：completed 状态下，先显示一条温和的「这一题讲清楚了」横幅，
-          // 再展示「再讲一遍 / 下一题」两个对等动作；不自动清空画布，给学生
-          // 留时间回看高亮。
+          // 第六轮：completed 状态下展示「本题讲题小结」卡（替换第五轮的
+          // 简单 banner），随后是「再讲一遍 / 下一题」两个对等动作。
+          // 不自动清空画布，给学生留时间回看高亮。
           if (_status == _LectureStatus.finished &&
               _lastResponseStatus == 'completed') ...[
             const SizedBox(height: 12),
-            const _CompletionBanner(),
+            _LectureSummaryCard(
+              summary: _lastSummary,
+              progress: _sectionProgressAfterCompletion,
+              gained: _lastMasteryGain,
+            ),
             const SizedBox(height: 10),
             Row(
               children: [
@@ -979,45 +1085,157 @@ class _PendingFollowupHint extends StatelessWidget {
   }
 }
 
-/// 「这一题讲清楚了」收束横幅：第五轮新增，仅在后端返回
-/// `status: completed` 时展示，与下方「再讲一遍 / 下一题」按钮联动。
-class _CompletionBanner extends StatelessWidget {
-  const _CompletionBanner();
+/// 「本题讲题小结」卡片：第六轮替换第五轮的 `_CompletionBanner`。
+///
+/// 设计原则：
+///   * 学习反馈基调，不要游戏化（无奖杯 / 烟花 / 高饱和渐变）。
+///   * 标题「本题讲清楚了」复用第五轮的语境；正文是
+///     `lastSummary`（教师 / AI 收束话），用 [FormulaText] 渲染保证
+///     `\sqrt{}` 一类 token 不变乱码。
+///   * 末行展示「本节掌握度 +X，当前 N/100」，掌握度变化只在 [gained] > 0
+///     时显示加号；首次落地 progress 失败时 progress 为 null，则隐藏整行。
+class _LectureSummaryCard extends StatelessWidget {
+  const _LectureSummaryCard({
+    required this.summary,
+    required this.progress,
+    required this.gained,
+  });
+
+  final String summary;
+  final SectionProgress? progress;
+  final int gained;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasSummary = summary.trim().isNotEmpty;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        color: AppPalette.primaryAccent.withValues(alpha: 0.10),
+        color: AppPalette.primaryAccent.withValues(alpha: 0.08),
         borderRadius: AppRadius.cardR,
         border: Border.all(
-          color: AppPalette.primaryAccent.withValues(alpha: 0.36),
+          color: AppPalette.primaryAccent.withValues(alpha: 0.32),
         ),
       ),
-      child: const Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.celebration_outlined,
-            size: 20,
-            color: AppPalette.primaryAccent,
-          ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '这一题讲清楚了。可以点「下一题」继续，也可以点「再讲一遍」自己复盘。',
-              style: TextStyle(
+          Row(
+            children: [
+              const Icon(
+                Icons.menu_book_outlined,
+                size: 20,
                 color: AppPalette.primaryAccent,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '本题讲清楚了',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: AppPalette.primaryAccent,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          if (hasSummary) ...[
+            const SizedBox(height: 10),
+            Text(
+              '本轮小结',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: AppPalette.textSecondary,
                 fontWeight: FontWeight.w600,
-                height: 1.45,
-                fontSize: 13.5,
               ),
             ),
+            const SizedBox(height: 4),
+            FormulaText(
+              summary,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppPalette.textPrimary,
+                height: 1.5,
+              ),
+              formulaStyle: theme.textTheme.bodyMedium?.copyWith(
+                color: AppPalette.primary,
+                fontWeight: FontWeight.w700,
+                height: 1.5,
+              ),
+            ),
+          ],
+          if (progress != null) ...[
+            const SizedBox(height: 12),
+            _MasteryDeltaRow(progress: progress!, gained: gained),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            '不自动清空画板，可以回看高亮再点「下一题」或「再讲一遍」。',
+            style: theme.textTheme.bodySmall,
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 完成态卡片底部的「本节掌握度 +X，当前 N/100」一行 + 细进度条。
+class _MasteryDeltaRow extends StatelessWidget {
+  const _MasteryDeltaRow({required this.progress, required this.gained});
+
+  final SectionProgress progress;
+  final int gained;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final score = progress.masteryScore.clamp(0, 100);
+    final widthFactor = score / 100.0;
+    final gainLabel = gained > 0 ? '+$gained' : '已封顶';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.insights_outlined,
+              size: 18,
+              color: AppPalette.primary,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '本节掌握度 $gainLabel · 当前 $score/100',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: AppPalette.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Text(
+              '已完成 ${progress.completedRounds} 轮',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppPalette.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            height: 6,
+            child: Stack(
+              children: [
+                Container(color: AppPalette.primary.withValues(alpha: 0.12)),
+                FractionallySizedBox(
+                  widthFactor: widthFactor,
+                  child: Container(color: AppPalette.primary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1256,14 +1474,39 @@ class _StepOrderBadge extends StatelessWidget {
 }
 
 class _MasteryBadge extends StatelessWidget {
-  const _MasteryBadge({required this.round});
+  const _MasteryBadge({required this.round, this.progress});
 
   final int round;
+  final SectionProgress? progress;
 
   @override
   Widget build(BuildContext context) {
-    final label = round == 0 ? '理解中' : '已完成 $round 轮';
-    final color = round == 0 ? AppPalette.textSecondary : AppPalette.primaryAccent;
+    // 优先用「本节累计掌握度」表达，让学生看到跨题持续的学习收益；
+    // 没有任何完成记录时退回「理解中 / 已完成 N 轮」的回合表达。
+    final p = progress;
+    if (p != null && p.hasAnyCompletion) {
+      const color = AppPalette.primaryAccent;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          '本节 ${p.masteryScore}/100 · 已完成 ${p.completedRounds} 轮',
+          style: const TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    final label = round == 0 ? '理解中' : '本轮第 $round 次提交';
+    final color =
+        round == 0 ? AppPalette.textSecondary : AppPalette.primaryAccent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -1273,7 +1516,8 @@ class _MasteryBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+        style:
+            TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
       ),
     );
   }

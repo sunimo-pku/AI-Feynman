@@ -151,6 +151,7 @@ git push origin main
 | 产品规划 V1 | ✅ | `项目规划/planV1.md` |
 | 初中数学目录数据 | ✅ | 6 册 · 29 章 · 90 节；V1 上线 **第十六章 二次根式**（3 节 `available`） |
 | 学生端讲题闭环 | ⏳ | 手写 + 语音 + 多 Agent 讨论（二次根式章） |
+| 本地掌握度沉淀 | ✅ | 第六轮：`SectionProgress` 落 `shared_preferences`，首页/讲题页徽标实时刷新 |
 | 掌握度与出题 | ⏳ | 16.1 / 16.2 / 16.3 按知识点记录与调节难度 |
 | 家长端 | ⏳ | 弱项看板、海报、讲题回放 |
 | V1 上线章节 | ✅ | 八年级下册 · 第十六章 二次根式 |
@@ -334,6 +335,58 @@ git push origin main
   CI / 快速本地校验直接用
   `/opt/flutter/bin/cache/dart-sdk/bin/dart analyze lib/`，几秒钟出结果，
   不需要 flutter 壳子的锁，也不会被 `pub get` 的网络往返拖死。
+
+### 第六轮 · 本地掌握度与总结闭环
+
+- **`flutter pub add` 在容器内 root 会卡 7+ 分钟**：第六轮加
+  `shared_preferences` 时直接 `flutter pub add shared_preferences` 启动后没有
+  任何输出，撞 SDK 锁加 pub.dev 网络。**正解**：手动改 `pubspec.yaml`
+  加一行 `shared_preferences: ^2.5.x`，然后用
+  `/opt/flutter/bin/cache/dart-sdk/bin/dart pub get`，30s 出结果。
+  注意：如果 `flutter pub add` 在卡死中途已经写过了 pubspec.yaml，再手写
+  一行会触发 `Duplicate mapping key` 报错，要先 dedupe。
+- **`SharedPreferences.setMockInitialValues` 不能用来「模拟 App 重启」**:
+  它清掉的是 mock backend 的初始值，但 `getInstance()` 第一次拿到的
+  instance 会**被缓存**，第二次再调 `setMockInitialValues + getInstance()`
+  得到的 prefs 看不到新数据 —— 测试里「写盘 → 清缓存 → 读盘」会失败，
+  断言 masteryScore=10 拿到 0。正解：仓库自己暴露
+  `resetCacheOnlyForTesting()`（只清内存缓存，**不**动 prefs key），下一次
+  `load()` 才会从持久化层重新读出之前 `applyCompleted` 写入的 JSON。
+- **`shared_preferences` 写盘必须串行化**：第六轮 `applyCompleted` 实现是
+  「读 cache → 算 next → 写 prefs」三步异步。如果学生 30s 内连点两次
+  「下一题」（实际不会，但理论上 race），两个 future 都拿到 score=10、
+  各自算出 next=20、各自写 prefs，结果 prefs 里是「最后写赢的那条」，
+  另一条加分丢失。`ProgressRepository._writeQueue: Future = ...` 把
+  `applyCompleted` 串成链，保证 N 次完成累加出 N*delta 分，而不是
+  「最后一次的 delta」。配合 `flutter test` 的 12 用例覆盖。
+- **`unawaited(...)` 需要 `import 'dart:async';`**：`lecture_page.dart` 里
+  `_persistCompletion` 是 `Future<void>` 故意不 await（要让 UI 立刻进
+  finished 态，写盘异步完成），用 `unawaited` 标注是为了让 dart_lints 的
+  `discarded_futures` 不报警。`unawaited` 不在 `package:flutter/material.dart`
+  里，要显式 `import 'dart:async';` 才能用。
+- **完成态卡片必须用 `FormulaText` 渲染 summary**：lastSummary 来自 LLM
+  最后一条 teacher / AI turn，里面**几乎一定**含 `\sqrt{12}=2\sqrt{3}` /
+  `\frac{a}{b}` 之类的 LaTeX 片段。直接用 `Text` 会输出 `\sqrt{12}` 一串
+  反斜杠 + 字面字符，体感比"没追问"还糟。已经在 `_LectureSummaryCard`
+  里用 `FormulaText`，保持与第二轮起就铺好的公式渲染路径一致。
+- **`ProgressRepository` 是 `ChangeNotifier` 单例，但小节 pill 必须显式
+  `AnimatedBuilder(animation: ...)`**：第六轮一开始只在 `initState` 里调一次
+  `load()` 就走人，结果首页第一次冷启动看到的全是「可练习」（load 还没
+  回来）；load 完成后 notifyListeners 也没人接，UI 不刷新。正解：每个
+  `_SectionPill` 包一层 `AnimatedBuilder(animation: ProgressRepository.instance)`,
+  load 完成 / `applyCompleted` 后**自动**重建所有可练习 pill。讲题页 AppBar
+  右上角徽标也用同样的套路。
+- **小节 pill「未上线」不要订阅 ProgressRepository**：订阅没坏处，但会让
+  「即将上线」状态的 pill 在 progress 写盘时也被 rebuild 一次，
+  ListView 越长就越浪费 paint。`_SectionPill.build` 里 `!available`
+  早返回，不挂订阅 —— 也防止未来万一 prefs 里塞了一个未上线 sectionId
+  的脏数据被误显示成「已完成 N 轮」。
+- **「下一题 / 再讲一遍」清空临时 state 时禁止动 `ProgressRepository`**：
+  这两个按钮的语义是「重置本题画板 / 历史 / 收束态」，**不是**「抹掉学习
+  记录」。第六轮代码里只把 `_sectionProgressAfterCompletion / _lastMasteryGain
+  / _lastSummary` 三个**讲题页本地临时字段**置空，仓库一行没动。如果未来
+  要加「擦除本节进度」入口（家长端 / debug 菜单），必须放在远离这两个
+  按钮的位置，并加二次确认。
 
 ### 平板交互与双工打断（待验证）
 
