@@ -1,5 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 第九轮：实时讲题需要麦克风权限。permission_handler 在调用
+         Permission.microphone.request() 时会弹系统授权弹窗。 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- audioplayers / 部分 OEM 录音芯片在播放 TTS 时需要这两个权限来
+         统一控制媒体音量；缺失会导致 mp3 静默播放。 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:label="AI 费曼"

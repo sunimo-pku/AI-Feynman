@@ -11,6 +11,17 @@ dependencies:
     sdk: flutter
   http: ^1.2.2
   shared_preferences: ^2.5.5
+  # 第九轮：实时双工讲题闭环
+  # - web_socket_channel：与后端 /lecture/live WS 通信
+  # - record：跨平台麦克风采集（Android/iOS/macOS/Web 兼容）
+  # - permission_handler：Android 麦克风权限申请
+  # - audioplayers：播放后端 /tts 返回的 mp3 base64
+  # - path_provider：录音临时文件路径（部分平台需要）
+  web_socket_channel: ^3.0.1
+  record: ^5.1.2
+  permission_handler: ^11.3.1
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

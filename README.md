@@ -34,6 +34,7 @@
 │   ├── AI_CODE_AGENT_BRIEF_ROUND6.md # 第六轮本地掌握度与总结闭环执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND7.md # 第七轮本地小题库与下一题轮换执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND8.md # 第八轮本地讲题回顾与错因卡片执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND9.md # 第九轮学生端实时闭环总收口执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
@@ -195,6 +196,63 @@ JSON 容错、`masteryScore` 加分 / 封顶 / fallback 加 8 分、跨章节独
 - 单元测试 `main/mobile/test/mock_lecture_repository_test.dart`：15 个用例覆盖
   题库结构（每节 3 题、难度递增、tags 数量、questionId 唯一）、modulo 循环
   （正/负 index）、未知 section 兜底、`difficultyLabel` 翻译、各小节题面关键短语。
+
+#### 实时双工讲题闭环（第九轮新增）
+
+第九轮把学生端讲题体验从「写完再提交」升级为**真正的实时双工**：
+
+- 学生点击「开始讲题」→ Flutter 申请麦克风权限并打开 `record` 流；
+- 同时建立 WebSocket `ws://.../lecture/live` 连接，发 `session_start`；
+- 麦克风以 16k/16bit/单声道 PCM 持续发 `audio_chunk`（≈320ms 一片）；
+- 白板每次新增 / 撤销 / 清空都 debounce 480ms 后发 `ink_snapshot`；
+- 学生连续静音 ≥1.5s 触发 `pause_detected`，后端进入 `thinking`；
+- 后端将 LLM 输出拆成 ~20 字一段的 `agent_turn_delta` 流推给前端，
+  前端气泡逐步增长，**不再一次性整段出现**；
+- 角色 turn 结束后前端调 `/tts` 合成 mp3，`audioplayers` 播放；
+- 学生开口或在白板上落笔时：前端发 `student_interrupt` + 立刻停 TTS,
+  系统气泡提示「我刚才打断了 AI，它停下来听你讲」。
+
+新增后端文件（`main/app/`）：
+
+- `services/live_asr_buffer.py`：把 2.5s 窗口的 PCM 聚合后送给火山 ASR；
+  失败窗口不终止 session，只发 `warning`。
+- `services/live_lecture_session.py`：单 session 状态机，含 audio buffer、
+  最新 ink snapshot、history、interrupt event。复用现有
+  `lecture_agent.generate_lecture_turns(...)` 做多 Agent 追问，
+  整段 text 切成 ~20 字 / 片的 delta 推给前端。
+- `routers/lecture_live.py`：WebSocket 路由 `/lecture/live`，每条连接
+  对应一个 session，鉴权口径与 `/lecture/submit` 一致（V1 不接 require_user）。
+
+新增前端文件（`main/mobile/lib/`）：
+
+- `data/live_lecture_events.dart`：客户端 / 服务端事件强类型模型。
+- `services/audio_stream_service.dart`：麦克风采集 + 静音检测 + 状态机。
+- `services/live_lecture_service.dart`：WebSocket 客户端 + TTS 播放
+  （audioplayers）+ 错误透传。
+- `widgets/realtime_audio_panel.dart`：白板下方的实时音频面板，状态文案
+  覆盖 idle / listening / paused / thinking / aiSpeaking / interrupted /
+  disconnected / permissionDenied / failed 九种 UI 状态。
+
+兜底：
+
+- WS / 麦克风 / 录音库任一失败时面板自动切到「连接断开」/「权限被拒绝」
+  / 「录音遇到问题」状态，并提供「用文字提交」按钮回落到第二/五轮已经
+  跑通的 `/lecture/submit` 非实时路径，**白板内容不丢、本地进度 / 回顾
+  仓库不被擦除**。
+- 完成态（`round_done` status=completed）仍走第六/八轮逻辑：写入
+  `SectionProgress` + `LectureReviewRecord` + 弹「本题讲清楚了」小结卡。
+
+Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
+已加入 `android/app/src/main/AndroidManifest.xml`。
+
+单元测试：
+
+- 后端 `main/tests/test_live_asr_buffer.py`（9 个用例）+
+  `test_live_lecture_session.py`（10 个用例）覆盖窗口聚合 / ASR 失败容错 /
+  session 状态机 / 打断截断 delta / completed round / pause without
+  steps 等关键路径。**不**联网，全部用注入式 fake function 替换 ASR / LLM。
+- 前端 `main/mobile/test/live_lecture_events_test.dart`（13 个用例）覆盖
+  服务端 / 客户端事件 JSON encode/decode、未知事件不抛、缺字段兜底。
 
 #### 本地讲题回顾与错因卡片（第八轮新增）
 

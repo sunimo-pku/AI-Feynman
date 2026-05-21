@@ -1,19 +1,24 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/lecture_models.dart';
+import '../data/live_lecture_events.dart';
 import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
 import '../data/review_models.dart';
+import '../services/audio_stream_service.dart';
 import '../services/lecture_service.dart';
+import '../services/live_lecture_service.dart';
 import '../services/progress_repository.dart';
 import '../services/review_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/agent_message_bubble.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
+import '../widgets/realtime_audio_panel.dart';
 
 /// 讲题页：左侧多 Agent 对话区，右侧手写板（横屏），手机竖屏降级为上下布局。
 ///
@@ -56,6 +61,41 @@ class LecturePage extends StatefulWidget {
 }
 
 enum _LectureStatus { idle, submitting, awaiting, error, finished }
+
+/// 第九轮：是否默认在白板下方展示"文字提交兜底"入口。
+///
+/// brief 第 9 节明确"禁止默认展示文字输入框，但允许白板-only 兜底提交"。
+/// 这个开关由 `--dart-define=LIVE_FALLBACK_TEXTINPUT=1` 控制（仅
+/// debug/演示场景），不构建时保持 false 与正式 demo 同口径。
+const bool _kShowLegacyTextInputByDefault = bool.fromEnvironment(
+  'LIVE_FALLBACK_TEXTINPUT',
+  defaultValue: false,
+);
+
+/// 实时讲题阶段的本地状态：
+///   * `idle`：尚未点击「开始讲题」；
+///   * `connecting`：WS 握手中；
+///   * `listening`：WS 已连 + 录音流持续中；
+///   * `paused`：学生静音 ≥ 1.5s（来自 [AudioStreamService.statusStream]）；
+///   * `thinking`：已经发了 `pause_detected`，等 AI 思考；
+///   * `aiSpeaking`：有未完成的 agent_turn / TTS 在播；
+///   * `disconnected`：WS 断开（保留白板，可重连）；
+///   * `permissionDenied`：麦克风权限被拒绝；
+///   * `failed`：录音库 / WS 严重错误；
+///
+/// **不**与 [_LectureStatus] 合并：后者描述非实时 fallback 路径的提交
+/// 状态机；这两个状态机互相独立、可同时存在。
+enum _LiveStatus {
+  idle,
+  connecting,
+  listening,
+  paused,
+  thinking,
+  aiSpeaking,
+  disconnected,
+  permissionDenied,
+  failed,
+}
 
 class _LecturePageState extends State<LecturePage> {
   final HandCanvasController _canvasController = HandCanvasController();
@@ -131,6 +171,29 @@ class _LecturePageState extends State<LecturePage> {
   /// 本地历史最多保留多少条。后端也会再做一次硬上限。
   static const int _maxHistoryItems = 6;
 
+  // —— 第九轮：实时双工讲题相关状态 ————————————————————————————————————
+  final AudioStreamService _audioService = AudioStreamService();
+  final LiveLectureService _liveService = LiveLectureService();
+
+  _LiveStatus _liveStatus = _LiveStatus.idle;
+  String? _liveFailureReason;
+
+  /// 当前正在被流式增量的 AI turn id；空字符串表示当前没有未完成 turn。
+  String _activeStreamingTurnId = '';
+  bool _ttsPlaying = false;
+  Timer? _inkSnapshotDebounce;
+  Timer? _interruptCooldownTimer;
+  bool _interruptOnCooldown = false;
+
+  late final StreamSubscription _liveEventsSub;
+  late final StreamSubscription _liveErrorsSub;
+  late final StreamSubscription _liveConnSub;
+  late final StreamSubscription _liveTtsSub;
+  late final StreamSubscription _audioChunksSub;
+  late final StreamSubscription _audioPausesSub;
+  late final StreamSubscription _audioVoiceSub;
+  late final StreamSubscription _audioStatusSub;
+
   @override
   void initState() {
     super.initState();
@@ -147,6 +210,21 @@ class _LecturePageState extends State<LecturePage> {
         : _questions[_questionIndex];
     _turns.add(_introTurn());
     _canvasController.addListener(_onCanvasChanged);
+    _wireLiveServices();
+  }
+
+  /// 把 [_audioService] 与 [_liveService] 的所有事件流串到 setState 上。
+  ///
+  /// 这些 subscription 在 [dispose] 里统一 cancel，避免 leak。
+  void _wireLiveServices() {
+    _liveEventsSub = _liveService.events.listen(_onLiveEvent);
+    _liveErrorsSub = _liveService.errors.listen(_onLiveServiceError);
+    _liveConnSub = _liveService.connectionState.listen(_onLiveConnection);
+    _liveTtsSub = _liveService.ttsState.listen(_onTtsState);
+    _audioChunksSub = _audioService.chunks.listen(_onAudioChunk);
+    _audioPausesSub = _audioService.pauses.listen(_onAudioPause);
+    _audioVoiceSub = _audioService.voiceActivity.listen(_onAudioVoice);
+    _audioStatusSub = _audioService.statusStream.listen(_onAudioStatus);
   }
 
   /// 解析 [LecturePage.initialQuestionId] / [LecturePage.initialQuestionIndex]
@@ -181,6 +259,21 @@ class _LecturePageState extends State<LecturePage> {
       c.dispose();
     }
     _lectureService.close();
+    // 第九轮：实时讲题资源全部释放。subscription cancel 顺序不重要，但
+    // _liveService / _audioService 的 dispose 必须 await 才能真正关闭
+    // WS 句柄；这里走 unawaited，因为 dispose 不能是 async。
+    _inkSnapshotDebounce?.cancel();
+    _interruptCooldownTimer?.cancel();
+    unawaited(_liveEventsSub.cancel());
+    unawaited(_liveErrorsSub.cancel());
+    unawaited(_liveConnSub.cancel());
+    unawaited(_liveTtsSub.cancel());
+    unawaited(_audioChunksSub.cancel());
+    unawaited(_audioPausesSub.cancel());
+    unawaited(_audioVoiceSub.cancel());
+    unawaited(_audioStatusSub.cancel());
+    unawaited(_audioService.dispose());
+    unawaited(_liveService.dispose());
     super.dispose();
   }
 
@@ -203,6 +296,43 @@ class _LecturePageState extends State<LecturePage> {
         _stepLatexExpanded.clear();
       }
     }
+    // 第九轮：白板任何更新都 debounce 500ms 后给后端发一次 snapshot；
+    // 同时如果 AI 正在说话，落笔即打断（brief 第 11 节）。
+    _scheduleInkSnapshot();
+    if (_ttsPlaying || _liveStatus == _LiveStatus.aiSpeaking) {
+      _maybeInterruptAi(reason: 'pen');
+    }
+  }
+
+  void _scheduleInkSnapshot() {
+    _inkSnapshotDebounce?.cancel();
+    _inkSnapshotDebounce = Timer(const Duration(milliseconds: 480), () {
+      if (!mounted) return;
+      if (!_liveService.isConnected) return;
+      final stepInfos = _canvasController.collectStepInfos();
+      if (stepInfos.isEmpty) return;
+      final steps = stepInfos
+          .map((info) => {
+                'stepId': info.stepId,
+                'strokeCount': info.strokeCount,
+                'boundingBox': {
+                  'x': info.bounds.left.isFinite ? info.bounds.left : 0,
+                  'y': info.bounds.top.isFinite ? info.bounds.top : 0,
+                  'width':
+                      info.bounds.width.isFinite && info.bounds.width > 0
+                          ? info.bounds.width
+                          : 1,
+                  'height':
+                      info.bounds.height.isFinite && info.bounds.height > 0
+                          ? info.bounds.height
+                          : 1,
+                },
+                'latex': '',
+                'plainText': '',
+              })
+          .toList(growable: false);
+      _liveService.sendInkSnapshot(steps);
+    });
   }
 
   /// 为当前画板上的 stepId 集合确保都有对应的输入控制器。
@@ -707,6 +837,412 @@ class _LecturePageState extends State<LecturePage> {
     });
   }
 
+  // ============================================================ //
+  // 第九轮：实时讲题事件处理
+  // ============================================================ //
+
+  /// 点击「开始讲题」入口。
+  ///
+  /// 流程：
+  ///   1. 进入 connecting 状态；
+  ///   2. 调 [LiveLectureService.connectAndStart] 建立 WS + 发 session_start；
+  ///   3. 同时启动 [AudioStreamService.start]（含权限申请）；
+  ///   4. 任一失败回落到 `disconnected` / `permissionDenied` / `failed` 状态，
+  ///      白板不动，可点「用文字提交」走 [_onSubmit] 的 `/lecture/submit` 兜底；
+  ///   5. 都成功 → 等待麦克风事件驱动状态机进 listening。
+  Future<void> _onStartLive() async {
+    if (!mounted) return;
+    setState(() {
+      _liveStatus = _LiveStatus.connecting;
+      _liveFailureReason = null;
+    });
+    final sessionId = 'sess-${DateTime.now().millisecondsSinceEpoch}-'
+        '${widget.section.id}-${_question.questionId}';
+    final connected = await _liveService.connectAndStart(
+      sessionId: sessionId,
+      sectionId: widget.section.id,
+      questionId: _question.questionId,
+      questionPrompt: _question.prompt,
+    );
+    if (!mounted) return;
+    if (!connected) {
+      setState(() {
+        _liveStatus = _LiveStatus.disconnected;
+        _liveFailureReason = '连不上后端 WebSocket，可以点「用文字提交」兜底。';
+      });
+      return;
+    }
+    final audioStarted = await _audioService.start();
+    if (!mounted) return;
+    if (!audioStarted) {
+      // 录音失败：保留 WS 让学生还能手动「我讲到这里」，但状态切到失败态。
+      final next = _audioService.status == AudioStreamStatus.permissionDenied
+          ? _LiveStatus.permissionDenied
+          : _LiveStatus.failed;
+      setState(() {
+        _liveStatus = next;
+        _liveFailureReason = _audioService.failureReason ?? '录音不可用';
+      });
+      return;
+    }
+    // 启动成功后立刻把当前白板 snapshot 发出去，让后端在第一时间知道
+    // 「学生目前有几步、笔画数」，不要等 debounce 触发。
+    _scheduleInkSnapshot();
+    setState(() {
+      _liveStatus = _LiveStatus.listening;
+    });
+  }
+
+  /// 「我讲到这里」/「我来回答」按钮：手动触发 AI 追问。
+  ///
+  /// 等价于客户端主动发一个 pause_detected：后端收到后无视当前
+  /// silenceMs 数值，直接走 LLM 调用。brief 第 12 节"学生点击『我讲到
+  /// 这里』可手动触发追问"。
+  void _onManualPause() {
+    if (!_liveService.isConnected) return;
+    _liveService.sendPauseDetected(silenceMs: 1500);
+    setState(() {
+      _liveStatus = _LiveStatus.thinking;
+    });
+  }
+
+  /// 「暂停倾听」按钮：thinking 阶段允许学生取消本轮，回到 idle 重写白板。
+  void _onStopLive() {
+    unawaited(_audioService.stop());
+    unawaited(_liveService.stopTts());
+    setState(() {
+      _liveStatus = _LiveStatus.idle;
+    });
+  }
+
+  /// 「结束本题」/「session_end」入口：关闭录音 + WS 会话，并切到非实时
+  /// 兜底状态，让学生有机会用「下一题」继续。
+  Future<void> _onEndLiveSession() async {
+    _inkSnapshotDebounce?.cancel();
+    await _audioService.stop();
+    await _liveService.endSession();
+    await _liveService.stopTts();
+    if (!mounted) return;
+    setState(() {
+      _liveStatus = _LiveStatus.idle;
+      _activeStreamingTurnId = '';
+      _ttsPlaying = false;
+    });
+  }
+
+  void _onAudioChunk(Uint8List data) {
+    if (data.isEmpty) return;
+    if (!_liveService.isConnected) return;
+    _liveService.sendAudioBytes(data);
+  }
+
+  void _onAudioPause(int silenceMs) {
+    // 学生静音 ≥ 阈值：通知后端开始追问。
+    if (!_liveService.isConnected) return;
+    if (_liveStatus == _LiveStatus.thinking ||
+        _liveStatus == _LiveStatus.aiSpeaking) {
+      // brief 第 12 节"同一轮追问生成中忽略重复触发"
+      return;
+    }
+    _liveService.sendPauseDetected(silenceMs: silenceMs);
+    setState(() {
+      _liveStatus = _LiveStatus.thinking;
+    });
+  }
+
+  void _onAudioVoice(bool active) {
+    if (!_liveService.isConnected) return;
+    if (active && (_ttsPlaying || _liveStatus == _LiveStatus.aiSpeaking)) {
+      _maybeInterruptAi(reason: 'voice');
+    } else if (active && _liveStatus == _LiveStatus.paused) {
+      setState(() {
+        _liveStatus = _LiveStatus.listening;
+      });
+    }
+  }
+
+  void _onAudioStatus(AudioStreamStatus status) {
+    if (!mounted) return;
+    switch (status) {
+      case AudioStreamStatus.permissionDenied:
+        setState(() {
+          _liveStatus = _LiveStatus.permissionDenied;
+          _liveFailureReason = _audioService.failureReason ?? '麦克风权限被拒绝';
+        });
+        break;
+      case AudioStreamStatus.failed:
+        setState(() {
+          _liveStatus = _LiveStatus.failed;
+          _liveFailureReason = _audioService.failureReason ?? '录音库异常';
+        });
+        break;
+      case AudioStreamStatus.paused:
+        // 静音由 _onAudioPause 单独处理；这里只在 listening↔paused 之间切换
+        if (_liveStatus == _LiveStatus.listening) {
+          setState(() => _liveStatus = _LiveStatus.paused);
+        }
+        break;
+      case AudioStreamStatus.listening:
+        if (_liveStatus == _LiveStatus.paused ||
+            _liveStatus == _LiveStatus.idle) {
+          setState(() => _liveStatus = _LiveStatus.listening);
+        }
+        break;
+      case AudioStreamStatus.idle:
+        // 不主动切 _liveStatus —— idle 可能是被 _onStopLive 主动停的。
+        break;
+    }
+  }
+
+  void _maybeInterruptAi({required String reason}) {
+    if (_interruptOnCooldown) return;
+    _interruptOnCooldown = true;
+    _interruptCooldownTimer?.cancel();
+    _interruptCooldownTimer = Timer(const Duration(milliseconds: 700), () {
+      _interruptOnCooldown = false;
+    });
+    if (_liveService.isConnected) {
+      _liveService.sendStudentInterrupt(reason: reason);
+    }
+    unawaited(_liveService.stopTts());
+    if (mounted) {
+      setState(() {
+        _ttsPlaying = false;
+        _activeStreamingTurnId = '';
+        _liveStatus = _LiveStatus.listening;
+        // 给学生一条"AI 已让步"的系统气泡，呼应面板"我继续听你讲"文案。
+        _turns.add(const AgentTurn(
+          role: AgentRole.system,
+          displayName: '系统',
+          text: '我刚才打断了 AI，它停下来听你讲。你可以继续说，或者写白板。',
+          highlightStepIds: [],
+        ));
+      });
+      _scrollToBottomSoon();
+    }
+  }
+
+  void _onLiveEvent(LiveServerEvent event) {
+    switch (event.type) {
+      case LiveServerEventType.listening:
+        if (mounted && _liveStatus != _LiveStatus.listening) {
+          setState(() {
+            _liveStatus = _LiveStatus.listening;
+            _activeStreamingTurnId = '';
+          });
+        }
+        break;
+      case LiveServerEventType.asrSegment:
+        // brief 第 9 节"禁止默认展示完整 ASR 转写文本"；这里只把片段
+        // 记进 history 供下一次提交使用，UI 主区不显示。Debug 模式（
+        // _kShowLegacyTextInputByDefault==true）下塞到 speech controller
+        // 末尾，方便学生 / 演示者校对。
+        final segment = (event.payload as LiveAsrSegmentPayload).text;
+        if (segment.isEmpty) break;
+        if (_kShowLegacyTextInputByDefault) {
+          final base = _speechController.text;
+          _speechController.text =
+              base.isEmpty ? segment : '$base $segment';
+        }
+        break;
+      case LiveServerEventType.thinking:
+        if (mounted) {
+          setState(() {
+            _liveStatus = _LiveStatus.thinking;
+          });
+        }
+        break;
+      case LiveServerEventType.agentTurnStart:
+        final p = event.payload as LiveAgentTurnStartPayload;
+        final role = parseAgentRole(p.role);
+        setState(() {
+          _liveStatus = _LiveStatus.aiSpeaking;
+          _activeStreamingTurnId = p.turnId;
+          _turns.add(AgentTurn(
+            turnId: p.turnId,
+            role: role,
+            displayName: p.displayName.isEmpty
+                ? _defaultDisplayName(role)
+                : p.displayName,
+            text: '',
+            highlightStepIds: p.highlightStepIds,
+          ));
+        });
+        if (p.highlightStepIds.isNotEmpty) {
+          _canvasController.setHighlight(p.highlightStepIds);
+        }
+        _scrollToBottomSoon();
+        break;
+      case LiveServerEventType.agentTurnDelta:
+        final p = event.payload as LiveAgentTurnDeltaPayload;
+        if (p.delta.isEmpty) break;
+        // 替换 _turns 中匹配 turnId 的那条，把 text 追加 delta。
+        for (var i = _turns.length - 1; i >= 0; i--) {
+          if (_turns[i].turnId == p.turnId) {
+            final prev = _turns[i];
+            setState(() {
+              _turns[i] = AgentTurn(
+                turnId: prev.turnId,
+                role: prev.role,
+                displayName: prev.displayName,
+                text: '${prev.text}${p.delta}',
+                highlightStepIds: prev.highlightStepIds,
+              );
+            });
+            break;
+          }
+        }
+        break;
+      case LiveServerEventType.agentTurnDone:
+        final p = event.payload as LiveAgentTurnDonePayload;
+        // 找到这条 turn，记录到 history 并触发 TTS。
+        AgentTurn? doneTurn;
+        for (final t in _turns) {
+          if (t.turnId == p.turnId) {
+            doneTurn = t;
+            break;
+          }
+        }
+        if (doneTurn != null) {
+          _history.add(_agentTurnToHistory(doneTurn));
+          if (_history.length > _maxHistoryItems) {
+            _history.removeRange(
+              0,
+              _history.length - _maxHistoryItems,
+            );
+          }
+          // 触发 TTS。失败由 LiveLectureService 自己写到 errors 流。
+          unawaited(_liveService.requestTts(doneTurn.text));
+        }
+        if (_activeStreamingTurnId == p.turnId) {
+          _activeStreamingTurnId = '';
+        }
+        break;
+      case LiveServerEventType.roundDone:
+        final p = event.payload as LiveRoundDonePayload;
+        setState(() {
+          _round += 1;
+          _lastResponseStatus = p.status;
+          if (p.status == 'completed') {
+            _status = _LectureStatus.finished;
+            _turns.add(const AgentTurn(
+              role: AgentRole.system,
+              displayName: '系统',
+              text: '这一题讲清楚了。可以点「下一题」继续，也可以点「再讲一遍」复盘。',
+              highlightStepIds: [],
+            ));
+          } else {
+            _status = _LectureStatus.awaiting;
+          }
+          // round_done 不一定立刻收到 listening；先切回 listening，
+          // 后续如果再来一条 listening event 会幂等。
+          _liveStatus = _LiveStatus.listening;
+        });
+        if (p.status == 'completed') {
+          // 复用第六/八轮的本地落地逻辑。把"流式 turns"包成
+          // LectureSubmitResponse 喂给 _persistCompletion，让小结卡 /
+          // 回顾记录 / 进度仓库都被正确写入。
+          final fakeResp = LectureSubmitResponse(
+            questionId: _question.questionId,
+            sectionId: widget.section.id,
+            status: p.status,
+            masteryDelta: p.masteryDelta,
+            turns: List<AgentTurn>.unmodifiable(_turns
+                .where((t) => t.role != AgentRole.system)
+                .toList(growable: false)),
+          );
+          unawaited(_persistCompletion(fakeResp));
+        }
+        _scrollToBottomSoon();
+        break;
+      case LiveServerEventType.warning:
+        // 静默：UI 上不弹红条；后端常用 warning 来传"asr_window_failed"
+        // 这种可忽略错误。开发者可以从日志 / debug overlay 看到。
+        break;
+      case LiveServerEventType.error:
+        setState(() {
+          _liveFailureReason =
+              (event.payload as LiveErrorPayload).message;
+        });
+        break;
+      case LiveServerEventType.unknown:
+        break;
+    }
+  }
+
+  void _onLiveServiceError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _liveFailureReason = message;
+    });
+  }
+
+  void _onLiveConnection(LiveConnectionState state) {
+    if (!mounted) return;
+    switch (state) {
+      case LiveConnectionState.connected:
+        // _onStartLive 已经把状态切到 listening；这里幂等。
+        break;
+      case LiveConnectionState.disconnected:
+        setState(() {
+          _liveStatus = _LiveStatus.disconnected;
+          _activeStreamingTurnId = '';
+          _ttsPlaying = false;
+        });
+        unawaited(_audioService.stop());
+        unawaited(_liveService.stopTts());
+        break;
+    }
+  }
+
+  void _onTtsState(TtsState state) {
+    if (!mounted) return;
+    setState(() {
+      _ttsPlaying = state == TtsState.playing;
+    });
+  }
+
+  /// 把后端 wire role 字符串映射回中文 displayName 兜底。
+  String _defaultDisplayName(AgentRole role) {
+    switch (role) {
+      case AgentRole.xiaoming:
+        return '小明';
+      case AgentRole.daxiong:
+        return '大雄';
+      case AgentRole.classLeader:
+      case AgentRole.monitor:
+        return '班长';
+      case AgentRole.teacher:
+        return '李老师';
+      case AgentRole.system:
+        return '系统';
+    }
+  }
+
+  /// 把 [_LiveStatus] 翻译成 [RealtimeAudioPanelState]：UI 层只关心
+  /// 视觉状态，不关心"录音是否真的在跑"vs."WS 是否真的连上"这种细节。
+  RealtimeAudioPanelState get _panelState {
+    switch (_liveStatus) {
+      case _LiveStatus.idle:
+        return RealtimeAudioPanelState.idle;
+      case _LiveStatus.connecting:
+      case _LiveStatus.listening:
+        return RealtimeAudioPanelState.listening;
+      case _LiveStatus.paused:
+        return RealtimeAudioPanelState.paused;
+      case _LiveStatus.thinking:
+        return RealtimeAudioPanelState.thinking;
+      case _LiveStatus.aiSpeaking:
+        return RealtimeAudioPanelState.aiSpeaking;
+      case _LiveStatus.disconnected:
+        return RealtimeAudioPanelState.disconnected;
+      case _LiveStatus.permissionDenied:
+        return RealtimeAudioPanelState.permissionDenied;
+      case _LiveStatus.failed:
+        return RealtimeAudioPanelState.failed;
+    }
+  }
+
   void _scrollToBottomSoon() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_discussionScrollController.hasClients) return;
@@ -930,18 +1466,37 @@ class _LecturePageState extends State<LecturePage> {
         const SizedBox(height: 12),
         Expanded(child: HandCanvas(controller: _canvasController)),
         const SizedBox(height: 12),
-        // 第四轮新增「学生语义输入区」：讲解文字 + 每步说明 + 选填 LaTeX。
-        // 用 ConstrainedBox 控住最大高度，避免占掉太多手写板主体空间；
-        // 内部用 SingleChildScrollView 防止键盘弹起时溢出。
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 240),
-          child: SingleChildScrollView(
-            child: AnimatedBuilder(
-              animation: _canvasController,
-              builder: (context, _) => _buildSemanticInputsPanel(context),
+        // 第九轮：白板下方默认展示实时音频面板（替换第四轮的文字输入区）。
+        // 兜底情况下（_kShowLegacyTextInputByDefault=true 或 disconnected /
+        // permissionDenied / failed）才再展示文字输入区作为白板-only 兜底
+        // 提交的辅助。brief 第 9 节"默认不展示文字输入框，但允许白板-only
+        // 兜底提交"。
+        RealtimeAudioPanel(
+          state: _panelState,
+          onStart: _onStartLive,
+          onStop: _onStopLive,
+          onEndQuestion: _onEndLiveSession,
+          onManualPause: _onManualPause,
+          onFallbackSubmit: _onFallbackTextSubmit,
+          canManualPause: _liveStatus == _LiveStatus.listening ||
+              _liveStatus == _LiveStatus.paused,
+          failureReason: _liveFailureReason,
+        ),
+        if (_kShowLegacyTextInputByDefault ||
+            _liveStatus == _LiveStatus.disconnected ||
+            _liveStatus == _LiveStatus.permissionDenied ||
+            _liveStatus == _LiveStatus.failed) ...[
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: SingleChildScrollView(
+              child: AnimatedBuilder(
+                animation: _canvasController,
+                builder: (context, _) => _buildSemanticInputsPanel(context),
+              ),
             ),
           ),
-        ),
+        ],
         const SizedBox(height: 12),
         AnimatedBuilder(
           animation: _canvasController,
@@ -964,28 +1519,54 @@ class _LecturePageState extends State<LecturePage> {
                   label: const Text('清空'),
                 ),
                 const Spacer(),
-                FilledButton.icon(
-                  onPressed: canSubmit && !submitting ? _onSubmit : null,
-                  icon: submitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Icon(_status == _LectureStatus.error
-                          ? Icons.replay
-                          : Icons.send_outlined),
-                  label: Text(_submitLabel(submitting)),
-                ),
+                // 第九轮：原"提交讲解"按钮降级为兜底入口，仅当 disconnected /
+                // permissionDenied / failed / 显式 fallback 模式下可见。
+                if (_kShowLegacyTextInputByDefault ||
+                    _liveStatus == _LiveStatus.disconnected ||
+                    _liveStatus == _LiveStatus.permissionDenied ||
+                    _liveStatus == _LiveStatus.failed)
+                  FilledButton.icon(
+                    onPressed: canSubmit && !submitting ? _onSubmit : null,
+                    icon: submitting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(_status == _LectureStatus.error
+                            ? Icons.replay
+                            : Icons.send_outlined),
+                    label: Text(_submitLabel(submitting)),
+                  ),
               ],
             );
           },
         ),
       ],
     );
+  }
+
+  /// 实时面板的"用文字提交"兜底入口。
+  ///
+  /// 第九轮：当 WS / 麦克风 / 录音库出问题时，学生仍能通过传统的
+  /// `/lecture/submit` 路径完成本题。此入口会**强制**展示底部文字
+  /// 输入区（与 `_kShowLegacyTextInputByDefault` 等效），让学生
+  /// 把口述写进去后点「提交讲解」。
+  void _onFallbackTextSubmit() {
+    if (_canvasController.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('先在白板上写一两行思路，再用文字提交兜底。'),
+        ),
+      );
+      return;
+    }
+    // 直接走原有 _onSubmit：它会根据当前白板 / 文字输入区做一次提交，
+    // 失败时也能落回 `/lecture/submit` 的 fallback 文案。
+    unawaited(_onSubmit());
   }
 
   /// 「我刚才是这样讲的」+「为每一步补充一句话」输入区。

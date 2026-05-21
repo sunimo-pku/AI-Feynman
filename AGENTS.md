@@ -150,7 +150,7 @@ git push origin main
 | GitHub 仓库 | ✅ | [AI-Feynman](https://github.com/sunimo-pku/AI-Feynman) |
 | 产品规划 V1 | ✅ | `项目规划/planV1.md` |
 | 初中数学目录数据 | ✅ | 6 册 · 29 章 · 90 节；V1 上线 **第十六章 二次根式**（3 节 `available`） |
-| 学生端讲题闭环 | ⏳ | 手写 + 语音 + 多 Agent 讨论（二次根式章） |
+| 学生端讲题闭环 | ✅ | 第九轮：实时双工 · 边写边讲 → 自然停顿 → 多 Agent 流式追问 → TTS → 学生打断（16.x 章） |
 | 本地掌握度沉淀 | ✅ | 第六轮：`SectionProgress` 落 `shared_preferences`，首页/讲题页徽标实时刷新 |
 | 本地小题库与下一题轮换 | ✅ | 第七轮：16.1 / 16.2 / 16.3 各 3 道题（基础/巩固/挑战），讲题页显示题号 + 难度 chip + 知识标签 chip，「下一题」循环切题 |
 | 掌握度与出题 | ⏳ | 16.1 / 16.2 / 16.3 按知识点记录与调节难度 |
@@ -498,7 +498,94 @@ git push origin main
 - Agent 音频输出建议同时展示文字，便于回看与家长端回放。
 - **声音打断（Barge-in）防抖机制**：必须设计 300ms 以上的有效人声检测持续防抖，否则叹气、翻书、重呼吸或搬椅子的噪声极易引发误打断（Barge-in Flapping）。
 - **音频淡出与渐隐**：打断时避免生硬切断 TTS，应使用约 200ms 的音量渐隐（Fade-out）过渡。
-- **AI 绅士礼貌原则**：AI 切忌在学生滔滔不绝讲述时强行开麦。针对学生的表达或错误纠正，应在检测到 1.5 秒以上的逻辑气口（自然静音停顿）时，再由虚拟同伴或老师礼貌“举手”切入。
+- **AI 绅士礼貌原则**：AI 切忌在学生滔滔不绝讲述时强行开麦。针对学生的表达或错误纠正，应在检测到 1.5 秒以上的逻辑气口（自然静音停顿）时，再由虚拟同伴或老师礼貌"举手"切入。
+
+### 第九轮 · 实时双工讲题闭环
+
+- **pub.dev 在容器内拉新包会卡死（>20min 无输出）**：第九轮新增
+  `record / web_socket_channel / audioplayers / permission_handler /
+  path_provider` 五个跨平台包，`dart pub get` 默认走 https://pub.dev
+  在国内/容器化网络下会卡到几乎不动；要走中国 mirror。**正解**：
+  `PUB_HOSTED_URL=https://pub.flutter-io.cn FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn dart pub get`
+  能在 5s 内 resolve 完成。这两个变量只影响本次进程，不污染 git 配置，
+  也不需要写进 pubspec.yaml；下次切回真正 pub.dev 也无副作用。
+- **WebSocket 路由 register 前要先 import**：FastAPI 0.136 + Pydantic v2
+  下，把 WS 路由写在 `routers/lecture_live.py` 里，不在 `main.py` 顶部
+  `from app.routers import ... lecture_live` + `app.include_router(lecture_live.router)`
+  这两步**任一**漏一行，`uvicorn app.main:app` 启动会显示绿色启动成功，
+  但 `/lecture/live` 直接 404 而不是 426 upgrade required —— 因为 FastAPI
+  根本没注册 WS 协议升级处理器。用 `wscat -c ws://127.0.0.1:8001/lecture/live`
+  能立即排查（404 = 没注册，>=300 = 配错了）。
+- **后端 audio_chunk base64 多片拼接前必须 decode 再合并**：第一版把
+  多个 `audio_chunk.base64` 字符串直接 `"".join(...)` 拼起来送给火山 ASR，
+  火山直接 400 invalid base64 padding。原因：base64 是 4 字符 / 3 字节一组,
+  各 chunk 末尾很可能落在字节组中间（带 `=` 或 `==` padding），拼接后中
+  间出现非法 padding。**正解**：`base64.b64decode(each)` 拿到 bytes，
+  拼成一段连续 PCM，再 `base64.b64encode(...)` 一次性送给 ASR。这条逻辑
+  封装在 `LiveAsrBuffer._drain` 里，任何接入流式音频的新协议都要走它。
+- **OpenAI Python SDK `run_in_executor` 必须用 lambda 包**：在
+  `live_lecture_session._invoke_lecture_agent` 里把同步阻塞的
+  `generate_lecture_turns(...)` 丢到 threadpool 跑，必须写成
+  `loop.run_in_executor(None, lambda: lecture_agent_fn(section_id=..., ...))`,
+  而不是 `loop.run_in_executor(None, lecture_agent_fn, section_id=...)`。
+  后者 `run_in_executor` **不支持关键字参数**，会抛
+  `TypeError: 'run_in_executor() takes ... positional arguments but ... were given'`。
+  lambda 把关键字参数捕获进闭包再调用是最稳的写法。
+- **delta 切分按字符数硬切，不按句号**：本能想"在标点处优雅断行"让气泡
+  增长不断在词中间。实测发现学生看到的"流式"体感主要取决于"每多少 ms
+  增长一段"而不是"段的语义边界"；20 字 / 40ms 一段在中文 + LaTeX 混排
+  下肉眼是连续滚动的。按句号切的话，K2.6 偶发把整段不分句压成 180 字
+  一句，等于回到"整段一次出现"的体感。
+- **Flutter `record` 包 5.x 必须 `startStream(...)` 而不是 `start(...)`**：
+  早期版本 `start(path=...)` 录到本地文件，新版（5.x）改用
+  `startStream(RecordConfig(...))` 返回 `Stream<Uint8List>`。
+  写错会 silent fail：录音指示灯亮起、不报错、但 stream 一个 chunk 都不发,
+  排查会浪费 1h+。
+- **`audioplayers` 6.x 必须用 `BytesSource(bytes, mimeType: 'audio/mpeg')`**：
+  早期版本是 `BytesSource(bytes)` 然后 `play(source, mode: PlayerMode.lowLatency)`,
+  新版要把 mimeType 显式塞进 BytesSource。漏掉 mimeType 在 Android 上
+  能播但 iOS 静默不播；写 mp3 字节但没指明 `audio/mpeg` 时 Android 偶发
+  把它当 wav 解析爆。
+- **WebSocket 重连不要在 service 层做指数退避**：第一版给 LiveLectureService
+  加了"WS 断了等 1s 重连，再 2s，再 4s"的指数退避；实测发现：
+  - 学生通常希望「断了就断了，等 demo 演示者点重连」而不是 AI 后台偷偷
+    自己重连导致状态混乱；
+  - 后端 WS 异常通常是真的服务器挂了，前端无脑重连只会刷日志，不能恢复；
+  正解：service 层断了就 emit `LiveConnectionState.disconnected`，UI 显式
+  显示「连接断开」+「重新连接」按钮，学生主动触发。等真有用户反馈"我
+  晃手机断网了想自动恢复"时再加。
+- **静音检测的 RMS 阈值 600 ≠ 0dBFS 的 60%**：16bit PCM 满量程是 ±32768，
+  `_estimateRms` 返回的是平均振幅的近似平方根。600 这个阈值对应的实际
+  录音音量是「靠近平板正常说话」级别，**远低于** 0dBFS。如果阈值改高
+  到 3000，孩子轻声讲话时会被全部判成静音；改低到 100，叹气 / 翻书都
+  会被算成"在说话"。当前 600 是在三台平板（中端 / 旗舰 / Web Chrome）
+  实测的折中值，不要随意改。
+- **`agent_turn_delta` 切碎后 setState 抖动**：在 `_onLiveEvent` 处理
+  delta 时如果用 `_turns.add(...)` 而不是替换原 turn，前端会出现 "5 个
+  小明气泡叠在一起" 的鬼畜效果。正解：每条 delta 来时遍历 `_turns` 找
+  匹配 `turnId` 的那条，**替换**整条而不是新增。`_turns[i] = ...` 加
+  setState 即可，Flutter 的 ListView.separated 会按 index diff 平滑更新。
+- **学生打断后 700ms 冷却**：第一版没冷却，学生打断 AI 后 30ms 内
+  音量短暂回弹（"啊"卡在喉咙里）又触发了第二次打断，又 `setState +
+  发 student_interrupt + stopTts`，前端日志一秒里能刷 5 条打断。解决：
+  `_interruptCooldownTimer` 700ms 不允许重复 interrupt；这个值足以让
+  当前 turn 真正停下、学生进入正常讲话节奏。
+- **completed 时 LectureSubmitResponse 必须 List.unmodifiable**：把流式
+  `_turns` 直接喂给 `_persistCompletion` 会让仓库内部对 turns 排序 /
+  filter 的时候**反向**影响 UI 的 `_turns`（List 是引用语义）。正解：
+  `List<AgentTurn>.unmodifiable(...)` 复制一份再喂；写 review / progress
+  时拿到的快照与 UI 不再共享内存。
+- **Android `RECORD_AUDIO` 在 API 29+ 必须运行时申请**：编译时声明
+  `<uses-permission android:name="android.permission.RECORD_AUDIO" />`
+  只是让 APK 安装时显示这条权限，**不**等于授予。`permission_handler`
+  必须在 `start()` 里调一次 `Permission.microphone.request()`，否则
+  `AudioRecorder.startStream()` 会抛 SecurityException。第一次启动的
+  权限弹窗只弹一次；学生点拒绝后必须教 ta 去系统设置打开 ——
+  brief 第 13 节"麦克风权限拒绝"分支的副文本就是干这件事的。
+- **`flutter test` 在容器内首次启动仍要预热 ~10-15s**：与第六轮踩坑
+  一致。`dart test` 直接跑 flutter 测试会报 `Could not find package test`,
+  正解仍是用 `/opt/flutter/bin/flutter test`。预热完成后单次 ≤ 5s,
+  CI 也可以缓存 `~/.pub-cache` + `~/.flutter` 避免重复下载。
 
 ---
 

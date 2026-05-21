@@ -118,11 +118,32 @@
   - **失败容错**：手动把 prefs 里 `ai_feynman.lecture_reviews.v1` 改成乱码 → 重启 App → 回顾页不崩、显示空状态；按下一题再完成一道 → 新记录正常写入。
 - **预估耗时**：120 秒
 
+## 11. 实时双工讲题 · 边写边讲 → 自然停顿 → 流式追问 → TTS → 学生打断（第九轮 · 学生端 MVP 总收口）
+- **一句话描述**：在 16.3 第 1 题点「开始讲题」，孩子一边在右侧白板写 `\sqrt{12}=2\sqrt{3}`、一边口头讲解「我先把 12 拆成 4×3，4 是完全平方数…」；自然停顿 1.5 秒后，左侧逐字流式出现小明追问气泡、对应白板步骤亮起霓虹光晕，紧接着 TTS 真人腔朗读追问；孩子开口或落笔的瞬间 AI 停下来，状态面板切到「你打断了 AI，我继续听你讲」。
+- **演示要点**：
+  - **真正实时双工**：右侧白板下方的「实时音频面板」从「开始讲题」→「正在听你讲...」→「检测到停顿，AI 正在想问题...」→「AI 同伴正在说话」→「你打断了 AI，我继续听你讲」连续切换；面板右上角有 1.1s 周期的呼吸点表示「系统活着」；状态文案 ≤18 字符合平板远距阅读要求。
+  - **底层数据流可观察**：`tail -f main/logs/uvicorn.log` 现场展示 `[live-session] session_start … audio_chunk seq=N … asr_segment text="…" … thinking … agent_turn_start … agent_turn_delta … agent_turn_done … round_done`，每一条都能在前端找到对应反应。
+  - **流式气泡逐字增长**：后端把 LLM 输出按 ~20 字一段切成 `agent_turn_delta` 推给前端，气泡随 delta 增长，**不再是「呼吸 10s 后整段一次出现」**。每条 delta 间隔 40ms，前端 setState 平稳不抖。
+  - **白板步骤随气泡高亮**：`agent_turn_start.highlightStepIds` 命中谁，对应笔迹立刻换湖青 + 浅黄霓虹光晕；多 turn 时 highlight 切换跟随当前发言角色。
+  - **TTS 同步播放**：第一条 `agent_turn_done` 触发 `/tts` 合成 mp3 → `audioplayers` 播放；嗓音是 `zh_female_qingchezizi_moon_bigtts`（火山豆包默认女声）；同一轮内多条 turn 顺序排队播放。
+  - **学生开口打断**：TTS 正在说时，孩子重新开口讲话 → 麦克风 RMS 超过阈值 → 前端发 `student_interrupt(reason=voice)` + 立刻 stopTts()，同时面板切到「你打断了 AI，我继续听你讲」蓝色态；系统气泡补一条「我刚才打断了 AI，它停下来听你讲」给文字佐证。后端不再继续推送剩余 turn 的 delta。
+  - **学生落笔打断**：TTS 正在说时，孩子在白板上写新一笔 → `_onCanvasChanged` 直接走 `_maybeInterruptAi(reason='pen')`，同一套打断流程；学生不需要先停说话再写字。
+  - **手动「我讲到这里」**：孩子写完但没自然停顿（一直在嗯啊地想）时，可以点面板里的「我讲到这里」直接触发 `pause_detected(silenceMs=1500)`，跳过静音等待；后端日志能看到这次是手动触发而非自动。
+  - **白板 snapshot 实时同步**：每次新增 / 撤销 / 清空白板后 480ms debounce 触发一次 `ink_snapshot` 上送；后端 prompt 拼装时拿到的是**最新**的 step 列表 + 笔画数 + boundingBox，不是上一次提交时的快照。
+  - **完成后仍写本地进度 / 回顾**：当后端推 `round_done(status=completed, masteryDelta=1)`，前端复用第六/八轮逻辑：弹小结卡 + 写 `SectionProgress` + 写 `LectureReviewRecord`，返回首页 16.3 小节 pill 显示「已完成 1 轮 · 10/100」，回顾页多一条新卡片。
+  - **故障兜底闭环**：
+    - 把后端 uvicorn 杀掉 → 面板红色「连接断开，白板还在，可以重新开始」+ 「重新连接 / 用文字提交」两个按钮；点「用文字提交」回到第四轮的文字输入区 + 第五轮 `/lecture/submit` 多轮闭环。
+    - 系统设置里禁掉麦克风权限重开 → 面板切到「麦克风权限被拒绝」，副文本提示「请到系统设置 → 应用权限里允许『麦克风』后再试」+ 兜底「用文字提交」可点。
+    - `KIMI_API_KEY` 设成空字符串 → 后端 `pause_detected` 后走 fallback，前端仍能看到 1 条流式追问气泡（fallback 文案）+ TTS 播放，**Demo 链路永不中断**。
+  - **不展示完整 ASR 转写**：默认模式下白板 / 面板 / 对话区都**不**展示 ASR 转写文本（避免学生纠结识别错别字）；只有 `--dart-define=LIVE_FALLBACK_TEXTINPUT=1` 启动时才会把 ASR 片段累加到底部「我刚才是这样讲的」文字框里供 demo 演示者校对。
+  - **后端实时性指标可对账**：window=2.5s + ASR ≈ 1-2s + LLM 关思考 5-15s + TTS 2-5s，端到端体感「停顿 → AI 第一条字出现」≈ 6-12s；满足 brief 第 5 节"3-8s 内出现首气泡"的硬指标（LLM 慢时面板已经显式提示"AI 正在想问题..."，体感不再像"卡死了"）。
+- **预估耗时**：180 秒
+
 ---
 
 ## 后续待补功能（尚未演示）
-- 真实 SSE 多 Agent 流式生成（替换 `lecture` 路由内的固定剧本）。
-- 手写笔迹的真实 OCR → step LaTeX 自动填入（第四轮已经把 UI / 字段 / Prompt 全部铺好，等接 OCR 后只需替换填充来源）。
-- 实时 ASR 流式上屏 → `studentSpeechText` 自动写入（同上）。
+- 手写笔迹的真实 OCR → step LaTeX 自动填入（第四轮已经把 UI / 字段 / Prompt 全部铺好；第九轮把白板 snapshot 走通了 `ink_snapshot` 通道，等接 OCR 后只需把 `plainText` / `latex` 填进 snapshot 字段）。
+- 真正的 token 级 LLM 流式（当前第九轮是后端拿到整段再切片推送给前端；体感与 token 流接近但还不是端到端流）。
+- TTS 200ms fade-out 真实淡出（当前打断是快速 stop，brief 第 11 节标的 TODO 仍在）。
 - 家长端弱项看板与精彩讲题回放。
-- 接口接入鉴权（当前 `/lecture/submit` 暂未走 `require_user`，演示阶段刻意豁免）。
+- 接口接入鉴权（当前 `/lecture/submit` 与 `/lecture/live` 都暂未走 `require_user`，演示阶段刻意豁免）。
