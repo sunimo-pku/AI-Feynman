@@ -134,9 +134,12 @@ def recognize_steps(req: InkRequest) -> list[InkStepOut]:
         source = "fallback"
         confidence = 0.0
         if req.mode == "hwr" and Config.OCR_HWR_API_KEY and step.image_base64:
-            latex = refs[idx] if idx < len(refs) else (fallback[idx % len(fallback)] if fallback else r"\sqrt{?}")
+            if idx < len(refs):
+                latex = refs[idx]
+            elif fallback:
+                latex = fallback[idx % len(fallback)]
             source = "hwr"
-            confidence = 0.58
+            confidence = 0.58 if latex else 0.0
         elif req.mode == "hwr" and step.image_base64 and not Config.OCR_HWR_API_KEY:
             if fallback:
                 latex = fallback[idx % len(fallback)]

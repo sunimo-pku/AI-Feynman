@@ -326,6 +326,30 @@ def test_ocr_ink_template_fallback_without_reference(client: TestClient) -> None
     assert body["steps"][0]["source"] == "template"
 
 
+def test_ocr_hwr_without_reference_does_not_invent_radical(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("app.routers.ocr.Config.OCR_HWR_API_KEY", "ci-key")
+    resp = client.post(
+        "/ocr/ink",
+        json={
+            "sectionId": "pep-g9-up-s22-1",
+            "questionId": "q-function",
+            "mode": "hwr",
+            "referenceSteps": [],
+            "steps": [
+                {"stepId": "step_1", "strokeCount": 3, "imageBase64": "abc"},
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["steps"][0]["latex"] == ""
+    assert body["steps"][0]["plainText"] == ""
+    assert body["steps"][0]["confidence"] == 0.0
+
+
 # ------------------------------------------------------------------ #
 # /lecture/submit + auth → progress 自动落库
 # ------------------------------------------------------------------ #

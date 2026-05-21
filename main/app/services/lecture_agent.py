@@ -547,7 +547,8 @@ def _coerce_mastery_delta(raw_value: Any) -> int:
 
 
 def _fallback_turns(
-    section_id: str,
+    _section_id: str,
+    _question_prompt: str,
     step_ids: list[str],
     *,
     round_index: int = 1,
@@ -584,83 +585,14 @@ def _fallback_turns(
             }
         ]
 
-    if section_id == "pep-g8-down-s16-1":
-        return [
-            {
-                "turn_id": "turn_1",
-                "role": "xiaoming",
-                "display_name": "小明",
-                "text": (
-                    "等等，被开方数是 $2x-6$，你怎么知道一定要让它 $\\ge 0$ 呀？"
-                    "是不是因为负数开根号在实数范围里没意义？"
-                ),
-                "highlight_step_ids": [first_step],
-            },
-            {
-                "turn_id": "turn_2",
-                "role": "teacher",
-                "display_name": "李老师",
-                "text": (
-                    "问得不错。你能不能再补一句：写完不等式 $2x-6 \\ge 0$ 之后，"
-                    "怎么推出 $x \\ge 3$？"
-                ),
-                "highlight_step_ids": [last_step],
-            },
-        ]
-    if section_id == "pep-g8-down-s16-2":
-        return [
-            {
-                "turn_id": "turn_1",
-                "role": "xiaoming",
-                "display_name": "小明",
-                "text": (
-                    "你直接把 $\\sqrt{12} \\cdot \\sqrt{3}$ 写成 $\\sqrt{36}$，"
-                    "这里用了一条法则吧？前提是什么呀？"
-                ),
-                "highlight_step_ids": [first_step],
-            },
-            {
-                "turn_id": "turn_2",
-                "role": "teacher",
-                "display_name": "李老师",
-                "text": (
-                    "对的，要强调 $a \\ge 0$、$b \\ge 0$ 才能这样合并。"
-                    "你能把这句条件补到你刚才那一步旁边吗？"
-                ),
-                "highlight_step_ids": [mid_step],
-            },
-        ]
-    if section_id == "pep-g8-down-s16-3":
-        return [
-            {
-                "turn_id": "turn_1",
-                "role": "xiaoming",
-                "display_name": "小明",
-                "text": (
-                    "我有点疑惑，$\\sqrt{12}$ 为什么可以变成 $2\\sqrt{3}$？"
-                    "这里用了什么规律？"
-                ),
-                "highlight_step_ids": [first_step],
-            },
-            {
-                "turn_id": "turn_2",
-                "role": "teacher",
-                "display_name": "李老师",
-                "text": (
-                    "这个问题问得很好。你可以试着把 12 拆成 $4 \\times 3$，"
-                    "再说明为什么 4 能从根号里出来。同样地，$\\sqrt{27}$ 也试一下。"
-                ),
-                "highlight_step_ids": [mid_step],
-            },
-        ]
     return [
         {
             "turn_id": "turn_1",
             "role": "xiaoming",
             "display_name": "小明",
             "text": (
-                "我想先确认这一步：你能不能说清楚为什么可以这样变形？"
-                "用到的定义、公式或条件分别是什么？"
+                "我想先确认你刚才这一步：它为什么能从上一行推出？"
+                "请结合题目条件，说出用到的定义、公式或图形关系。"
             ),
             "highlight_step_ids": [first_step],
         },
@@ -669,8 +601,8 @@ def _fallback_turns(
             "role": "teacher",
             "display_name": "李老师",
             "text": (
-                "很好，我们先不急着看最终答案。请你按「依据是什么、条件有没有漏、"
-                "计算是否一致」这三点，把关键步骤再讲一遍。"
+                "我们先把这道题的关键步骤讲扎实：已知条件是什么、"
+                "这一步依据是什么、计算或推理有没有漏检查。"
             ),
             "highlight_step_ids": [last_step],
         },
@@ -737,6 +669,7 @@ def generate_lecture_turns(
             "mastery_delta": 1 if is_multi else 0,
             "turns": _fallback_turns(
                 section_id,
+                question_prompt,
                 allowed_step_ids,
                 round_index=safe_round,
                 has_history=has_history,
