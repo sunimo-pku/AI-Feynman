@@ -17,7 +17,11 @@ import '../data/lecture_models.dart';
 class LectureService {
   LectureService({http.Client? client, Duration? timeout})
       : _client = client ?? http.Client(),
-        _timeout = timeout ?? const Duration(seconds: 12);
+        // 第三轮起 `/lecture/submit` 内部会调用真实 Kimi LLM，端到端往返
+        // 经常 8-15s 不等（联网链路 + 模型生成 1-2 段中文剧本）。
+        // 把客户端 timeout 拉到 30s，比之前的 12s 宽出一倍，避免 Demo
+        // 现场偶发慢请求被前端硬截断而误报「连不上后端」。
+        _timeout = timeout ?? const Duration(seconds: 30);
 
   final http.Client _client;
   final Duration _timeout;
@@ -35,7 +39,8 @@ class LectureService {
           .timeout(_timeout);
     } on TimeoutException {
       throw const LectureApiException(
-        userMessage: '后端响应超时了，可能网络不太稳，请稍后再点一次「提交讲解」。',
+        userMessage: 'AI 同伴想得有点久（超过 30 秒），可能是网络不稳或 LLM 拥塞，'
+            '稍等几秒再点一次「重新提交」试试。',
       );
     } on SocketException catch (e) {
       throw LectureApiException(

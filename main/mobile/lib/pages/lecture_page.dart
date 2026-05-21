@@ -121,10 +121,10 @@ class _LecturePageState extends State<LecturePage> {
       _errorMessage = null;
       if (!retry) {
         _round += 1;
-        _turns.add(AgentTurn(
+          _turns.add(AgentTurn(
           role: AgentRole.system,
           displayName: '系统',
-          text: '已收到第 $_round 轮讲解，正在让小明和李老师听你的步骤……',
+          text: '已收到第 $_round 轮讲解，AI 同伴正在阅读你的步骤、写追问……',
           highlightStepIds: const [],
         ));
       }
@@ -418,7 +418,10 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   String _submitLabel(bool submitting) {
-    if (submitting) return '正在让同学听讲…';
+    // 第三轮起 `/lecture/submit` 内部会真实调用 Kimi，端到端常常 8-15s。
+    // 文案换成「AI 同伴思考中…」让学生知道这次是真的在等模型，而不是 0.5s
+    // 假 loading 的固定 Mock。
+    if (submitting) return 'AI 同伴思考中…';
     if (_status == _LectureStatus.error) return '重新提交';
     if (_round == 0) return '提交讲解';
     return '再讲一轮';
@@ -553,7 +556,7 @@ class _ThinkingBubble extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           const Text(
-            '同学们正在仔细看你的步骤……',
+            'AI 同伴正在阅读你的步骤、写追问……',
             style: TextStyle(color: AppPalette.textSecondary, fontSize: 14),
           ),
         ],

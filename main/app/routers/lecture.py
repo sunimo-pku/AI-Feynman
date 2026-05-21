@@ -1,24 +1,33 @@
-"""讲题 / 多 Agent 追问的 Mock 后端。
+"""讲题 / 多 Agent 追问路由。
 
-第二轮目标：把第一轮的本地 Mock 多 Agent 回复迁到后端，**只稳定前后端契约**，
-暂不接真实 LLM。设计要点：
+- 第二轮：返回固定 JSON Mock。
+- 第三轮（当前）：交由 `services.lecture_agent.generate_lecture_turns(...)`
+  调用真实 LLM 生成强结构化多 Agent 追问；LLM 不可用 / 解析失败 / 校验失败时
+  自动回退到第二轮的固定 Mock，保证 Demo 链路不中断。
+
+设计要点：
 
 - 路由前缀使用业务语义 `/lecture`，避免与 `/chat` 通用对话端点混淆。
 - 强 Schema：Pydantic v2 模型，所有字段显式声明，前端就能直接 from_json。
 - 不引入 `require_user`：当前 Flutter 客户端尚未做登录态，演示链路不应被 401 拦腰截断。
-- 仅 1 个章节维度 if/else，未来替换为真实 LLM 时只需保留 `LectureSubmitResponse`
-  契约即可逐字段对齐。
 - 错误：参数缺失走 422（由 FastAPI / Pydantic 自动产生）；
        未知章节走 404；空步骤数组走 400 —— 全部经 HTTPException 抛出，
        不走 `return {"error": ...}` 假 200。
+- LLM 错误**不**抛 HTTPException：会让前端看到红色错误条，破坏 Demo；
+  统一由 service 回落 fallback，路由层只看 `source` 字段写日志。
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
+
+from app.services.lecture_agent import generate_lecture_turns
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/lecture", tags=["Lecture"])
 
@@ -97,90 +106,8 @@ class LectureSubmitResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Mock 多 Agent 剧本（按 sectionId 选取）
+# 路由
 # ---------------------------------------------------------------------------
-
-
-def _build_turns(section_id: str, step_ids: list[str]) -> list[AgentTurnOut]:
-    """根据章节 + 学生步骤数组，生成 2 条固定 Mock 对话。
-
-    `highlightStepIds` 必须命中真实存在的 stepId，前端才能让画布对应笔迹亮起。
-    """
-
-    first_step = step_ids[0] if step_ids else "step_1"
-    mid_step = step_ids[len(step_ids) // 2] if step_ids else first_step
-    last_step = step_ids[-1] if step_ids else first_step
-
-    if section_id == "pep-g8-down-s16-1":
-        return [
-            AgentTurnOut(
-                turn_id="turn_1",
-                role="xiaoming",
-                display_name="小明",
-                text=(
-                    "等等，被开方数是 2x-6，你怎么知道一定要让它 ≥ 0 呀？"
-                    "是不是因为负数开根号在实数范围里没意义？"
-                ),
-                highlight_step_ids=[first_step],
-            ),
-            AgentTurnOut(
-                turn_id="turn_2",
-                role="teacher",
-                display_name="李老师",
-                text=(
-                    "问得不错。你能不能再补一句：写完不等式 $2x-6 \\ge 0$ 之后，"
-                    "怎么推出 $x \\ge 3$？"
-                ),
-                highlight_step_ids=[last_step],
-            ),
-        ]
-    if section_id == "pep-g8-down-s16-2":
-        return [
-            AgentTurnOut(
-                turn_id="turn_1",
-                role="xiaoming",
-                display_name="小明",
-                text=(
-                    "你直接把 $\\sqrt{12} \\cdot \\sqrt{3}$ 写成 $\\sqrt{36}$，"
-                    "这里用了一条法则吧？前提是什么呀？"
-                ),
-                highlight_step_ids=[first_step],
-            ),
-            AgentTurnOut(
-                turn_id="turn_2",
-                role="teacher",
-                display_name="李老师",
-                text=(
-                    "对的，要强调 $a \\ge 0$、$b \\ge 0$ 才能这样合并。"
-                    "你能把这句条件补到你刚才那一步旁边吗？"
-                ),
-                highlight_step_ids=[mid_step],
-            ),
-        ]
-    if section_id == "pep-g8-down-s16-3":
-        return [
-            AgentTurnOut(
-                turn_id="turn_1",
-                role="xiaoming",
-                display_name="小明",
-                text=(
-                    "我有点疑惑，$\\sqrt{12}$ 为什么可以变成 $2\\sqrt{3}$？"
-                    "这里用了什么规律？"
-                ),
-                highlight_step_ids=[first_step],
-            ),
-            AgentTurnOut(
-                turn_id="turn_2",
-                role="teacher",
-                display_name="李老师",
-                text=(
-                    "这个问题问得很好。你可以试着把 12 拆成 $4 \\times 3$，"
-                    "再说明为什么 4 能从根号里出来。同样地，$\\sqrt{27}$ 也试一下。"
-                ),
-                highlight_step_ids=[mid_step],
-            ),
-        ]
-    return []
 
 
 _SUPPORTED_SECTIONS: tuple[str, ...] = (
@@ -190,16 +117,11 @@ _SUPPORTED_SECTIONS: tuple[str, ...] = (
 )
 
 
-# ---------------------------------------------------------------------------
-# 路由
-# ---------------------------------------------------------------------------
-
-
 @router.post(
     "/submit",
     response_model=LectureSubmitResponse,
     response_model_by_alias=True,
-    summary="提交学生讲解 → 返回多 Agent Mock 追问",
+    summary="提交学生讲解 → LLM 生成多 Agent 追问（失败回退固定 Mock）",
 )
 async def submit_lecture(req: LectureSubmitRequest) -> LectureSubmitResponse:
     if req.section_id not in _SUPPORTED_SECTIONS:
@@ -217,13 +139,50 @@ async def submit_lecture(req: LectureSubmitRequest) -> LectureSubmitResponse:
             detail="At least one handwriting step is required before submitting.",
         )
 
-    step_ids = [s.step_id for s in req.steps]
-    turns = _build_turns(req.section_id, step_ids)
+    # 把请求里的步骤转成纯 dict 喂给 service —— 让 service 不再依赖路由层的
+    # Pydantic 模型，未来抽到单独的进程也能复用。
+    steps_payload = [
+        {
+            "stepId": s.step_id,
+            "latex": s.latex,
+            "plainText": s.plain_text,
+            "strokeCount": s.stroke_count,
+        }
+        for s in req.steps
+    ]
+
+    result = generate_lecture_turns(
+        section_id=req.section_id,
+        question_id=req.question_id,
+        question_prompt=req.question_prompt,
+        student_speech_text=req.student_speech_text,
+        steps=steps_payload,
+    )
+
+    logger.info(
+        "[lecture] /submit section=%s question=%s steps=%d source=%s turns=%d",
+        req.section_id,
+        req.question_id,
+        len(req.steps),
+        result.get("source"),
+        len(result.get("turns", [])),
+    )
+
+    turns = [
+        AgentTurnOut(
+            turn_id=t["turn_id"],
+            role=t["role"],
+            display_name=t["display_name"],
+            text=t["text"],
+            highlight_step_ids=t.get("highlight_step_ids", []),
+        )
+        for t in result.get("turns", [])
+    ]
 
     return LectureSubmitResponse(
         question_id=req.question_id,
         section_id=req.section_id,
-        status="needs_explanation",
-        mastery_delta=0,
+        status=result.get("status", "needs_explanation"),
+        mastery_delta=result.get("mastery_delta", 0),
         turns=turns,
     )

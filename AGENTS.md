@@ -194,6 +194,36 @@ git push origin main
 - **用户级 localStorage 必须带 user id**：切换账号时不能用全局固定 key，否则偏好串号。
 - **LLM 结构化输出需持久化**：仅放 `useState` 的内容，用户切页再回来会丢失；应写入 session / DB 对应字段。
 
+### Kimi / Moonshot LLM（第三轮 `/lecture/submit` 实接踩坑）
+
+- **`kimi-k2.6` 是思考模型，单次 30-90s 不可接讲题闭环**：默认开"思考模式"，
+  会先把推理塞 `reasoning_content` 再写 `content`；`max_tokens=1200` 经常
+  `finish_reason=length` + `content=''`，全部被解析层当失败回退到 Mock。
+  讲题闭环对延迟极敏感（学生提交后等 AI 同伴讲话），所以 `services/lecture_agent.py`
+  显式指定 `moonshot-v1-32k`（经典非思考模型，1-3s 返回）。换到 k2.6 前
+  务必测端到端延迟。
+- **`app.services.kimi.chat(...)` 的 `model` 参数对非 deepseek 模型无效**：
+  `_get_client(model)` 里非 deepseek 一律返回 `Config.KIMI_MODEL`，
+  外面传 `model='moonshot-v1-32k'` 会被静默覆盖回 `kimi-k2.6`。
+  想要选模型，直接复用 `kimi.kimi_client.chat.completions.create(model=...)`，
+  不要新建 OpenAI client（避免双客户端导致 base_url / key 漂移）。
+- **`kimi-k2.6` 只接受 `temperature=1`**：传 0.4 直接 400
+  「invalid temperature: only 1 is allowed for this model」。换 `moonshot-v1-*`
+  这一族经典模型则正常支持 0.0-1.5 的自定义温度。
+- **必须开 `response_format={"type": "json_object"}` 双保险**：Prompt 里写
+  "只输出 JSON" 还不够，模型偶尔会包 ```json``` 三重反引号。`response_format`
+  会让 Moonshot 服务端硬约束首字符为 `{`；service 解析时再 `_strip_markdown_fence`
+  防御一次，两道防线缺一不可。
+- **`highlightStepIds` 必须再做一次白名单过滤**：LLM 即使被反复告知"只用白名单里的
+  stepId"，仍偶尔编出 `step_99` / `step_0`。后端必须比对请求里的真实 `stepId`，
+  命中不到时回落到首个 `step_id`，否则前端画布点不亮，体感比"没追问"还糟。
+- **LLM 异常不要抛 HTTPException**：抛了前端会出红色错误条破坏 Demo。
+  统一在 `lecture_agent` 内 `try/except` 后 `return _fallback_payload()`，
+  路由层只在日志里区分 `source=llm` / `source=fallback`，对前端始终返回 200。
+- **客户端 timeout 至少 30s**：经典模型平均 3-5s，但偶发 10-20s 拖尾（Moonshot
+  侧排队）。Flutter `LectureService._timeout` 给 30s 是稳态下限；同时后端层
+  自带 20s OpenAI SDK `timeout=...`，确保不会把客户端 30s 全部吃满。
+
 ### 前后端契约（第二轮 `/lecture/submit`）
 
 - **Pydantic v2 别名两套配置**：请求字段从前端驼峰（`sectionId`）映射到 Python 蛇形需要 `Field(..., alias='sectionId') + model_config = {"populate_by_name": True}`；响应字段则要用 `serialization_alias='sectionId'` + `response_model_by_alias=True`，否则后端会把蛇形吐回去，Flutter 一边 `json['sectionId']` 一边收到 `section_id` 直接拿到 null。

@@ -28,6 +28,7 @@
 ├── docs/
 │   ├── AI_CODE_AGENT_BRIEF.md # 首个可演示小闭环的 AI 执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND2.md # 第二轮后端 Mock 闭环执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND3.md # 第三轮真实 LLM 结构化追问执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
@@ -66,9 +67,20 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 健康检查：`http://127.0.0.1:8001/health`  
 API 文档：`http://127.0.0.1:8001/docs`
 
-#### 讲题 Mock 接口（第二轮，固定 JSON）
+#### 讲题接口（第三轮：真实 LLM 多 Agent 追问 + Mock fallback）
 
-`POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解」时调用，后端返回固定的多 Agent 追问（小明 + 李老师），目前仅放行 16.1 / 16.2 / 16.3。本轮**不接真实 LLM / ASR / TTS**，只跑通前后端契约。
+`POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解」时调用。
+
+- **第三轮**起，后端 `services/lecture_agent.py` 会调用 Moonshot 真实 LLM
+  （非思考模型 `moonshot-v1-32k`，温度 0.4，`response_format=json_object`），
+  让 Kimi 在单次调用内扮演小明 / 大雄 / 班长 / 李老师中的 1-2 个角色，
+  生成针对学生当前 `steps` 的强结构化追问。
+- LLM 返回的 JSON 会经过严格校验：`role` 白名单、`text` 非空且 ≤180 中文字符、
+  `highlightStepIds` 必须命中请求里真实存在的 `stepId`、`masteryDelta ∈ {-1, 0, 1}`。
+- **任意环节失败**（`KIMI_API_KEY` 缺失、LLM 超时、返回非 JSON、字段不合规）
+  都会**自动回退**到第二轮的固定 Mock 剧本，**Demo 链路永不中断**，
+  后端日志会打 `source=fallback` 便于排查。
+- 目前仍仅放行 V1 上线的 16.1 / 16.2 / 16.3 三节。
 
 ```bash
 curl -X POST http://127.0.0.1:8001/lecture/submit \
@@ -77,15 +89,22 @@ curl -X POST http://127.0.0.1:8001/lecture/submit \
     "sectionId":"pep-g8-down-s16-3",
     "questionId":"mock-radical-003",
     "questionPrompt":"化简：\\sqrt{12}-\\sqrt{27}",
-    "studentSpeechText":"",
-    "steps":[{"stepId":"step_1","latex":"","plainText":"","strokeCount":3,
-              "boundingBox":{"x":120,"y":80,"width":360,"height":96}}]
+    "studentSpeechText":"我先把根号十二变成二倍根号三，再把根号二十七变成三倍根号三。",
+    "steps":[
+      {"stepId":"step_1","latex":"\\sqrt{12}=2\\sqrt{3}","plainText":"根号12等于2根号3","strokeCount":3,
+       "boundingBox":{"x":120,"y":80,"width":360,"height":96}},
+      {"stepId":"step_2","latex":"\\sqrt{27}=3\\sqrt{3}","plainText":"根号27等于3根号3","strokeCount":3,
+       "boundingBox":{"x":120,"y":190,"width":360,"height":96}}
+    ]
   }'
 ```
 
-返回：`{ "questionId", "sectionId", "status", "masteryDelta", "turns": [...] }`，`turns[*].role` 使用稳定英文枚举 `xiaoming / teacher / daxiong / monitor / system`。
+返回：`{ "questionId", "sectionId", "status", "masteryDelta", "turns": [...] }`，
+`turns[*].role` 使用稳定英文枚举 `xiaoming / daxiong / monitor / teacher / system`，
+`turns[*].highlightStepIds` 一定是请求里 `stepId` 的子集。
 
 错误码：未知 `sectionId` → 404；空 `steps` → 400；字段缺失 / 类型不符 → 422。
+LLM 失败**不**抛 HTTP 错误，统一在 200 响应内走 Mock fallback。
 
 ### Flutter 客户端（Mac 上执行）
 
