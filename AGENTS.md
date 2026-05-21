@@ -282,6 +282,59 @@ git push origin main
   纯题面追问让学生有「AI 真的在听我讲」的体感。这条规则要放在系统 Prompt 而
   不是 user prompt 里，否则学生若提交了无关上下文，模型可能反而过度跑题。
 
+### 第五轮 · 多轮追问上下文闭环
+
+- **本轮 student 历史项必须「构造时临时拼装、成功才落库」**：第一版把
+  `_history.add(studentItem)` 写在了 `_buildRequest()` 里、请求发出之前，
+  结果首次 LLM 失败 → 错误条 → 学生点「重试」复用 `_lastFailedRequest` →
+  请求体里的 history 已经多了第二条 student 项（同样内容） → 第二次失败
+  又来一条……测试时连点 3 次重试，history 里就会有 4 条一模一样的 student
+  发言，Prompt 严重污染。正解：`_buildRequest()` 只**临时**生成
+  `pendingStudentItem`、塞进 request.history 末尾，但**不**push 进 `_history`；
+  请求成功后，从 `request.history.last` 取出来和 AI turns 一起一次性 add。
+  这样无论失败重试多少次，本地历史和真实提交序列都不会错位。
+- **historyTail 必须和后端 `_HISTORY_KEEP_LAST` 对齐**：前端硬上限 6、后端硬
+  上限 6，**两边都要做**裁剪。只前端做：万一别的客户端绕过（curl / 旧 APK）
+  直接灌 100 条，Prompt 会爆 token；只后端做：前端的 `_history` 会无限制
+  增长，长会话内存占用慢慢爬。两边都做才是 idempotent 的。
+- **`AgentRole.classLeader` vs `AgentRole.monitor` 是历史包袱**：第二轮枚举里
+  叫 `classLeader`，第三轮接后端 `role: "monitor"` 时新增了 `monitor` 别名
+  做兼容，结果 `agent_message_bubble.dart` 的 switch 漏了 `monitor` 分支 ——
+  Dart 3 的 exhaustive switch 在第三轮起 LLM 真返回 `monitor` 时会 throw
+  `NoSuchEnumValueError`，把整张讨论 ListView 的 build 挂掉。正解：
+  switch 同时 `case classLeader: case monitor:`，两者共用同一套头像/底色。
+  注意：所有「按 role 分支」的 widget 都要这样配两份，否则 dart analyze 不
+  报但运行时崩。
+- **第一轮 LLM 直接 `completed` 是 K2.6 的偶发走样**：System Prompt 里
+  写得很清楚「学生还没解释就不要收束」，但 K2.6 在某些「学生口述很完整、
+  step 很少」的输入下，第一轮就会自作主张回 `status: "completed"`，让
+  学生连 1 次追问都没看到就被收束。后端在 `lecture_agent.py` 末尾加
+  「`safe_round <= 1 and final_status == 'completed'` → 强制改回
+  `needs_explanation` + `mastery_delta=0`」做硬防御，并打 `warning` 日志
+  方便观测频率。如果以后这条警告频繁出现，要回 prompt 加更强约束。
+- **fallback 必须按 round 切文案**：第二轮的固定 Mock 在多轮里会触发「学生
+  连点两次都看到一模一样的小明追问」的鬼畜，体感比"没追问"还糟。第五轮
+  fallback 在 `round_index >= 2 || has_history` 时改走「李老师顺势收束」
+  + `status: "completed"` + `mastery_delta: 1`，让 KIMI_API_KEY 缺失或
+  LLM 抽风时也能演示完整闭环。
+- **history 校验放宽不放严**：按 brief 7.3，「不要因为 history 缺失或格式
+  异常直接 500」。`history` 不在路由层做严格枚举校验，service 层
+  `_sanitize_history()` 直接静默丢掉非 dict / 陌生 role / 空 text 的项 ——
+  这条规则的代价是，前端某天打错 role 名（`class_leader` 没补成 `monitor`）
+  会被静默忽略而不是报错，要靠后端日志 `history=N` 与 `len(req.history)`
+  对比来发现。Demo 优先 > 严格校验。
+- **roundIndex `ge=1` 比 `>=0` 更稳**：把它设成 `>= 0` 时，前端某次状态
+  错乱传了 0 上来，fallback 路径分支判断 `safe_round = max(1, round_index)`
+  把它收紧到 1，但 history 仍是空 —— 然后 fallback 文案是「第二轮老师收束」,
+  学生第一次提交就被收束，超荒诞。正解：路由层直接 `ge=1` 返 422，让前端
+  立刻看到自己传错了；后端 service 自己再 `max(1, ...)` 做兜底。两道防线。
+- **dart analyze 比 flutter analyze 快**：`flutter analyze` 在 root 用户 +
+  容器化 flutter SDK 下首次启动经常卡 5+ 分钟（要预热 dart vm + 解析整个
+  pubspec 依赖图），还会撞 `/opt/flutter/bin/cache/lockfile` 全局锁。
+  CI / 快速本地校验直接用
+  `/opt/flutter/bin/cache/dart-sdk/bin/dart analyze lib/`，几秒钟出结果，
+  不需要 flutter 壳子的锁，也不会被 `pub get` 的网络往返拖死。
+
 ### 平板交互与双工打断（待验证）
 
 - 手写轨迹与音频输入是核心交互；公网 HTTP 下浏览器可能限制麦克风，平板部署需考虑 HTTPS 或原生壳。

@@ -30,6 +30,7 @@
 │   ├── AI_CODE_AGENT_BRIEF_ROUND2.md # 第二轮后端 Mock 闭环执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND3.md # 第三轮真实 LLM 结构化追问执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND4.md # 第四轮学生语义输入闭环执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND5.md # 第五轮多轮追问上下文闭环执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
@@ -68,30 +69,38 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 健康检查：`http://127.0.0.1:8001/health`  
 API 文档：`http://127.0.0.1:8001/docs`
 
-#### 讲题接口（第四轮：学生语义输入驱动 LLM 追问 + Mock fallback）
+#### 讲题接口（第五轮：本地多轮上下文 + LLM 追问 + Mock fallback）
 
-`POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解」时调用。
+`POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解 / 回答追问」时调用。
 
-- **第四轮**起，讲题页新增「我刚才是这样讲的」多行输入与「为每一步补充一句话」
-  步骤说明输入（可选 LaTeX）。客户端会把这些内容随 `studentSpeechText`、
-  `steps[*].plainText`、`steps[*].latex` 三个字段一起发到后端。
-  Prompt 已强化为「**优先**抓住学生原话追问、用引号简短照搬学生说的关键短语、
-  逐条质疑前提条件 / 化简规则 / 计算符号」，因此 AI 同伴的追问从过去的
-  「就题论题」升级到「就你的解法论你的解法」。
-- **第三轮**起，后端 `services/lecture_agent.py` 会调用 Moonshot 真实 LLM
+- **第五轮**起，讲题页在本题内维护一份「最近 6 条」的本地对话历史。
+  每次提交时，前端把现存历史 + 本轮 student 发言快照一并放入请求体的
+  `history` + `roundIndex` 两个**可选**字段，让 Kimi 准确感知到
+  「学生这次到底是在回答上一轮谁的追问」，并据此判定：
+    - `status: "needs_explanation"`：还需要继续追问（本轮再下钻一层，不重复上轮原问题）。
+    - `status: "completed"` + `masteryDelta: 1`：这一题学生讲清楚了，老师收束。
+  前端收到 `completed` 后切到「这一题讲清楚了」收束横幅 + 「再讲一遍 / 下一题」两个对等动作；
+  收到 `needs_explanation` 后输入区文案自动从「我刚才是这样讲的」切到
+  「回答 X 的追问」，placeholder 也跟着换。
+  请求失败重试（点错误条上的「重试」按钮）复用同一个 request 快照，**不**重复追加 student 历史。
+- **第四轮**起，请求体携带 `studentSpeechText` / `steps[*].plainText` / `steps[*].latex`
+  三个学生语义字段；Prompt 已强化为「优先抓住学生原话、用引号简短照搬关键短语、
+  逐条质疑前提条件 / 化简规则 / 计算符号」。
+- **第三轮**起，后端 `services/lecture_agent.py` 调用 Moonshot 真实 LLM
   （旗舰模型 `kimi-k2.6` + `thinking.type=disabled` 关思考模式，
   `temperature=0.6`、`response_format=json_object`、`max_retries=0`），
-  让 Kimi 在单次调用内扮演小明 / 大雄 / 班长 / 李老师中的 1-2 个角色，
-  生成针对学生当前 `steps` 的强结构化追问。
+  让 Kimi 在单次调用内扮演小明 / 大雄 / 班长 / 李老师中的 1-2 个角色。
   实测中位数 5-15s 即可返回；后端层 28s timeout + 自动回退 Mock 兜底。
-- LLM 返回的 JSON 会经过严格校验：`role` 白名单、`text` 非空且 ≤180 中文字符、
+- LLM 返回的 JSON 经过严格校验：`role` 白名单、`text` 非空且 ≤180 中文字符、
   `highlightStepIds` 必须命中请求里真实存在的 `stepId`、`masteryDelta ∈ {-1, 0, 1}`。
-- **任意环节失败**（`KIMI_API_KEY` 缺失、LLM 超时、返回非 JSON、字段不合规）
-  都会**自动回退**到第二轮的固定 Mock 剧本，**Demo 链路永不中断**，
+  额外防御：第一轮若 LLM 直接返回 `completed` 会被强制改回 `needs_explanation`，
+  避免学生还没解释就被收束。
+- **任意环节失败**（`KIMI_API_KEY` 缺失、LLM 超时、返回非 JSON、字段不合规、
+  history 格式异常）都会**自动回退** Mock 剧本：第 1 轮走第二轮固定追问、
+  第 2+ 轮（或带 history）走老师收束 `completed` 文案。**Demo 链路永不中断**,
   后端日志会打 `source=fallback` 便于排查。
 - 目前仍仅放行 V1 上线的 16.1 / 16.2 / 16.3 三节。
-- `studentSpeechText` / `plainText` / `latex` 都可为空字符串；学生只手写不
-  补充语义时，Prompt 会自动回退到「泛泛追问本节核心知识点」分支。
+- 旧客户端（不传 `history` / `roundIndex`）继续兼容：默认 `roundIndex=1`、`history=[]`。
 
 ```bash
 curl -X POST http://127.0.0.1:8001/lecture/submit \
@@ -100,12 +109,19 @@ curl -X POST http://127.0.0.1:8001/lecture/submit \
     "sectionId":"pep-g8-down-s16-3",
     "questionId":"mock-radical-003",
     "questionPrompt":"化简：\\sqrt{12}-\\sqrt{27}",
-    "studentSpeechText":"我先把根号十二变成二倍根号三，再把根号二十七变成三倍根号三。",
+    "studentSpeechText":"因为 12=4×3，4 是完全平方数，所以根号 4=2，最后得到 2 根号 3。",
+    "roundIndex":2,
+    "history":[
+      {"role":"student","displayName":"我",
+       "text":"我先把根号十二化成二根号三。",
+       "highlightStepIds":["step_1"]},
+      {"role":"xiaoming","displayName":"小明",
+       "text":"你说把 12 拆成 4×3，为什么 4 可以从根号里出来？",
+       "highlightStepIds":["step_1"]}
+    ],
     "steps":[
       {"stepId":"step_1","latex":"\\sqrt{12}=2\\sqrt{3}","plainText":"根号12等于2根号3","strokeCount":3,
-       "boundingBox":{"x":120,"y":80,"width":360,"height":96}},
-      {"stepId":"step_2","latex":"\\sqrt{27}=3\\sqrt{3}","plainText":"根号27等于3根号3","strokeCount":3,
-       "boundingBox":{"x":120,"y":190,"width":360,"height":96}}
+       "boundingBox":{"x":120,"y":80,"width":360,"height":96}}
     ]
   }'
 ```
@@ -114,7 +130,7 @@ curl -X POST http://127.0.0.1:8001/lecture/submit \
 `turns[*].role` 使用稳定英文枚举 `xiaoming / daxiong / monitor / teacher / system`，
 `turns[*].highlightStepIds` 一定是请求里 `stepId` 的子集。
 
-错误码：未知 `sectionId` → 404；空 `steps` → 400；字段缺失 / 类型不符 → 422。
+错误码：未知 `sectionId` → 404；空 `steps` → 400；字段缺失 / 类型不符 / `roundIndex < 1` → 422。
 LLM 失败**不**抛 HTTP 错误，统一在 200 响应内走 Mock fallback。
 
 ### Flutter 客户端（Mac 上执行）

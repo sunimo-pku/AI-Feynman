@@ -1,6 +1,6 @@
-"""讲题 / 多 Agent 追问的 LLM 剧本生成服务（第三轮）。
+"""讲题 / 多 Agent 追问的 LLM 剧本生成服务。
 
-设计要点（与 `docs/AI_CODE_AGENT_BRIEF_ROUND3.md` 对齐）：
+设计要点（覆盖第三 ~ 第五轮的 brief）：
 
 - **单大模型多角色剧本**：用同一次 LLM 调用让 Kimi 同时扮演小明 / 大雄 / 班长 /
   李老师中的 1-2 个角色，避免 N 次串行调用拉爆延迟。
@@ -9,10 +9,15 @@
 - **highlightStepIds 必须命中真实 stepId**：模型最爱编造 `step_99`，路由层会把
   真实白名单注入 Prompt，service 还会再过滤一次，命中不到的直接落回画板首步。
 - **Fallback 优先于报错**：Demo 链路不能因为 Kimi 抽风、JSON 抽风、网络抽风而中断；
-  解析失败一律回落到第二轮的固定 Mock 剧本，保留 `source=fallback` 日志便于排查。
+  解析失败一律回落到第二/五轮的固定 Mock 剧本，保留 `source=fallback` 日志便于排查。
 - **不持有路由层依赖**：本模块只产出 `dict`（与 Pydantic schema 对齐的字段），
   由 `routers/lecture.py` 负责套上 `LectureSubmitResponse`。这样 service 既可
   被路由调用，也方便后续单测。
+- **第五轮新增「多轮上下文」**：`generate_lecture_turns(...)` 多收两个参数
+  `round_index` 与 `history`。Prompt 用最近 6 条历史让 LLM 评估学生本轮是
+  「在回答上一轮 AI 追问」还是「重新讲一遍」，并据此决定 `status` 是
+  `needs_explanation` 还是 `completed`。Fallback 也按 `round_index` 切换文案，
+  避免学生连点两次都看到一模一样的兜底追问。
 """
 
 from __future__ import annotations
@@ -68,11 +73,28 @@ _ALLOWED_ROLES: tuple[str, ...] = ("xiaoming", "daxiong", "monitor", "teacher")
 _ALLOWED_STATUS: tuple[str, ...] = ("needs_explanation", "completed")
 _ALLOWED_DELTA: tuple[int, ...] = (-1, 0, 1)
 
+# 第五轮：history 项里允许的 role。`student` / `system` 不在 LLM 输出
+# 白名单内（不允许 LLM 扮演「学生」），但**作为输入历史**它们是合法来源。
+_HISTORY_ROLES: tuple[str, ...] = (
+    "student",
+    "xiaoming",
+    "daxiong",
+    "monitor",
+    "teacher",
+    "system",
+)
+
+# 单次请求里 history 只取最近 N 条，避免 Prompt 暴涨；前端也建议只送最近
+# 6-10 条。这里再做一次硬截断，防御前端实现走样。
+_HISTORY_KEEP_LAST = 6
+
 _DEFAULT_DISPLAY_NAME: dict[str, str] = {
     "xiaoming": "小明",
     "daxiong": "大雄",
     "monitor": "班长",
     "teacher": "李老师",
+    "student": "我",
+    "system": "系统",
 }
 
 # 单条发言文本上限（中文为主，留点余量给 LaTeX）。
@@ -122,6 +144,23 @@ _SYSTEM_PROMPT = """你是「初中数学费曼学习小组剧本导演」。
     比如：「你刚才说 “把 12 拆成 4×3”，那为什么不拆成 2×6 呢？」
 12. 如果「学生口述」和所有 step 文字都为空，再回到泛泛追问本节核心知识点的兜底逻辑。
 
+【多轮追问规则（第五轮新增）】
+13. 当 user prompt 提供「上一轮历史」时，请先判断：学生这一轮的口述/步骤说明
+    到底是「在回答上一轮 AI 追问」还是「在重新讲一遍 / 改了写法」。
+14. 如果是在回答上一轮追问：
+    a. **不要重复**上一轮已经问过的问题；要先用 1 句话评价学生答得到不到位
+       （比如老师说「对，这次你说出 4 是完全平方数，所以 √4·3=2√3」）。
+    b. 若学生把规则、前提条件、计算依据都讲清楚了 —— 输出 `status: "completed"`、
+       `masteryDelta: 1`，并且 `turns` 仅放 1 条「李老师」收束发言。
+    c. 若学生只复述结论、没解释「为什么」—— 继续 `needs_explanation`，
+       由 1 名 Agent 顺着学生这次说的话往**下一层**追问（不要回到上一轮原问题）。
+15. 如果学生没回答上一轮追问、而是改写了步骤：可以由小明 / 大雄追问「为什么改」，
+    然后再针对新写法继续追问。
+16. 收束 `completed` 时务必让学生看出「这一题讲清楚了」：
+    - role 必须是 `teacher`；
+    - text 中要复述学生抓到的关键规则（比如「你说出了 a≥0 的前提」）；
+    - `highlightStepIds` 仍只能命中白名单。
+
 【输出协议】
 只输出**一个 JSON 对象**，不要 Markdown 代码块、不要解释、不要前后缀。
 JSON 必须严格匹配：
@@ -145,6 +184,64 @@ JSON 必须严格匹配：
 # ---------------------------------------------------------------------------
 
 
+def _sanitize_history(
+    history: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """把前端传来的 history 清洗一遍：
+
+    - 丢掉非 dict 项与 role 不合法（不在 `_HISTORY_ROLES`）的项；
+    - text 留 trim 后非空的；
+    - 仅保留最近 `_HISTORY_KEEP_LAST` 条。
+
+    任何异常都按「忽略本条」处理，绝不抛出 —— 这是按 ROUND5 brief 第 7.3 节
+    要求：「不要因为 history 缺失或格式异常直接 500」。
+    """
+
+    if not history:
+        return []
+
+    cleaned: list[dict[str, Any]] = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        if role not in _HISTORY_ROLES:
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        display = str(item.get("displayName") or item.get("display_name") or "").strip()
+        if not display:
+            display = _DEFAULT_DISPLAY_NAME.get(role, role)
+        highlight_raw = (
+            item.get("highlightStepIds") or item.get("highlight_step_ids") or []
+        )
+        if not isinstance(highlight_raw, list):
+            highlight_raw = []
+        highlight = [str(x).strip() for x in highlight_raw if str(x).strip()]
+        cleaned.append(
+            {
+                "role": role,
+                "display_name": display,
+                "text": text,
+                "highlight_step_ids": highlight,
+            }
+        )
+
+    if len(cleaned) > _HISTORY_KEEP_LAST:
+        cleaned = cleaned[-_HISTORY_KEEP_LAST:]
+    return cleaned
+
+
+def _last_ai_followup(history: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """从已清洗的 history 中找到「最近一条 AI 追问」（小明 / 大雄 / 班长 / 老师）。"""
+
+    for item in reversed(history):
+        if item["role"] in ("xiaoming", "daxiong", "monitor", "teacher"):
+            return item
+    return None
+
+
 def _build_user_prompt(
     *,
     section_id: str,
@@ -153,6 +250,8 @@ def _build_user_prompt(
     student_speech_text: str,
     steps: list[dict[str, Any]],
     allowed_step_ids: list[str],
+    round_index: int,
+    history: list[dict[str, Any]],
 ) -> str:
     """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。
 
@@ -160,12 +259,17 @@ def _build_user_prompt(
     自己在客户端输入区里手敲的内容（在 ASR/OCR 接入之前）。所以这里要把
     它们清楚地标成「学生自己说的话 / 学生自己写的步骤说明」，让 LLM 拿来
     当一手语义证据，而不是当成 OCR 二手识别结果。
+
+    第五轮起新增「上一轮历史」段：让 LLM 明确知道「学生这次到底是在回答
+    上一轮的哪一个 AI 追问」，从而避免每轮都问同样的问题、能在合适时机
+    切到 `status: completed`。
     """
 
     section_title = _SECTION_TITLE.get(section_id, section_id)
 
     lines: list[str] = []
     lines.append(f"【当前小节】{section_title}（sectionId={section_id}）")
+    lines.append(f"【本题第几轮提交】{round_index}")
     lines.append(f"【题目 ID】{question_id}")
     lines.append(f"【题面】{question_prompt or '（题面未提供）'}")
     speech = (student_speech_text or "").strip()
@@ -204,6 +308,32 @@ def _build_user_prompt(
         "不允许编造任何不在该列表中的 stepId："
     )
     lines.append("- " + (", ".join(allowed_step_ids) if allowed_step_ids else "（空）"))
+
+    lines.append("")
+    # 第五轮：插入历史段。即便 history 为空也写一句标识，让 LLM 明确知道
+    # 「这是第一轮 / 这是延续追问」，避免它自己脑补轮次状态。
+    last_followup = _last_ai_followup(history)
+    if history:
+        lines.append("【上一轮追问与回答历史】（按时间从早到晚，仅本题内最近若干条）")
+        for h in history:
+            role = h["role"]
+            display = h["display_name"]
+            text = h["text"].replace("\n", " ").strip()
+            highlight = h.get("highlight_step_ids") or []
+            highlight_part = (
+                f"（关联步骤：{', '.join(highlight)}）" if highlight else ""
+            )
+            tag = "学生" if role == "student" else f"AI:{role}"
+            lines.append(f'- [{tag} · {display}] "{text}"{highlight_part}')
+        if last_followup is not None:
+            lines.append("")
+            lines.append(
+                f'重要：上一轮 AI（{last_followup["display_name"]}，role={last_followup["role"]}）'
+                f'追问的是 "{last_followup["text"]}"。'
+                "请先评估学生本轮的回答是否真正答到这条追问的点上，按系统规则第 13-16 条决定 status。"
+            )
+    else:
+        lines.append("【上一轮追问与回答历史】（本题首轮，没有历史）")
 
     lines.append("")
     if speech or has_step_text:
@@ -379,16 +509,44 @@ def _coerce_mastery_delta(raw_value: Any) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _fallback_turns(section_id: str, step_ids: list[str]) -> list[dict[str, Any]]:
-    """第二轮固定 Mock 的「dict 版」复刻；用于 LLM 失败时的演示兜底。
+def _fallback_turns(
+    section_id: str,
+    step_ids: list[str],
+    *,
+    round_index: int = 1,
+    has_history: bool = False,
+) -> list[dict[str, Any]]:
+    """LLM 失败时的兜底剧本。
 
-    与 `routers/lecture.py` 第二轮逻辑保持文案一致，避免学生在 Demo 中
-    察觉到"接 LLM 之后语气变差"。
+    第二轮起作为「演示链路永不中断」的安全网，第五轮起会按 `round_index`
+    输出不同文案：
+      * `round_index <= 1` 或没有历史：保持原第一轮固定追问。
+      * `round_index >= 2`：切到「老师顺势收束 + 让学生确认」的兜底文案，
+        避免学生连点两次都被 Mock 同样的话追问。
+
+    Fallback 的 status 仍由调用方（`generate_lecture_turns`）决定 ——
+    第二轮以后的 fallback 默认改为 `completed`，让重复点击的体感更平滑。
     """
 
     first_step = step_ids[0] if step_ids else "step_1"
     mid_step = step_ids[len(step_ids) // 2] if step_ids else first_step
     last_step = step_ids[-1] if step_ids else first_step
+
+    multi_round = round_index >= 2 or has_history
+    if multi_round:
+        # 多轮兜底：老师做温和收束，避免重复第一轮原问题。
+        return [
+            {
+                "turn_id": "turn_1",
+                "role": "teacher",
+                "display_name": "李老师",
+                "text": (
+                    "嗯，从你刚才补的解释看，思路已经顺多了。我们这一题先到这里，"
+                    "下次遇到类似的题，记得把「为什么这一步可以这么做」也念出来。"
+                ),
+                "highlight_step_ids": [mid_step],
+            }
+        ]
 
     if section_id == "pep-g8-down-s16-1":
         return [
@@ -475,14 +633,16 @@ def generate_lecture_turns(
     question_prompt: str,
     student_speech_text: str,
     steps: list[dict[str, Any]],
+    round_index: int = 1,
+    history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """生成一轮多 Agent 追问。
 
     返回结构（与 `LectureSubmitResponse` 字段对齐，便于路由层直接构造模型）：
     ```python
     {
-        "status": "needs_explanation",
-        "mastery_delta": 0,
+        "status": "needs_explanation" | "completed",
+        "mastery_delta": -1 | 0 | 1,
         "turns": [
             {
                 "turn_id": "turn_1",
@@ -498,25 +658,44 @@ def generate_lecture_turns(
     ```
 
     `source` 仅用于日志/调试，路由层不要原样塞给前端。
+
+    第五轮起新增两个可选参数：
+
+    - `round_index`：本题是第几次提交，从 1 开始。
+    - `history`：当前题目内的对话历史（只取最近若干条，service 内还会再清洗）。
     """
 
-    allowed_step_ids = [str(s.get("stepId") or s.get("step_id") or "").strip()
-                        for s in steps]
+    allowed_step_ids = [
+        str(s.get("stepId") or s.get("step_id") or "").strip() for s in steps
+    ]
     allowed_step_ids = [sid for sid in allowed_step_ids if sid]
 
+    cleaned_history = _sanitize_history(history)
+    has_history = bool(cleaned_history)
+    # round_index 防御：< 1 视为 1，避免上游打错数字让 fallback 文案错乱。
+    safe_round = max(1, int(round_index or 1))
+
     def _fallback_payload() -> dict[str, Any]:
+        # 多轮 fallback：第 2+ 轮默认收束，避免重复第一轮 Mock。
+        is_multi = safe_round >= 2 or has_history
         return {
-            "status": "needs_explanation",
-            "mastery_delta": 0,
-            "turns": _fallback_turns(section_id, allowed_step_ids),
+            "status": "completed" if is_multi else "needs_explanation",
+            "mastery_delta": 1 if is_multi else 0,
+            "turns": _fallback_turns(
+                section_id,
+                allowed_step_ids,
+                round_index=safe_round,
+                has_history=has_history,
+            ),
             "source": "fallback",
         }
 
     # KIMI_API_KEY 缺失时直接走 fallback，省一次失败请求。
     if not Config.KIMI_API_KEY or Config.KIMI_API_KEY == "your_kimi_api_key_here":
         logger.info(
-            "[lecture-agent] KIMI_API_KEY 未配置，使用 fallback section=%s",
+            "[lecture-agent] KIMI_API_KEY 未配置，使用 fallback section=%s round=%d",
             section_id,
+            safe_round,
         )
         return _fallback_payload()
 
@@ -527,6 +706,8 @@ def generate_lecture_turns(
         student_speech_text=student_speech_text,
         steps=steps,
         allowed_step_ids=allowed_step_ids,
+        round_index=safe_round,
+        history=cleaned_history,
     )
 
     messages = [
@@ -577,15 +758,32 @@ def generate_lecture_turns(
     except json.JSONDecodeError:
         payload_obj = {}
 
+    final_status = _coerce_status(payload_obj.get("status"))
+    final_delta = _coerce_mastery_delta(payload_obj.get("masteryDelta"))
+
+    # 防御一种常见 LLM 走样：第一轮就直接 `completed`。学生连题面都没解释完，
+    # 不应该被「这一题讲清楚了」收束 —— 强制改回 `needs_explanation`。
+    # 多轮场景下 LLM 自己判定 completed 是合理的，我们不动。
+    if safe_round <= 1 and final_status == "completed":
+        logger.warning(
+            "[lecture-agent] 第一轮 LLM 直接给出 completed，强制改为 needs_explanation"
+        )
+        final_status = "needs_explanation"
+        final_delta = 0
+
     logger.info(
-        "[lecture-agent] 使用 LLM 真实剧本 section=%s turns=%d",
+        "[lecture-agent] 使用 LLM 真实剧本 section=%s round=%d history=%d "
+        "status=%s turns=%d",
         section_id,
+        safe_round,
+        len(cleaned_history),
+        final_status,
         len(turns),
     )
 
     return {
-        "status": _coerce_status(payload_obj.get("status")),
-        "mastery_delta": _coerce_mastery_delta(payload_obj.get("masteryDelta")),
+        "status": final_status,
+        "mastery_delta": final_delta,
         "turns": turns,
         "source": "llm",
     }

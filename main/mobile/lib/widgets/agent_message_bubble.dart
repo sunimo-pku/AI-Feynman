@@ -121,6 +121,11 @@ class AgentMessageBubble extends StatelessWidget {
           avatar: '雄',
         );
       case AgentRole.classLeader:
+      case AgentRole.monitor:
+        // 「班长」在前端有两个等价枚举名：旧名 `classLeader` + 与后端 wire
+        // 字符串对齐的 `monitor`。两者共用同一套头像/底色/角色文案，
+        // 避免后端返回 `role: "monitor"` 时 switch 不命中（Dart 3
+        // 强制 exhaustive 会直接抛 `NoSuchEnumValueError`）。
         return const _RolePalette(
           surface: Color(0xFFF0FDFA),
           accent: AppPalette.primaryAccent,

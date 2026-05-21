@@ -32,6 +32,28 @@ AgentRole parseAgentRole(String raw) {
   }
 }
 
+/// 把前端 [AgentRole] 翻译成后端约定的 wire role 字符串。
+///
+/// 第五轮 `LectureHistoryItem.role` 必须用后端能识别的字符串
+/// （`xiaoming/daxiong/monitor/teacher/system`，前端的 `classLeader`
+/// 也被映射到 `monitor`）。`student` 角色在前端没有枚举，由调用方
+/// 直接写字符串字面量 `'student'`。
+String agentRoleWire(AgentRole role) {
+  switch (role) {
+    case AgentRole.xiaoming:
+      return 'xiaoming';
+    case AgentRole.daxiong:
+      return 'daxiong';
+    case AgentRole.classLeader:
+    case AgentRole.monitor:
+      return 'monitor';
+    case AgentRole.teacher:
+      return 'teacher';
+    case AgentRole.system:
+      return 'system';
+  }
+}
+
 class AgentTurn {
   const AgentTurn({
     this.turnId,
@@ -84,6 +106,36 @@ class LectureQuestion {
   final List<String> referenceSteps;
 }
 
+/// 单条多轮上下文历史项。
+///
+/// 第五轮新增：当学生在 AI 追问后再次提交时，前端把当前题目内最近 6 条
+/// 「学生发言 + AI 追问」一起上送给后端，让 LLM 不再"失忆式"重复同一个问题，
+/// 并能据此判断学生本轮是否已经把题讲清楚（→ `status: completed`）。
+///
+/// `role` 与后端约定的字符串保持一致：
+/// `student` / `xiaoming` / `daxiong` / `monitor` / `teacher` / `system`。
+/// 其中 `student` 仅用于历史项，**不**会出现在 LLM 输出 `turns` 中。
+class LectureHistoryItem {
+  const LectureHistoryItem({
+    required this.role,
+    required this.displayName,
+    required this.text,
+    this.highlightStepIds = const [],
+  });
+
+  final String role;
+  final String displayName;
+  final String text;
+  final List<String> highlightStepIds;
+
+  Map<String, dynamic> toJson() => {
+        'role': role,
+        'displayName': displayName,
+        'text': text,
+        'highlightStepIds': highlightStepIds,
+      };
+}
+
 /// 调用 `POST /lecture/submit` 的请求体（驼峰命名，直接经 `jsonEncode` 上送）。
 class LectureSubmitRequest {
   const LectureSubmitRequest({
@@ -92,6 +144,8 @@ class LectureSubmitRequest {
     required this.questionPrompt,
     this.studentSpeechText = '',
     required this.steps,
+    this.roundIndex = 1,
+    this.history = const [],
   });
 
   final String sectionId;
@@ -100,11 +154,19 @@ class LectureSubmitRequest {
   final String studentSpeechText;
   final List<LectureStepPayload> steps;
 
+  /// 本题第几次提交，从 1 开始。第二次（学生在回答 AI 追问后再次提交）应是 2。
+  final int roundIndex;
+
+  /// 当前题目内最近若干条对话历史（见 [LectureHistoryItem]）。
+  final List<LectureHistoryItem> history;
+
   Map<String, dynamic> toJson() => {
         'sectionId': sectionId,
         'questionId': questionId,
         'questionPrompt': questionPrompt,
         'studentSpeechText': studentSpeechText,
+        'roundIndex': roundIndex,
+        'history': history.map((h) => h.toJson()).toList(growable: false),
         'steps': steps.map((s) => s.toJson()).toList(growable: false),
       };
 }

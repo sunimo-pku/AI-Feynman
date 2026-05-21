@@ -1,9 +1,13 @@
 """讲题 / 多 Agent 追问路由。
 
 - 第二轮：返回固定 JSON Mock。
-- 第三轮（当前）：交由 `services.lecture_agent.generate_lecture_turns(...)`
+- 第三轮：交由 `services.lecture_agent.generate_lecture_turns(...)`
   调用真实 LLM 生成强结构化多 Agent 追问；LLM 不可用 / 解析失败 / 校验失败时
   自动回退到第二轮的固定 Mock，保证 Demo 链路不中断。
+- 第四轮：请求体新增 `studentSpeechText` 与 `steps[*].plainText / latex` 三个学生语义字段。
+- 第五轮（当前）：请求体新增可选 `roundIndex` 与 `history` 两个字段，让后端能感知
+  「学生这次到底是在回答上一轮 AI 的哪个问题」，并据此判定是继续追问还是 `completed`。
+  旧请求体不传这两个字段仍能通过：`roundIndex` 默认 1、`history` 默认 []。
 
 设计要点：
 
@@ -15,6 +19,9 @@
        不走 `return {"error": ...}` 假 200。
 - LLM 错误**不**抛 HTTPException：会让前端看到红色错误条，破坏 Demo；
   统一由 service 回落 fallback，路由层只看 `source` 字段写日志。
+- `history` 我们刻意**不**做严格枚举校验：陌生 role 字符串会被 `lecture_agent`
+  在 prompt 拼装阶段静默忽略，避免某天前端打错 role 名直接让整次 /submit 走
+  422 破坏 Demo 体感。
 """
 
 from __future__ import annotations
@@ -58,12 +65,45 @@ class LectureStep(BaseModel):
     }
 
 
+class LectureHistoryItem(BaseModel):
+    """单条多轮上下文历史项。
+
+    第五轮新增：把当前题目内的「学生上一轮说了什么 / AI 上一轮追问了什么」一并随
+    `/lecture/submit` 上传，让后端 LLM 不再每次「失忆式」追问同一个问题。
+
+    字段约束故意宽松：
+      * `role` 用 str 而不是枚举，遇到陌生 role 由 service 静默忽略，避免打错字段
+        名直接让整次 /submit 走 422。
+      * `text` 上限 1000 字符够长（一条 LLM 追问 ≤180 中文字符 + 富格式，留余量）。
+      * `display_name` 选填，为空时由 service 按 role 自动补全。
+    """
+
+    role: str = Field("", min_length=0, max_length=32)
+    display_name: str = Field("", alias="displayName", max_length=32)
+    text: str = Field("", max_length=1000)
+    highlight_step_ids: list[str] = Field(
+        default_factory=list,
+        alias="highlightStepIds",
+    )
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
 class LectureSubmitRequest(BaseModel):
     section_id: str = Field(..., alias="sectionId", min_length=1, max_length=64)
     question_id: str = Field(..., alias="questionId", min_length=1, max_length=64)
     question_prompt: str = Field("", alias="questionPrompt", max_length=2000)
     student_speech_text: str = Field("", alias="studentSpeechText", max_length=4000)
     steps: list[LectureStep] = Field(default_factory=list)
+
+    # 第五轮新增可选字段：保持旧 Flutter 客户端不传这两个字段也能通过。
+    # `round_index` 从 1 开始，第一次提交是第 1 轮；第二次提交（学生在回答 AI 追问）
+    # 应当是 2，依此类推。这个语义对 Prompt 工程很关键 ——「回答上一轮追问」与
+    # 「重新讲一遍」要求 LLM 输出风格完全不同。
+    round_index: int = Field(1, alias="roundIndex", ge=1, le=20)
+    history: list[LectureHistoryItem] = Field(default_factory=list)
 
     model_config = {
         "populate_by_name": True,
@@ -151,20 +191,37 @@ async def submit_lecture(req: LectureSubmitRequest) -> LectureSubmitResponse:
         for s in req.steps
     ]
 
+    # 历史也转成 dict，service 内部按 role 字符串再做一次白名单兼容。
+    history_payload = [
+        {
+            "role": h.role,
+            "displayName": h.display_name,
+            "text": h.text,
+            "highlightStepIds": list(h.highlight_step_ids),
+        }
+        for h in req.history
+    ]
+
     result = generate_lecture_turns(
         section_id=req.section_id,
         question_id=req.question_id,
         question_prompt=req.question_prompt,
         student_speech_text=req.student_speech_text,
         steps=steps_payload,
+        round_index=req.round_index,
+        history=history_payload,
     )
 
     logger.info(
-        "[lecture] /submit section=%s question=%s steps=%d source=%s turns=%d",
+        "[lecture] /submit section=%s question=%s round=%d steps=%d "
+        "history=%d source=%s status=%s turns=%d",
         req.section_id,
         req.question_id,
+        req.round_index,
         len(req.steps),
+        len(req.history),
         result.get("source"),
+        result.get("status"),
         len(result.get("turns", [])),
     )
 
