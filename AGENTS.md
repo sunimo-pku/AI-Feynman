@@ -153,8 +153,11 @@ git push origin main
 | 学生端讲题闭环 | ✅ | 第九轮：实时双工 · 边写边讲 → 自然停顿 → 多 Agent 流式追问 → TTS → 学生打断（16.x 章） |
 | 本地掌握度沉淀 | ✅ | 第六轮：`SectionProgress` 落 `shared_preferences`，首页/讲题页徽标实时刷新 |
 | 本地小题库与下一题轮换 | ✅ | 第七轮：16.1 / 16.2 / 16.3 各 3 道题（基础/巩固/挑战），讲题页显示题号 + 难度 chip + 知识标签 chip，「下一题」循环切题 |
-| 掌握度与出题 | ⏳ | 16.1 / 16.2 / 16.3 按知识点记录与调节难度 |
-| 家长端 | ⏳ | 弱项看板、海报、讲题回放 |
+| 后端学习数据沉淀 | ✅ | 第十轮：`StudentProfile/LearningProgress/LectureReview/LectureSessionRecord` 四张表 + 轻量迁移；`/lecture/submit` 与 `/lecture/live` 可选 Bearer 自动落库 |
+| 家长端看板 + 总结海报 | ✅ | 第十轮：`/parent/dashboard` + `/parent/reviews` + `/parent/poster`；Flutter 家长端：总体掌握、弱项 / 已掌握章节、最近讲题、老师建议、可分享海报 |
+| 登录注册 + 本地同步 | ✅ | 第十轮：`/auth/register` + `/auth/login` JWT，Flutter `AuthService` + `LearningSyncService`（按 max/最新合并、串行化、UNIQUE client_id 去重）|
+| OCR / Ink Parser | ✅ | 第十轮：`/ocr/ink` 规则匹配（referenceSteps 优先 + 16.x fallback），Flutter `OcrService` 在 ink_snapshot 与 lecture submit 前预填 latex / plainText |
+| TTS 平滑淡出 | ✅ | 第十轮：第九轮硬截断改为 200ms × 25ms tick 的 setVolume 渐隐 + token 幂等防抖 |
 | V1 上线章节 | ✅ | 八年级下册 · 第十六章 二次根式 |
 
 ---
@@ -499,6 +502,90 @@ git push origin main
 - **声音打断（Barge-in）防抖机制**：必须设计 300ms 以上的有效人声检测持续防抖，否则叹气、翻书、重呼吸或搬椅子的噪声极易引发误打断（Barge-in Flapping）。
 - **音频淡出与渐隐**：打断时避免生硬切断 TTS，应使用约 200ms 的音量渐隐（Fade-out）过渡。
 - **AI 绅士礼貌原则**：AI 切忌在学生滔滔不绝讲述时强行开麦。针对学生的表达或错误纠正，应在检测到 1.5 秒以上的逻辑气口（自然静音停顿）时，再由虚拟同伴或老师礼貌"举手"切入。
+
+### 第十轮 · 家长端 + 后端学习沉淀 + OCR + TTS 淡出
+
+- **SQLite `create_all()` 不会给老表加列**：第十轮给
+ `LectureSessionRecord` 加了 `mastery_delta / round_count`，旧库直接启
+ 仍是老表结构，service 端写新字段会 `OperationalError: no such column`。
+ 正解：单独写 `_run_lightweight_migrations()`，启动时 `PRAGMA
+ table_info(...)` 拿到列名集合，缺失就 `ALTER TABLE`，跑过的就跳过；
+ 单 `try/except` 包住每条 ALTER，避免一次失败阻塞整个进程启动。这条
+ 套路要每加一个字段都补一段分支。
+- **WebSocket 路由要走自己的 token query 解析，不能复用 HTTP `Depends`**：
+ 第十轮想给 `/lecture/live` 加可选 Bearer，第一版直接抄
+ `Depends(get_current_user)` —— FastAPI 的 `@router.websocket(...)` 不
+ 走 HTTP dependency injection，注入只会被静默忽略，user 永远是 None。
+ 正解：手写 `_extract_user_from_ws(websocket)`，从
+ `websocket.query_params['token']` 或 `Authorization` header 里抠 JWT
+ 自己 decode；解析失败仍允许匿名进 demo 模式，不破坏第九轮链路。
+- **WS 端注入 token 用 query 比 header 稳**：Flutter 的
+ `web_socket_channel` / `dart:io WebSocket` 在不同平台对自定义 header
+ 的支持差异巨大（Web 端基本不允许传 `Authorization`），统一用
+ `ws://.../lecture/live?token=...` 一条路径既能跑 Mobile 也能跑 Web,
+ 不需要为 Web 单独实现一套 token 协商。
+- **FastAPI `TestClient` + `app.db` 模块级 `create_all()`**：测试想跑
+ 干净 DB，第一版试 monkeypatch `DB_PATH`，结果 `app.db` 在 import 时
+ 已经 `Base.metadata.create_all(bind=engine)` 把表建在了真实路径里。
+ 正解：在 fixture 里**先备份**真实 `data/app.db`，然后让 `init_db()`
+ 在干净空文件上重新建表，跑完 yield 之后**再** `os.replace` 把备份
+ 还原。注意：不要直接 `os.remove(real_db)` 删开发库，必须先 backup。
+- **`shared_preferences` 单例 + flutter test**：测试需要"清掉登录态再
+ 跑下一个 case"，但 `SharedPreferences.setMockInitialValues({})` 只清
+ mock backend、不会清 `SharedPreferences.getInstance()` 早已 cache 的
+ 实例。`AuthService` 暴露 `testPrefsOverride` 让测试注入自己创建的
+ prefs 实例，并在 setUp 里手动 `await AuthService.instance.logout()`,
+ 才能确保两个 case 之间互不污染。这条与第六/八轮 Progress / Review
+ 仓库的 `resetCacheOnlyForTesting()` 是同一类坑。
+- **`audioplayers` 6.x 不带原生 fade API，必须手写 tick + setVolume**：
+ 第九轮 brief 第 11 节要求 200ms 淡出，第一版直接 `await stop()` 体感
+ 像"被人捂嘴"。正解：`Timer.periodic(25ms)` × 9 步，每 tick 调
+ `setVolume(volume)` 平滑到 0 再真正 `stop()` + `setVolume(1.0)` 复位
+ （下一轮 TTS 重新放才有声）。**幂等**：用 `_currentTtsToken` 自增,
+ 第二个 stopTts 进来时先 cancel 上一个 timer，避免两段 fade 互相抢
+ audioplayers 实例造成"音量在 0 / 0.5 之间反复跳"。
+- **`audioplayers` 必须在每次新 play 之前 setVolume(1.0)**：上一轮
+ stopTts 把音量 fade 到 0 之后，下一轮新 TTS 文本如果不复位音量，
+ 学生听不到任何声音 —— 只能看到气泡，体感超出戏剧效果。正解：
+ `requestTts` 进入时先 `_audioPlayer.stop()` + `setVolume(1.0)`,
+ 然后才 `play(BytesSource(...))`，无论 fade timer 当前在哪一步都安全。
+- **`use_build_context_synchronously` lint 在 async 后 push 新 route 必崩**：
+ 第十轮新加家长端入口 `_onParentEntryTap(context)` 第一版直接在 await
+ 后再 `Navigator.of(context).push(...)`，dart_lints 立刻 warning。
+ 正解：在 `await` 之**前**就把 `navigator = Navigator.of(context)`
+ 缓存出来，后续全部用 `navigator.push(...)`；与 `mounted` 校验是两道
+ 独立防线，**两道都要做**（mounted 防 widget 已 dispose，navigator
+ 缓存防 BuildContext stale）。
+- **同步合并策略要按"较高 / 较新"取，不要 last-write-wins**：第十轮
+ `/learning/progress/sync` 第一版直接 `existing.mastery_score =
+ incoming.mastery_score` 把家长端"误点重置"的本地数据直接覆盖了学生
+ 机器的真实进度。正解：必须按 `max(server, client)` 取分数与轮数,
+ 按 `latest(server.lastPracticedAt, client.lastPracticedAt)` 取时间。
+ 这是**幂等性**的硬要求：同样的 payload 二次上传必须返回相同状态。
+- **`LearningSyncService` 必须串行化**：用户连点两次"立即同步"按钮
+ 不能引发两次 race 请求。`_pending` future 缓存当前请求；第二次调用
+ 直接 `await _pending`，请求完成后再清 future，让第三次调用能发新的。
+ 这条与第六轮 `ProgressRepository._writeQueue` 是同一类防御。
+- **`LectureReview.client_id` 必须 UNIQUE**：服务端去重靠它，否则同一
+ 条 review 多次 sync 会插出多条复制行，家长端 dashboard 看到"最近讲题
+ 同一题刷屏 5 次"。所以表上 `Column(String, unique=True)` + 同步逻辑
+ 里 `if existing is None: insert else: update` 双保险。
+- **`SectionProgress.applyCompleted` 在 sync 回灌时要"按差值粗对齐"**：
+ 服务端返回 mastery_score=42 但本地 progress 是 24，不能直接 `setState`
+ 覆盖（绕过仓库串行化写盘），也不能粗暴 `applyCompleted(masteryDelta=1)`
+ 只加 8 分。正解：把差值 `/10` 向上取整 clamp 到 [1, 3]，再调
+ `applyCompleted` 走仓库的串行化写盘 + notifyListeners，让本地 / 后端
+ 慢慢对齐。这条与"幂等同步"的折中：完全对齐需要"覆盖式同步"接口,
+ 但 V1 没这个必要。
+- **测试时关掉 rate limiter**：`/auth/register` + `/auth/login` 在测试
+ 里被瞬间调几十次会撞 `60 次 / 分钟 / IP` 上限直接 429。`reset_limiter()`
+ 在 fixture 里调一次清掉历史窗口；不需要改 `WINDOW_SECONDS / DEFAULT_MAX`,
+ 那样会污染同进程的其他测试。
+- **`/ocr/ink` 不能因为 `referenceSteps` 缺失就空返回**：V1 没真实 HWR,
+ step 永远空就让 LLM 重回"凭空追问"。正解：`_FALLBACK_TEMPLATES` 按
+ sectionId 兜底（16.1 用 `\sqrt{?}` / `x \ge 0`，16.2 用 `\sqrt{a·b}`,
+ 等等），confidence 标到 0.4 让调用方知道"这是兜底"。前端 OCR 调用
+ 失败时也要按"空 latex 上送，仍能用音频继续追问"走，绝不阻塞主流程。
 
 ### 第九轮 · 实时双工讲题闭环
 

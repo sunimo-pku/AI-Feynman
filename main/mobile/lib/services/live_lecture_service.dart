@@ -9,6 +9,8 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 
 import '../config/api_config.dart';
 import '../data/live_lecture_events.dart';
+import 'auth_service.dart';
+import 'ocr_service.dart';
 
 /// 实时讲题服务（第九轮）。
 ///
@@ -30,11 +32,20 @@ class LiveLectureService {
   LiveLectureService({
     http.Client? httpClient,
     AudioPlayer? audioPlayer,
+    OcrService? ocrService,
   })  : _httpClient = httpClient ?? http.Client(),
-        _audioPlayer = audioPlayer ?? AudioPlayer();
+        _audioPlayer = audioPlayer ?? AudioPlayer(),
+        _ocrService = ocrService ?? OcrService();
 
   final http.Client _httpClient;
   final AudioPlayer _audioPlayer;
+  final OcrService _ocrService;
+
+  /// 第十轮：当前题目相关上下文，供 [sendInkSnapshot] 调用 OCR 兜底。
+  /// 由调用方在 [connectAndStart] 时一并传入。
+  String _currentSectionId = '';
+  String _currentQuestionId = '';
+  List<String> _currentReferenceSteps = const <String>[];
 
   WebSocketChannel? _channel;
   StreamSubscription? _channelSub;
@@ -42,6 +53,17 @@ class LiveLectureService {
   bool _disposed = false;
   int _audioSeq = 0;
   String _sessionId = '';
+
+  /// 第十轮：TTS 淡出相关。
+  ///
+  /// `_ttsFadeTimer` 在 [stopTts] 时启动 200ms 渐降：每 25ms tick 调
+  /// `setVolume(...)`，比直接 `stop()` 自然得多；终止后才真正
+  /// `_audioPlayer.stop()`。
+  ///
+  /// `_currentTtsToken` 用来防御「学生连点两次打断」时第二个 fade timer
+  /// 复用 audioplayers 实例，造成音量被反复 reset 的怪异行为。
+  Timer? _ttsFadeTimer;
+  int _currentTtsToken = 0;
 
   final _eventsController = StreamController<LiveServerEvent>.broadcast();
   final _connectionController = StreamController<LiveConnectionState>.broadcast();
@@ -66,8 +88,12 @@ class LiveLectureService {
     required String sectionId,
     required String questionId,
     required String questionPrompt,
+    List<String> referenceSteps = const <String>[],
   }) async {
     if (_disposed) return false;
+    _currentSectionId = sectionId;
+    _currentQuestionId = questionId;
+    _currentReferenceSteps = List.unmodifiable(referenceSteps);
     if (_isConnected) {
       // 已连接：发送 session_start 切换到新会话。
       _sessionId = sessionId;
@@ -134,9 +160,61 @@ class LiveLectureService {
 
   void sendInkSnapshot(List<Map<String, dynamic>> steps) {
     if (!_isConnected || _sessionId.isEmpty) return;
+    // 第十轮：snapshot 上送之前先**异步**走一遍 /ocr/ink，把 latex/plainText
+    // 补进每个 step；OCR 失败不影响主流程，仍发空 latex 上送。
+    if (steps.isEmpty) {
+      _sendJson(LiveClientEvent.inkSnapshot(
+        sessionId: _sessionId,
+        steps: steps,
+      ));
+      return;
+    }
+    unawaited(_enrichAndSendSnapshot(steps));
+  }
+
+  Future<void> _enrichAndSendSnapshot(List<Map<String, dynamic>> steps) async {
+    // 若调用方已经手动填了 latex / plainText（譬如学生手敲），保留它；
+    // 仅对空字段做覆盖。
+    List<Map<String, dynamic>> enriched = steps;
+    final needsOcr = steps.any((s) {
+      final latex = (s['latex'] as String? ?? '').trim();
+      final plain = (s['plainText'] as String? ?? '').trim();
+      return latex.isEmpty && plain.isEmpty;
+    });
+    if (needsOcr && _currentSectionId.isNotEmpty) {
+      try {
+        final guesses = await _ocrService.recognize(
+          sectionId: _currentSectionId,
+          questionId: _currentQuestionId,
+          referenceSteps: _currentReferenceSteps,
+          steps: steps
+              .map((s) => OcrStepInput(
+                    stepId: s['stepId'] as String? ?? '',
+                    strokeCount: (s['strokeCount'] as int?) ?? 0,
+                    boundingBox: s['boundingBox'] as Map<String, dynamic>?,
+                  ))
+              .toList(growable: false),
+        );
+        if (guesses != null && guesses.isNotEmpty) {
+          final byStep = {for (final g in guesses) g.stepId: g};
+          enriched = steps
+              .map((s) => <String, dynamic>{
+                    ...s,
+                    if ((s['latex'] as String? ?? '').isEmpty)
+                      'latex': byStep[s['stepId']]?.latex ?? '',
+                    if ((s['plainText'] as String? ?? '').isEmpty)
+                      'plainText': byStep[s['stepId']]?.plainText ?? '',
+                  })
+              .toList(growable: false);
+        }
+      } catch (e) {
+        _emitError('OCR 调用失败：$e');
+      }
+    }
+    if (!_isConnected || _sessionId.isEmpty) return;
     _sendJson(LiveClientEvent.inkSnapshot(
       sessionId: _sessionId,
-      steps: steps,
+      steps: enriched,
     ));
   }
 
@@ -206,7 +284,17 @@ class LiveLectureService {
         return;
       }
       final bytes = base64Decode(audioBase64);
-      await _audioPlayer.stop();
+      _ttsFadeTimer?.cancel();
+      _ttsFadeTimer = null;
+      final myToken = ++_currentTtsToken;
+      try {
+        await _audioPlayer.stop();
+      } catch (_) {}
+      try {
+        // 把音量复位到 1.0；上一轮 stopTts 的渐隐可能把音量调到了 0。
+        await _audioPlayer.setVolume(1.0);
+      } catch (_) {}
+      if (myToken != _currentTtsToken) return; // 中途被新一轮覆盖
       _ttsStateController.add(TtsState.playing);
       await _audioPlayer.play(BytesSource(bytes, mimeType: 'audio/mpeg'));
       // 监听播放完成：audioplayers 的 onPlayerComplete 是 Stream
@@ -221,24 +309,56 @@ class LiveLectureService {
     }
   }
 
-  /// 学生打断 AI 播放。
+  /// 学生打断 AI 播放。第十轮：实现 ~200ms 渐隐 fade-out。
   ///
-  /// TODO：第二版接入 200ms fade-out（brief 第 11 节）。
-  /// 当前 `audioplayers` 没有原生 fade API，需要手动按 50ms tick
-  /// 调 `setVolume(...)`，或换用 `just_audio` 包。
-  Future<void> stopTts() async {
-    try {
-      await _audioPlayer.stop();
-    } catch (_) {
-      /* swallow */
-    }
-    if (!_ttsStateController.isClosed) {
-      _ttsStateController.add(TtsState.idle);
-    }
+  /// `audioplayers` 6.x 没有原生 fade API；这里手动按 25ms tick 调
+  /// `setVolume(...)` 把音量从 1.0 平滑降到 0，然后真正 `stop()`。
+  ///
+  /// 调用幂等：连续两次 stopTts 第二个会直接 fast-forward 到 0 + stop。
+  ///
+  /// 不阻塞调用方：方法本身仍是 Future，但内部 tick 走异步 Timer，
+  /// 学生白板继续可写（brief 第 11 节）。
+  Future<void> stopTts({Duration fadeDuration = const Duration(milliseconds: 220)}) async {
+    final myToken = ++_currentTtsToken;
+    _ttsFadeTimer?.cancel();
+    final stepMs = 25;
+    final steps = (fadeDuration.inMilliseconds / stepMs).ceil().clamp(1, 64);
+    var current = steps;
+    final completer = Completer<void>();
+    _ttsFadeTimer = Timer.periodic(Duration(milliseconds: stepMs), (t) async {
+      if (myToken != _currentTtsToken) {
+        t.cancel();
+        completer.complete();
+        return;
+      }
+      current -= 1;
+      final v = (current / steps).clamp(0.0, 1.0).toDouble();
+      try {
+        await _audioPlayer.setVolume(v);
+      } catch (_) {
+        /* swallow — audioplayers 在 Web/某些平台可能 setVolume 失败 */
+      }
+      if (current <= 0) {
+        t.cancel();
+        try {
+          await _audioPlayer.stop();
+        } catch (_) {}
+        try {
+          await _audioPlayer.setVolume(1.0);
+        } catch (_) {}
+        if (!_ttsStateController.isClosed) {
+          _ttsStateController.add(TtsState.idle);
+        }
+        if (!completer.isCompleted) completer.complete();
+      }
+    });
+    return completer.future;
   }
 
   Future<void> dispose() async {
     _disposed = true;
+    _ttsFadeTimer?.cancel();
+    _ttsFadeTimer = null;
     try {
       await _channelSub?.cancel();
     } catch (_) {}
@@ -250,6 +370,9 @@ class LiveLectureService {
     } catch (_) {}
     try {
       _httpClient.close();
+    } catch (_) {}
+    try {
+      _ocrService.close();
     } catch (_) {}
     await _eventsController.close();
     await _connectionController.close();
@@ -271,7 +394,12 @@ class LiveLectureService {
     } else {
       wsBase = 'ws://$base';
     }
-    return Uri.parse('$wsBase/lecture/live');
+    // 第十轮：登录后把 JWT 带在 query token，让后端 _extract_user_from_ws
+    // 解出当前 student，把实时会话写进 LectureSessionRecord 并更新进度。
+    // 未登录时不带，后端走匿名 demo 路径，不影响第九轮链路。
+    final token = AuthService.instance.currentToken;
+    final query = token.isNotEmpty ? '?token=${Uri.encodeQueryComponent(token)}' : '';
+    return Uri.parse('$wsBase/lecture/live$query');
   }
 
   void _sendJson(Map<String, dynamic> payload) {

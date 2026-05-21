@@ -4,7 +4,19 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import chat, tts, asr, auth, sessions, upload, lecture, lecture_live
+from app.routers import (
+    asr,
+    auth,
+    chat,
+    learning,
+    lecture,
+    lecture_live,
+    ocr,
+    parent,
+    sessions,
+    tts,
+    upload,
+)
 from app.middleware import error_handler, rate_limit
 
 # 日志配置
@@ -48,6 +60,10 @@ app.include_router(sessions.router)
 app.include_router(upload.router)
 app.include_router(lecture.router)
 app.include_router(lecture_live.router)
+# 第十轮：学习同步、家长端、OCR 兜底
+app.include_router(learning.router)
+app.include_router(parent.router)
+app.include_router(ocr.router)
 
 @app.get("/")
 async def root():

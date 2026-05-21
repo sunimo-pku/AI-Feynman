@@ -141,9 +141,30 @@
 
 ---
 
-## 后续待补功能（尚未演示）
-- 手写笔迹的真实 OCR → step LaTeX 自动填入（第四轮已经把 UI / 字段 / Prompt 全部铺好；第九轮把白板 snapshot 走通了 `ink_snapshot` 通道，等接 OCR 后只需把 `plainText` / `latex` 填进 snapshot 字段）。
-- 真正的 token 级 LLM 流式（当前第九轮是后端拿到整段再切片推送给前端；体感与 token 流接近但还不是端到端流）。
-- TTS 200ms fade-out 真实淡出（当前打断是快速 stop，brief 第 11 节标的 TODO 仍在）。
-- 家长端弱项看板与精彩讲题回放。
-- 接口接入鉴权（当前 `/lecture/submit` 与 `/lecture/live` 都暂未走 `require_user`，演示阶段刻意豁免）。
+## 12. V1 全功能最终闭环（第十轮 · 学生端 + 家长端 + 数据沉淀）
+- **一句话描述**：学生端完成一次实时讲题后，进度、回顾、白板语义与讲题摘要同步到后端；家长端随后能看到孩子的弱项、最近讲题、下一步建议与总结海报，形成 V1 完整闭环。
+- **演示要点**：
+  - **登录入口**：首页 AppBar 右上角「家长端」徽标。未登录时显示「家长端」+ 灰描边，点击进 AuthPage（同页 Tab 切换登录 / 注册，用户名 3-32、密码 ≥ 6）；登录成功后徽标变成「家长端 · xiaoming」深蓝色描边，并立刻触发一次本地 → 后端同步（`LearningSyncService.syncNow`），不阻塞任何 UI。
+  - **OCR 兜底注入**：进入 16.3 第 2 题，边写边讲；白板每次新增 / 撤销后 480ms debounce 上送 `ink_snapshot`；`LiveLectureService` 内部先调一次 `POST /ocr/ink`，按当前题目的 `referenceSteps` 顺序给每个 step 配 `latex` + `plainText`（confidence=0.72），后端 prompt 里的 step 不再永远空，LLM 体感「真的在看我写的步骤」。
+  - **真实流式追问 + 200ms TTS 淡出**：自然停顿（≥1.5s 静音）触发 `pause_detected`，后端拆 ~20 字 / 段 `agent_turn_delta` 流式推送；TTS 正在播时，学生开口或在白板落笔触发 `student_interrupt`，前端 `stopTts()` 走 25ms tick × ~9 步 `setVolume(...)` 平滑降到 0 再 `stop()`，**不再生硬截断**；并发打断幂等（`_currentTtsToken` 自增防御）。
+  - **完成态双端同步**：AI 推 `round_done(status=completed, masteryDelta=1)`，前端复用第六/八轮逻辑写本地 `SectionProgress` + `LectureReviewRecord` + 弹小结卡；登录用户**额外**触发一次 `LearningSyncService.syncNow()`，把进度 / 回顾按 client id 幂等 upsert 到后端表。`/lecture/submit` 本身也已感知 Bearer：带 token 时同步写 `LectureSessionRecord` + 更新 `LearningProgress`（completed → +max(8, masteryDelta*10) 分上限 100）。
+  - **家长端 dashboard**：点 AppBar「家长端 · xiaoming」进入：
+    - 顶部学生卡片：姓名 + 年级 + 「已练 N 节 · 累计 M 轮」+ 总体掌握度进度条。
+    - 「老师建议下一步」湖青卡片：按弱项 + 最近讲题拼装的可解释建议（不是空泛鸡汤）。
+    - 「需要重点辅导」弱项列表：分数 < 60 的 section 按分数升序展示，每条带 `reason`（如「乘除法则前提条件不稳定」）+ 已练轮数 + 进度条。
+    - 「已经掌握的章节」对偶展示。
+    - 「最近讲题」：题面 + 摘要 + caution points 全部经 `FormulaText` 渲染，公式不再裸反斜杠。
+    - AppBar 右上角刷新会先触发 sync 再重新拉 dashboard。
+  - **总结海报**：AppBar 右上角 `auto_awesome` 按钮弹出 `DraggableScrollableSheet`：本周完成轮数、最高掌握章节 / 最需巩固章节、老师建议、最近一次精彩讲题。`MOBILE_STYLE.md` 风格，温和、可信，可直接截屏分享。
+  - **故障兜底**：
+    - OCR 后端挂掉 → `/ocr/ink` 失败，step 仍以空 latex 上送，LLM 走第九轮原路径不崩。
+    - 没有 KIMI_API_KEY → 后端 fallback 文案 + sync 仍能写本地；家长端能正常看到进度。
+    - 家长端 401 → 自动 logout + 返回首页；下次再点会重新跳 AuthPage。
+- **预估耗时**：240 秒
+
+---
+
+## 后续待补功能（V1 之后）
+- 真实支付、商城、实物兑换与地理定位排行榜。
+- 多孩子家庭、家长-孩子复杂绑定和长期学习分析。
+- 商业级 OCR 精度与视频级白板回放文件存储。

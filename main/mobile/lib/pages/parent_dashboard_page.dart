@@ -1,0 +1,869 @@
+import 'package:flutter/material.dart';
+
+import '../data/parent_models.dart';
+import '../services/auth_service.dart';
+import '../services/learning_sync_service.dart';
+import '../services/parent_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/formula_text.dart';
+import 'auth_page.dart';
+
+/// 家长端 dashboard 页（第十轮）。
+///
+/// 入口：首页 AppBar「家长端」按钮。
+///
+/// 责任：
+///   * 进入时先确保已登录；未登录跳 AuthPage；
+///   * 触发一次本地 → 后端同步，让 dashboard 拿到最新数据；
+///   * 拉 `/parent/dashboard`，展示：
+///     - 学生姓名 + 总体掌握度 + 已练章节数 / 总轮数；
+///     - 弱项卡片：分数 + 一句话 reason；
+///     - 优势项；
+///     - 最近讲题回顾（FormulaText 渲染题面与摘要）；
+///     - 教师建议下一步；
+///     - 一键「查看本周总结海报」（PosterSheet）。
+///
+/// 风格遵循 `MOBILE_STYLE.md`：温和、可信、面向家长，不上电竞配色。
+class ParentDashboardPage extends StatefulWidget {
+  const ParentDashboardPage({super.key});
+
+  @override
+  State<ParentDashboardPage> createState() => _ParentDashboardPageState();
+}
+
+class _ParentDashboardPageState extends State<ParentDashboardPage> {
+  final ParentService _parentService = ParentService();
+
+  bool _loading = true;
+  String? _error;
+  ParentDashboardPayload? _payload;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
+  }
+
+  Future<void> _bootstrap() async {
+    await AuthService.instance.load();
+    if (!mounted) return;
+    if (!AuthService.instance.isLoggedIn) {
+      final ok = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const AuthPage()),
+      );
+      if (!mounted) return;
+      if (ok != true || !AuthService.instance.isLoggedIn) {
+        Navigator.of(context).pop();
+        return;
+      }
+    }
+    await _refresh(forceSync: true);
+  }
+
+  Future<void> _refresh({bool forceSync = false}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    if (forceSync) {
+      // 同步失败不致命：dashboard 仍然能展示服务端已存的数据。
+      await LearningSyncService.instance.syncNow();
+    }
+    try {
+      final payload = await _parentService.fetchDashboard();
+      if (!mounted) return;
+      setState(() {
+        _payload = payload;
+        _loading = false;
+      });
+    } on ParentApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.userMessage;
+        _loading = false;
+      });
+      if (e.statusCode == 401) {
+        await AuthService.instance.logout();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '加载失败：$e';
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _parentService.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppPalette.background,
+      appBar: AppBar(
+        title: const Text('家长端 · 学习看板'),
+        actions: [
+          IconButton(
+            tooltip: '本周总结海报',
+            icon: const Icon(Icons.auto_awesome_outlined),
+            onPressed: () => _showPoster(context),
+          ),
+          IconButton(
+            tooltip: '刷新',
+            icon: const Icon(Icons.refresh),
+            onPressed: _loading ? null : () => _refresh(forceSync: true),
+          ),
+          Builder(
+            builder: (innerCtx) => PopupMenuButton<String>(
+              onSelected: (key) async {
+                if (key == 'logout') {
+                  final navigator = Navigator.of(innerCtx);
+                  await AuthService.instance.logout();
+                  if (!mounted) return;
+                  navigator.pop();
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'logout', child: Text('退出登录')),
+              ],
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(child: _buildBody(context)),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    if (_loading && _payload == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null && _payload == null) {
+      return _ErrorView(message: _error!, onRetry: () => _refresh(forceSync: true));
+    }
+    final p = _payload!;
+    return RefreshIndicator(
+      onRefresh: () => _refresh(forceSync: true),
+      child: ListView(
+        padding: const EdgeInsets.all(AppSpacing.pageEdge),
+        children: [
+          _StudentHeaderCard(payload: p),
+          const SizedBox(height: AppSpacing.moduleGap),
+          _SuggestionCard(text: p.suggestedNextAction),
+          const SizedBox(height: AppSpacing.moduleGap),
+          _SectionGroupCard(
+            title: '需要重点辅导',
+            subtitle: '掌握度低于 60，请优先复讲',
+            color: AppPalette.error,
+            sections: p.weakSections,
+            emptyText: '太好了，目前没有特别薄弱的章节。',
+          ),
+          const SizedBox(height: AppSpacing.moduleGap),
+          _SectionGroupCard(
+            title: '已经掌握的章节',
+            subtitle: '掌握度 ≥ 60，可继续挑战难度',
+            color: AppPalette.primaryAccent,
+            sections: p.strongSections,
+            emptyText: '还没有牢牢掌握的章节，多讲几轮就会出现这里。',
+          ),
+          const SizedBox(height: AppSpacing.moduleGap),
+          _RecentReviewsCard(reviews: p.recentReviews),
+          const SizedBox(height: AppSpacing.moduleGap),
+          if (_error != null)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppPalette.error.withValues(alpha: 0.08),
+                borderRadius: AppRadius.buttonR,
+                border: Border.all(
+                  color: AppPalette.error.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: AppPalette.error),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showPoster(BuildContext context) async {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppPalette.background,
+      builder: (_) => _PosterSheet(parentService: _parentService),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- widgets ----
+
+class _StudentHeaderCard extends StatelessWidget {
+  const _StudentHeaderCard({required this.payload});
+  final ParentDashboardPayload payload;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.cardR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppPalette.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  payload.studentName.isNotEmpty
+                      ? payload.studentName.substring(0, 1).toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: AppPalette.primary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      payload.studentName,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${payload.grade} · 已练 ${payload.practicedSections} 节 · 累计 ${payload.completedRounds} 轮',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          LinearProgressIndicator(
+            value: (payload.overallMastery / 100).clamp(0.0, 1.0),
+            minHeight: 10,
+            backgroundColor: AppPalette.primary.withValues(alpha: 0.08),
+            valueColor: const AlwaysStoppedAnimation<Color>(AppPalette.primary),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '总体掌握度 ${payload.overallMastery} / 100',
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppPalette.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SuggestionCard extends StatelessWidget {
+  const _SuggestionCard({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppPalette.primaryAccent.withValues(alpha: 0.06),
+        borderRadius: AppRadius.cardR,
+        border: Border.all(
+          color: AppPalette.primaryAccent.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.lightbulb_outline, color: AppPalette.primaryAccent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '老师建议下一步',
+                  style: TextStyle(
+                    color: AppPalette.primaryAccent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  text.isEmpty ? '继续保持每日讲题节奏。' : text,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionGroupCard extends StatelessWidget {
+  const _SectionGroupCard({
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.sections,
+    required this.emptyText,
+  });
+
+  final String title;
+  final String subtitle;
+  final Color color;
+  final List<WeakSectionInfo> sections;
+  final String emptyText;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.cardR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(width: 4, height: 16, color: color),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          if (sections.isEmpty)
+            Text(
+              emptyText,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppPalette.textSecondary,
+                  ),
+            )
+          else
+            ...sections.map((s) => _SectionRow(info: s, accent: color)),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionRow extends StatelessWidget {
+  const _SectionRow({required this.info, required this.accent});
+  final WeakSectionInfo info;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  info.label,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${info.masteryScore} / 100',
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${info.reason}（已练 ${info.completedRounds} 轮）',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (info.masteryScore / 100).clamp(0.0, 1.0),
+              minHeight: 4,
+              backgroundColor: accent.withValues(alpha: 0.08),
+              valueColor: AlwaysStoppedAnimation<Color>(accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentReviewsCard extends StatelessWidget {
+  const _RecentReviewsCard({required this.reviews});
+  final List<ParentReviewCard> reviews;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.cardR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                  width: 4, height: 16, color: AppPalette.primary),
+              const SizedBox(width: 8),
+              Text('最近讲题', style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '点击查看 AI 同伴与孩子讨论的关键点',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          if (reviews.isEmpty)
+            const Text(
+              '最近还没有讲题记录，可以让孩子先在 16.3 二次根式的加减练一题。',
+              style: TextStyle(color: AppPalette.textSecondary),
+            )
+          else
+            ...reviews.map((r) => _ReviewItem(card: r)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewItem extends StatelessWidget {
+  const _ReviewItem({required this.card});
+  final ParentReviewCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  card.sectionLabel,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              Text(
+                _formatTime(card.completedAt),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          FormulaText(
+            card.questionPrompt,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (card.summary.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppPalette.primaryAccent.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: FormulaText(
+                card.summary,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: AppPalette.textSecondary),
+              ),
+            ),
+          ],
+          if (card.cautionPoints.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            ...card.cautionPoints.map(
+              (p) => Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('· ',
+                        style: TextStyle(color: AppPalette.primary)),
+                    Expanded(
+                      child: FormulaText(
+                        p,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: AppPalette.textPrimary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const Divider(height: 18, thickness: 0.5),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.pageEdge),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_outlined,
+                size: 48, color: AppPalette.error),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PosterSheet extends StatefulWidget {
+  const _PosterSheet({required this.parentService});
+  final ParentService parentService;
+
+  @override
+  State<_PosterSheet> createState() => _PosterSheetState();
+}
+
+class _PosterSheetState extends State<_PosterSheet> {
+  bool _loading = true;
+  String? _error;
+  ParentPosterPayload? _payload;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await widget.parentService.fetchPoster();
+      if (!mounted) return;
+      setState(() {
+        _payload = p;
+        _loading = false;
+      });
+    } on ParentApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.userMessage;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '加载海报失败：$e';
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.78,
+      maxChildSize: 0.95,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (_, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppPalette.background,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.pageEdge),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(child: Text(_error!))
+                    : _PosterCard(
+                        payload: _payload!,
+                        scrollController: scrollController,
+                      ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PosterCard extends StatelessWidget {
+  const _PosterCard({
+    required this.payload,
+    required this.scrollController,
+  });
+
+  final ParentPosterPayload payload;
+  final ScrollController scrollController;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: scrollController,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppPalette.primary.withValues(alpha: 0.08),
+                AppPalette.primaryAccent.withValues(alpha: 0.08),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: AppRadius.cardR,
+            border: Border.all(color: AppPalette.outlineSoft),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'AI 费曼 · 本周学习海报',
+                style: TextStyle(
+                  color: AppPalette.primary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                payload.studentName,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 2),
+              Text(payload.grade,
+                  style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PosterStat(
+                      label: '本周完成',
+                      value: '${payload.weekCompletedRounds} 轮',
+                    ),
+                  ),
+                  Expanded(
+                    child: _PosterStat(
+                      label: '最强章节',
+                      value: payload.highestSection.isEmpty
+                          ? '—'
+                          : '${payload.highestScore}/100',
+                      sub: payload.highestSection.isEmpty
+                          ? null
+                          : payload.highestSection,
+                    ),
+                  ),
+                  Expanded(
+                    child: _PosterStat(
+                      label: '最需巩固',
+                      value: payload.weakestSection.isEmpty
+                          ? '—'
+                          : '${payload.weakestScore}/100',
+                      sub: payload.weakestSection.isEmpty
+                          ? null
+                          : payload.weakestSection,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                '老师建议',
+                style: TextStyle(
+                  color: AppPalette.primaryAccent,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                payload.teacherTip,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              if (payload.lastQuestionPrompt.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                const Text(
+                  '最近一次精彩讲题',
+                  style: TextStyle(
+                    color: AppPalette.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                FormulaText(
+                  payload.lastQuestionPrompt,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                if (payload.lastSummary.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  FormulaText(
+                    payload.lastSummary,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppPalette.textSecondary),
+                  ),
+                ],
+              ],
+              const SizedBox(height: 18),
+              Text(
+                '生成时间：${_fmtDate(payload.generatedAt)}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '提示：可截图分享给家庭群（系统截屏即可）。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PosterStat extends StatelessWidget {
+  const _PosterStat({
+    required this.label,
+    required this.value,
+    this.sub,
+  });
+
+  final String label;
+  final String value;
+  final String? sub;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppPalette.textSecondary,
+              fontWeight: FontWeight.w600,
+            )),
+        const SizedBox(height: 4),
+        Text(value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppPalette.textPrimary,
+            )),
+        if (sub != null) ...[
+          const SizedBox(height: 2),
+          Text(sub!,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppPalette.textSecondary,
+              )),
+        ],
+      ],
+    );
+  }
+}
+
+String _formatTime(DateTime when) {
+  final now = DateTime.now();
+  final diff = now.difference(when);
+  if (diff.inMinutes < 1) return '刚刚';
+  if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
+  if (diff.inHours < 6) return '${diff.inHours} 小时前';
+  final hh = when.hour.toString().padLeft(2, '0');
+  final mm = when.minute.toString().padLeft(2, '0');
+  if (when.year == now.year && when.month == now.month && when.day == now.day) {
+    return '今天 $hh:$mm';
+  }
+  return '${when.month.toString().padLeft(2, '0')}-${when.day.toString().padLeft(2, '0')} $hh:$mm';
+}
+
+String _fmtDate(DateTime d) {
+  return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}

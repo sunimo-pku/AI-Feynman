@@ -27,11 +27,22 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from app.db import (
+    LearningProgress,
+    LectureSessionRecord,
+    User,
+    dump_json,
+    ensure_student_profile,
+    get_db,
+)
+from app.middleware.auth import get_current_user
 from app.services.lecture_agent import generate_lecture_turns
 
 logger = logging.getLogger(__name__)
@@ -163,7 +174,11 @@ _SUPPORTED_SECTIONS: tuple[str, ...] = (
     response_model_by_alias=True,
     summary="提交学生讲解 → LLM 生成多 Agent 追问（失败回退固定 Mock）",
 )
-async def submit_lecture(req: LectureSubmitRequest) -> LectureSubmitResponse:
+async def submit_lecture(
+    req: LectureSubmitRequest,
+    user: User | None = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> LectureSubmitResponse:
     if req.section_id not in _SUPPORTED_SECTIONS:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -236,6 +251,28 @@ async def submit_lecture(req: LectureSubmitRequest) -> LectureSubmitResponse:
         for t in result.get("turns", [])
     ]
 
+    # 第十轮：带 Bearer 时把本次提交落进 LectureSessionRecord +
+    # 实时更新 LearningProgress；匿名调用仍然走原路径，与现有
+    # /lecture/submit 演示链路完全兼容。
+    if user is not None:
+        try:
+            _persist_lecture_submission(
+                db=db,
+                user=user,
+                req=req,
+                steps_payload=steps_payload,
+                turns_payload=result.get("turns", []),
+                status_value=result.get("status", "needs_explanation"),
+                mastery_delta=int(result.get("mastery_delta", 0) or 0),
+            )
+        except Exception as e:  # noqa: BLE001
+            # 持久化失败绝不影响 Demo 链路：吞掉异常打 warning。
+            logger.warning(
+                "[lecture] persist submission failed user=%s err=%s",
+                user.username,
+                e,
+            )
+
     return LectureSubmitResponse(
         question_id=req.question_id,
         section_id=req.section_id,
@@ -243,3 +280,104 @@ async def submit_lecture(req: LectureSubmitRequest) -> LectureSubmitResponse:
         mastery_delta=result.get("mastery_delta", 0),
         turns=turns,
     )
+
+
+# ---------------------------------------------------------------------------
+# 持久化辅助（仅在带 Bearer 时调用）
+# ---------------------------------------------------------------------------
+
+
+def _persist_lecture_submission(
+    *,
+    db: Session,
+    user: User,
+    req: LectureSubmitRequest,
+    steps_payload: list[dict],
+    turns_payload: list[dict],
+    status_value: str,
+    mastery_delta: int,
+) -> None:
+    """把单次 /lecture/submit 持久化为 LectureSessionRecord，并在 completed
+    时同步更新 LearningProgress。
+
+    SessionRecord 的 `session_id` 用 `questionId-round` 作为伪 id（非
+    真实 WS 会话），便于和实时讲题路径区分；同一题多轮提交时累加 round_count。
+    """
+
+    profile = ensure_student_profile(db, user)
+
+    pseudo_session_id = f"submit-{req.question_id}-{req.round_index}"
+
+    # 找一条同题同 session_id 的旧记录，避免重复同步同一轮；找不到则新建。
+    existing = (
+        db.query(LectureSessionRecord)
+        .filter(
+            LectureSessionRecord.student_id == profile.id,
+            LectureSessionRecord.session_id == pseudo_session_id,
+        )
+        .first()
+    )
+    if existing is None:
+        existing = LectureSessionRecord(
+            student_id=profile.id,
+            session_id=pseudo_session_id,
+            section_id=req.section_id,
+            question_id=req.question_id,
+            question_prompt=req.question_prompt,
+            status=status_value,
+            transcript_text=req.student_speech_text,
+            steps_json=dump_json(steps_payload),
+            turns_json=dump_json(turns_payload),
+            mastery_delta=mastery_delta,
+            round_count=max(1, int(req.round_index or 1)),
+            started_at=datetime.utcnow(),
+            completed_at=datetime.utcnow() if status_value == "completed" else None,
+        )
+        db.add(existing)
+    else:
+        existing.status = status_value
+        existing.transcript_text = req.student_speech_text
+        existing.steps_json = dump_json(steps_payload)
+        existing.turns_json = dump_json(turns_payload)
+        existing.mastery_delta = mastery_delta
+        existing.round_count = max(existing.round_count or 1, int(req.round_index or 1))
+        if status_value == "completed":
+            existing.completed_at = datetime.utcnow()
+
+    # completed → 更新 LearningProgress：累加一轮 + 加分（与前端
+    # `SectionProgress.applyCompleted` 同口径，避免登录后家长端看到的
+    # 分数与学生端本地分数差太多）。
+    if status_value == "completed":
+        progress = (
+            db.query(LearningProgress)
+            .filter(
+                LearningProgress.student_id == profile.id,
+                LearningProgress.section_id == req.section_id,
+            )
+            .first()
+        )
+        gain = max(8, mastery_delta * 10)
+        if progress is None:
+            progress = LearningProgress(
+                student_id=profile.id,
+                section_id=req.section_id,
+                completed_rounds=1,
+                mastery_score=min(100, gain),
+                last_practiced_at=datetime.utcnow(),
+                last_summary=(
+                    turns_payload[-1].get("text", "") if turns_payload else ""
+                ),
+            )
+            db.add(progress)
+        else:
+            progress.completed_rounds = int(progress.completed_rounds or 0) + 1
+            progress.mastery_score = min(
+                100, int(progress.mastery_score or 0) + gain
+            )
+            progress.last_practiced_at = datetime.utcnow()
+            if turns_payload:
+                progress.last_summary = turns_payload[-1].get("text", "") or (
+                    progress.last_summary or ""
+                )
+
+    db.commit()

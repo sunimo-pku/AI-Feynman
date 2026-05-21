@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../data/lecture_models.dart';
+import 'auth_service.dart';
+import 'ocr_service.dart';
 
 /// 调用 `POST /lecture/submit` 的客户端封装。
 ///
@@ -15,8 +17,9 @@ import '../data/lecture_models.dart';
 ///   * 路径统一经 [ApiConfig.uri]，禁止硬编码 IP / 协议。
 ///   * 仅依赖 `http` 包，避免引入新的网络层依赖。
 class LectureService {
-  LectureService({http.Client? client, Duration? timeout})
+  LectureService({http.Client? client, Duration? timeout, OcrService? ocrService})
       : _client = client ?? http.Client(),
+        _ocrService = ocrService ?? OcrService(),
         // 第三轮起 `/lecture/submit` 内部走真实 Kimi K2.6（关思考模式），
         // 端到端中位数 5-15s、偶发 25s 拖尾；后端层自己有 28s timeout，
         // 失败会自动落 Mock fallback。前端 timeout 给 35s，**严格大于**
@@ -26,15 +29,75 @@ class LectureService {
 
   final http.Client _client;
   final Duration _timeout;
+  final OcrService _ocrService;
+
+  /// 第十轮：在提交前先调一次 /ocr/ink，把空 latex / plainText 的步骤补上。
+  ///
+  /// `referenceSteps` 来自当前题目（[LectureQuestion.referenceSteps]），
+  /// 调用方按 `LecturePage._onSubmit` 传入。OCR 失败时返回原 request,
+  /// 不影响主提交。
+  Future<LectureSubmitRequest> enrichWithOcr(
+    LectureSubmitRequest request, {
+    required List<String> referenceSteps,
+  }) async {
+    final needs = request.steps.any(
+      (s) => s.latex.trim().isEmpty && s.plainText.trim().isEmpty,
+    );
+    if (!needs) return request;
+    final guesses = await _ocrService.recognize(
+      sectionId: request.sectionId,
+      questionId: request.questionId,
+      referenceSteps: referenceSteps,
+      steps: request.steps
+          .map((s) => OcrStepInput(
+                stepId: s.stepId,
+                strokeCount: s.strokeCount,
+                boundingBox: {
+                  'x': s.boundingBox.x,
+                  'y': s.boundingBox.y,
+                  'width': s.boundingBox.width,
+                  'height': s.boundingBox.height,
+                },
+              ))
+          .toList(growable: false),
+    );
+    if (guesses == null || guesses.isEmpty) return request;
+    final byStep = {for (final g in guesses) g.stepId: g};
+    final enrichedSteps = request.steps
+        .map((s) => LectureStepPayload(
+              stepId: s.stepId,
+              strokeCount: s.strokeCount,
+              boundingBox: s.boundingBox,
+              latex: s.latex.isNotEmpty
+                  ? s.latex
+                  : (byStep[s.stepId]?.latex ?? ''),
+              plainText: s.plainText.isNotEmpty
+                  ? s.plainText
+                  : (byStep[s.stepId]?.plainText ?? ''),
+            ))
+        .toList(growable: false);
+    return LectureSubmitRequest(
+      sectionId: request.sectionId,
+      questionId: request.questionId,
+      questionPrompt: request.questionPrompt,
+      studentSpeechText: request.studentSpeechText,
+      steps: enrichedSteps,
+      roundIndex: request.roundIndex,
+      history: request.history,
+    );
+  }
 
   Future<LectureSubmitResponse> submit(LectureSubmitRequest request) async {
     final uri = ApiConfig.uri('/lecture/submit');
     http.Response resp;
     try {
+      // 第十轮：登录后自动带 Bearer，让后端把本次提交写入学生进度。
+      // 未登录时仍走匿名 demo 路径，不会破坏第二轮以来的契约。
+      final headers = AuthService.instance.authHeaders();
       resp = await _client
           .post(
             uri,
-            headers: const {'Content-Type': 'application/json; charset=utf-8'},
+            headers: headers,
             body: utf8.encode(jsonEncode(request.toJson())),
           )
           .timeout(_timeout);
@@ -73,7 +136,10 @@ class LectureService {
     );
   }
 
-  void close() => _client.close();
+  void close() {
+    _client.close();
+    _ocrService.close();
+  }
 
   static String _extractDetail(List<int> bodyBytes) {
     try {

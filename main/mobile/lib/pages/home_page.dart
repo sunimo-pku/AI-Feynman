@@ -5,10 +5,14 @@ import '../data/curriculum_repository.dart';
 import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/learning_sync_service.dart';
 import '../services/progress_repository.dart';
 import '../services/review_repository.dart';
 import '../theme/app_theme.dart';
+import 'auth_page.dart';
 import 'lecture_page.dart';
+import 'parent_dashboard_page.dart';
 import 'review_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -35,6 +39,14 @@ class _HomePageState extends State<HomePage> {
     // 第八轮：预热回顾仓库，让小节 pill 上的「回顾」入口能立即反映「有/无
     // 历史记录」。失败同样被仓库吞掉打 log，不阻塞首页。
     ReviewRepository.instance.load();
+    // 第十轮：预热登录态。已登录则触发一次本地 → 后端同步，让登录
+    // 不在 UI 上有任何感知（无 loading 阻塞）。
+    AuthService.instance.load().then((_) {
+      if (AuthService.instance.isLoggedIn) {
+        // 静默同步：失败仅在 sync service 的 lastError 里暴露。
+        LearningSyncService.instance.syncNow();
+      }
+    });
   }
 
   Future<void> _checkApi() async {
@@ -63,6 +75,29 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// 第十轮：右上角「家长端」入口。
+  ///
+  /// - 未登录 → 先跳 AuthPage；登录成功后再跳家长端；
+  /// - 已登录 → 直接打开家长端 dashboard。
+  Future<void> _onParentEntryTap(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    await AuthService.instance.load();
+    if (!mounted) return;
+    if (!AuthService.instance.isLoggedIn) {
+      final ok = await navigator.push<bool>(
+        MaterialPageRoute(builder: (_) => const AuthPage()),
+      );
+      if (!mounted) return;
+      if (ok != true) return;
+    }
+    if (!mounted) return;
+    await navigator.push(
+      MaterialPageRoute(builder: (_) => const ParentDashboardPage()),
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
   /// 第八轮：从首页进入指定小节的讲题回顾页。
   ///
   /// 只对 `available` 的小节开放（未上线小节既没法练习也没法回顾，避免
@@ -82,6 +117,19 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('AI 费曼 · 初中数学自习室'),
         actions: [
+          AnimatedBuilder(
+            animation: AuthService.instance,
+            builder: (_, __) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Center(
+                  child: _ParentEntryButton(
+                    onTap: () => _onParentEntryTap(context),
+                  ),
+                ),
+              );
+            },
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(child: _ApiStatusBadge(healthy: _apiHealthy)),
@@ -163,10 +211,10 @@ class _HeroBanner extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 12),
-          Wrap(
+          const Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: const [
+            children: [
               _Tag(label: '今日开放：二次根式', color: AppPalette.primary, filled: true),
               _Tag(label: '16.1 二次根式', color: AppPalette.primaryAccent),
               _Tag(label: '16.2 乘除', color: AppPalette.primaryAccent),
@@ -205,6 +253,55 @@ class _Tag extends StatelessWidget {
           color: filled ? Colors.white : color,
           fontSize: 12,
           fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// 第十轮：首页 AppBar 上的「家长端」入口。
+///
+/// 设计：
+///   * 已登录 → 显示「家长端 · 用户名」；点击直接进入 dashboard；
+///   * 未登录 → 显示「家长端 · 未登录」；点击触发登录跳转；
+///   * 视觉风格与 `_ApiStatusBadge` 一致，整张 AppBar 不引入电竞色。
+class _ParentEntryButton extends StatelessWidget {
+  const _ParentEntryButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final loggedIn = AuthService.instance.isLoggedIn;
+    final username = AuthService.instance.currentUsername;
+    final color = loggedIn ? AppPalette.primary : AppPalette.textSecondary;
+    final label = loggedIn ? '家长端 · $username' : '家长端';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.family_restroom_outlined, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

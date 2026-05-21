@@ -35,6 +35,7 @@
 │   ├── AI_CODE_AGENT_BRIEF_ROUND7.md # 第七轮本地小题库与下一题轮换执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND8.md # 第八轮本地讲题回顾与错因卡片执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND9.md # 第九轮学生端实时闭环总收口执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND10.md # 第十轮全功能最终总收口执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
@@ -253,6 +254,61 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
   steps 等关键路径。**不**联网，全部用注入式 fake function 替换 ASR / LLM。
 - 前端 `main/mobile/test/live_lecture_events_test.dart`（13 个用例）覆盖
   服务端 / 客户端事件 JSON encode/decode、未知事件不抛、缺字段兜底。
+
+#### 家长端 + 后端学习沉淀 + OCR + TTS 淡出（第十轮新增）
+
+第十轮把 V1 收口为「学生端 + 家长端 + 后端持久化」三端联动：
+
+- **后端学习业务表**（`main/app/db.py`）：
+  - `StudentProfile`（1:1 与 `User`）/ `LearningProgress` /
+    `LectureReview` / `LectureSessionRecord`。
+  - 启动时执行轻量迁移：PRAGMA 检查列名缺失就 `ALTER TABLE`,
+    避免 SQLite `create_all()` 不会给老表加列的坑。
+- **学习同步 API**：
+  - `GET /learning/progress`（必须 Bearer）。
+  - `POST /learning/progress/sync`：客户端上传本地 `SectionProgress` +
+    `LectureReviewRecord` 列表，后端按 (section, completedRounds,
+    lastPracticedAt) 合并 + review 按 client id 幂等去重。
+  - `GET /learning/reviews?sectionId=...&limit=...`。
+- **家长端 API**：
+  - `GET /parent/dashboard`：学生总体掌握度 / 已练章节 / 弱项 / 优势项 /
+    最近讲题 / 教师建议下一步。
+  - `GET /parent/reviews` 按 section 过滤。
+  - `GET /parent/poster`：本周完成轮数、最强 / 最弱章节、教师建议、
+    最近一次精彩讲题摘要，供「总结海报」直接渲染。
+- **白板 OCR / Ink Parser**：
+  - `POST /ocr/ink`：按当前题目的 `referenceSteps` 顺序为 step 配对
+    高 confidence latex；没有参考时按 sectionId 走 `_FALLBACK_TEMPLATES`。
+  - 永不抛 5xx：失败 step 返回空 latex，调用方按「白板坐标 + 音频」
+    继续追问。
+  - 前端 `OcrService` 在 `LiveLectureService.sendInkSnapshot` 与
+    `LectureService.enrichWithOcr` 两条路径上透明注入 latex/plainText,
+    让 LLM 拿到更密集的语义证据。
+- **/lecture/submit 与 /lecture/live 现在感知 Bearer**：
+  - 不带 token 仍走匿名 demo 路径（与第二/九轮兼容）。
+  - 带 token 时把每轮提交 / 实时会话写入 `LectureSessionRecord`，
+    completed 时同步更新 `LearningProgress`。
+- **Flutter 客户端**：
+  - `services/auth_service.dart`：登录 / 注册 / token 落
+    `shared_preferences`，`ChangeNotifier` 通知首页 AppBar 切换文案。
+  - `services/learning_sync_service.dart`：本地 progress + reviews 一键
+    `POST /learning/progress/sync`；服务端返回的合并结果回灌本地仓库。
+  - `services/parent_service.dart` + `data/parent_models.dart`：家长端
+    dashboard / poster / reviews 强类型客户端。
+  - `pages/auth_page.dart`：登录 / 注册同页 Tab 切换；登录成功后 pop(true)。
+  - `pages/parent_dashboard_page.dart`：家长端入口页 + DraggableScrollableSheet
+    总结海报。
+  - `widgets/realtime_audio_panel.dart` / `services/live_lecture_service.dart`:
+    `stopTts` 实现 ~200ms 渐隐 fade-out（25ms tick + `setVolume`）,
+    并发打断幂等。
+- **首页 AppBar** 新增「家长端」入口：未登录 → AuthPage → 登录后 →
+  ParentDashboardPage；同步与同时刷新订阅 ProgressRepository 的小节徽标。
+
+新增测试：
+- 后端 `main/tests/test_round10_endpoints.py`（11 个用例）：覆盖 401 /
+  sync 合并幂等 / dashboard 字段 / poster 字段 / OCR 模板兜底 /
+  带 token 的 /lecture/submit 自动写入学习进度。
+- 前端 `main/mobile/test/auth_service_test.dart`：登录态持久化最小契约。
 
 #### 本地讲题回顾与错因卡片（第八轮新增）
 

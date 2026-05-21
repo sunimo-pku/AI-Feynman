@@ -10,6 +10,8 @@ import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
 import '../data/review_models.dart';
 import '../services/audio_stream_service.dart';
+import '../services/auth_service.dart';
+import '../services/learning_sync_service.dart';
 import '../services/lecture_service.dart';
 import '../services/live_lecture_service.dart';
 import '../services/progress_repository.dart';
@@ -530,7 +532,13 @@ class _LecturePageState extends State<LecturePage> {
     _scrollToBottomSoon();
 
     try {
-      final response = await _lectureService.submit(request);
+      // 第十轮：提交前先调一次 /ocr/ink 把空 latex/plainText 步骤补上,
+      // 让 LLM 看到更密集的语义证据。OCR 失败时返回原 request，不影响主路径。
+      final enriched = await _lectureService.enrichWithOcr(
+        request,
+        referenceSteps: _question.referenceSteps,
+      );
+      final response = await _lectureService.submit(enriched);
       if (!mounted) return;
 
       // 第五轮：请求成功后，把本轮 student 历史项（即 request.history 的
@@ -639,6 +647,10 @@ class _LecturePageState extends State<LecturePage> {
     if (!_reviewSavedForCurrentRound) {
       _reviewSavedForCurrentRound = true;
       await _persistReview(response: response, summary: summary);
+    }
+    // 第十轮：登录后才同步；未登录时静默跳过。失败不弹错。
+    if (AuthService.instance.isLoggedIn) {
+      unawaited(LearningSyncService.instance.syncNow());
     }
   }
 
@@ -863,6 +875,7 @@ class _LecturePageState extends State<LecturePage> {
       sectionId: widget.section.id,
       questionId: _question.questionId,
       questionPrompt: _question.prompt,
+      referenceSteps: _question.referenceSteps,
     );
     if (!mounted) return;
     if (!connected) {

@@ -1,8 +1,46 @@
-import os
+"""SQLAlchemy 数据层。
+
+第十轮（V1 总收口）新增：
+
+- `StudentProfile`：学生侧个人资料，1:1 关联 `User`；
+- `LearningProgress`：按 (student, section) 记录掌握度与完成轮数；
+- `LectureReview`：每完成一道题写一条「回顾摘要」；
+- `LectureSessionRecord`：每次实时讲题会话的元数据（不存原始音频）。
+
+设计要点：
+
+- 不复用旧 `ChatSession`，讲题闭环走独立业务表，避免历史遗留字段干扰；
+- 因为 SQLite `create_all()` 不会给老表加列，所有「新增字段」走轻量迁移
+  `_run_lightweight_migrations`：启动时 PRAGMA 检查列是否存在，缺失则 `ALTER TABLE`；
+- 不在表里直接保存音频；只保留转写文本、结构化摘要、JSON 列表；
+- JSON 列统一用 `Text` + `json.dumps/loads`，避免引入 SQLAlchemy JSON 类型
+  在某些 SQLite 版本上的兼容性问题。
+"""
+
+from __future__ import annotations
+
 import json
+import logging
+import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from typing import Any
+
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    inspect,
+    text,
+)
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
+logger = logging.getLogger("app")
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "app.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -10,6 +48,11 @@ os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+# ---------------------------------------------------------------------------
+# 旧表（保留以兼容历史登录账号 / 旧调试会话）
+# ---------------------------------------------------------------------------
 
 
 class User(Base):
@@ -32,13 +75,186 @@ class ChatSession(Base):
     temperature = Column(String, default="1.0")
     top_p = Column(String, default="0.95")
     max_tokens = Column(String, default="8192")
-    system_prompt = Column(Text, default="你是一位资深的体制内公文写作专家（老秘）。你熟练掌握《党政机关公文处理工作条例》及各类公文（如请示、报告、通知、通报、函、纪要、讲话稿等）的格式规范和行文风格。\n【核心要求】\n1. 绝对拒绝“AI味”：严禁使用“首先、其次、最后、总而言之、希望这能帮到你”等AI常见套话。严禁使用轻浮、热情的语气词（如“好的！”“没问题！”）。直接输出公文正文，不要有任何开场白或结束语。\n2. 语言风格：文字精炼、准确、庄重、规范。多用短句，少用长定语。善用公文常用词汇（如：切实、抓好、贯彻、落实、统筹、协调、推进、深化等）。\n3. 逻辑结构：层次分明，逻辑严密。标题和层级序号必须严格符合公文规范（如：一、 （一） 1. （1））。\n4. 政治站位：具备极高的政治敏锐性，表述必须符合当前党和国家的方针政策，客观中立，不带个人感情色彩。")
+    system_prompt = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-# Create tables on import
-Base.metadata.create_all(bind=engine)
+# ---------------------------------------------------------------------------
+# 第十轮：学习业务表
+# ---------------------------------------------------------------------------
+
+
+class StudentProfile(Base):
+    """学生侧个人资料。
+
+    V1 不做复杂的家长-孩子绑定：一个 `User` 即视为一个学生主体；家长端登录
+    后通过同一个 `user_id` 读自己的学习数据。后续上线「家长账号下挂多个
+    孩子」时，只需要把 `user_id` 改成「家长 user_id」并新增一个
+    `parent_user_id` 字段，整体表结构不动。
+    """
+
+    __tablename__ = "student_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, unique=True)
+    display_name = Column(String(64), default="同学")
+    grade = Column(String(32), default="八年级")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class LearningProgress(Base):
+    """按 (student, section) 记录掌握度与完成轮数。
+
+    与前端 `SectionProgress`（`shared_preferences`）字段保持一致，
+    便于 `/learning/progress/sync` 做行级 upsert。
+    """
+
+    __tablename__ = "learning_progress"
+    __table_args__ = (
+        UniqueConstraint("student_id", "section_id", name="uq_progress_student_section"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    completed_rounds = Column(Integer, default=0)
+    mastery_score = Column(Integer, default=0)
+    last_practiced_at = Column(DateTime, nullable=True)
+    last_summary = Column(Text, default="")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class LectureReview(Base):
+    """每完成一道题写一条回顾摘要。
+
+    家长端 dashboard 的「最近讲题回顾」直接读这张表，按
+    `created_at` 倒序取最近 N 条。
+    """
+
+    __tablename__ = "lecture_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    # 客户端生成的本地 id（`questionId-millis`），用来去重，与服务端自增主键
+    # 解耦。多次同步同一条记录走 ON CONFLICT 更新而不是新插。
+    client_id = Column(String(96), nullable=False, index=True, unique=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    question_id = Column(String(64), nullable=False, index=True)
+    question_prompt = Column(Text, default="")
+    difficulty = Column(Integer, default=1)
+    tags_json = Column(Text, default="[]")
+    summary = Column(Text, default="")
+    agent_highlights_json = Column(Text, default="[]")
+    caution_points_json = Column(Text, default="[]")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LectureSessionRecord(Base):
+    """每次实时讲题会话的元数据。
+
+    不保存原始音频；只保存：
+    - 学生侧 ASR 转写拼接文本（去掉静音段）；
+    - 步骤的 stepId / latex / plainText 列表；
+    - AI turns 的角色 / 文本 / highlight。
+
+    V1 仅用于「将来 debug 时回放讲题脉络」和家长端「最近一次精彩讲题」。
+    """
+
+    __tablename__ = "lecture_session_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=True, index=True)
+    session_id = Column(String(64), nullable=False, index=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    question_id = Column(String(64), nullable=False, index=True)
+    question_prompt = Column(Text, default="")
+    status = Column(String(32), default="needs_explanation")
+    transcript_text = Column(Text, default="")
+    steps_json = Column(Text, default="[]")
+    turns_json = Column(Text, default="[]")
+    mastery_delta = Column(Integer, default=0)
+    round_count = Column(Integer, default=0)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# 启动初始化 + 轻量迁移
+# ---------------------------------------------------------------------------
+
+
+def _run_lightweight_migrations() -> None:
+    """SQLite `create_all()` 不会给老表加列；这里手动补字段。
+
+    每次启动都执行：用 PRAGMA table_info 拿到列名集合，缺失就 `ALTER TABLE`。
+    单 `try/except` 包住每条 ALTER：跑过的就跳过，不让一次失败阻塞启动。
+
+    本轮新增字段：
+    - `lecture_session_records.mastery_delta`
+    - `lecture_session_records.round_count`
+
+    旧字段保留兼容旧 DB；以后增字段时同样按这个套路加分支即可。
+    """
+
+    with engine.connect() as conn:
+        # 检查 lecture_session_records 的列；本次新增的几个字段在旧库不存在
+        try:
+            cols = [
+                row[1]
+                for row in conn.execute(
+                    text("PRAGMA table_info(lecture_session_records)")
+                )
+            ]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[db-migrate] inspect lecture_session_records failed: %s", e)
+            cols = []
+
+        if cols:  # 表已存在
+            if "mastery_delta" not in cols:
+                try:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE lecture_session_records "
+                            "ADD COLUMN mastery_delta INTEGER DEFAULT 0"
+                        )
+                    )
+                    logger.info("[db-migrate] added lecture_session_records.mastery_delta")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[db-migrate] add mastery_delta failed: %s", e)
+            if "round_count" not in cols:
+                try:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE lecture_session_records "
+                            "ADD COLUMN round_count INTEGER DEFAULT 0"
+                        )
+                    )
+                    logger.info("[db-migrate] added lecture_session_records.round_count")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[db-migrate] add round_count failed: %s", e)
+
+        try:
+            conn.commit()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def init_db() -> None:
+    """创建尚未存在的表 + 执行轻量迁移。"""
+
+    Base.metadata.create_all(bind=engine)
+    _run_lightweight_migrations()
+
+
+# 启动时建表，避免老路径依赖「import 时副作用建表」失效。
+init_db()
+
+
+# ---------------------------------------------------------------------------
+# 依赖注入 / JSON helper
+# ---------------------------------------------------------------------------
 
 
 def get_db():
@@ -58,3 +274,46 @@ def deserialize_messages(data: str) -> list[dict]:
         return json.loads(data)
     except Exception:
         return []
+
+
+def dump_json(value: Any) -> str:
+    """统一的 JSON 序列化：ensure_ascii=False，避免中文被转 `\\uxxxx` 撑爆磁盘。"""
+
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        return "null"
+
+
+def load_json(raw: str | None, default: Any) -> Any:
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return default
+
+
+def ensure_student_profile(db: Session, user: User) -> StudentProfile:
+    """登录后第一次访问学习接口时自动建一份 student profile。
+
+    幂等：第二次调用直接返回已有行。`display_name` 默认取 username,
+    后续如果家长端要改名再走 PATCH 接口（V1 暂不实现）。
+    """
+
+    profile = (
+        db.query(StudentProfile)
+        .filter(StudentProfile.user_id == user.id)
+        .first()
+    )
+    if profile is not None:
+        return profile
+    profile = StudentProfile(
+        user_id=user.id,
+        display_name=user.username,
+        grade="八年级",
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
