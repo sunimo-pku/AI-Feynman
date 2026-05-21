@@ -10,3 +10,4 @@ httpx
 websockets
 python-multipart
 pytest
+pytest-asyncio
