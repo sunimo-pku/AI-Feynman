@@ -194,6 +194,14 @@ git push origin main
 - **用户级 localStorage 必须带 user id**：切换账号时不能用全局固定 key，否则偏好串号。
 - **LLM 结构化输出需持久化**：仅放 `useState` 的内容，用户切页再回来会丢失；应写入 session / DB 对应字段。
 
+### Flutter 客户端（V1 闭环踩坑）
+
+- **CustomPainter 共享 List 不会自动重绘**：把 `Stroke` 列表直接传给 `CustomPainter` 并在原地 mutate，`shouldRepaint` 拿到的 old/new 是同一引用，等式恒成立，画布会出现「拖不出笔」。手写板需要在 Controller 里维护 `version` 计数器，painter 比对 `old.version != version` 才能正确触发重绘（见 `widgets/hand_canvas.dart`）。
+- **手写板必须 `RepaintBoundary`**：左侧 SSE / 对话区每来一个 delta 都会触发整页 rebuild，若画布与对话同层 paint，会肉眼可见地断笔、粘滞。所有讲题相关的 `HandCanvas` 都要包一层 `RepaintBoundary`，并通过 `AnimatedBuilder` 单独监听 Controller。
+- **平板防误触**：`Listener` 的 `onPointerDown` 默认会收所有手指事件，孩子写字时手掌一压就会爆出十几条副笔画。需要在 State 里记 `_activePointer`，第二根手指出现时直接忽略。
+- **`Wrap(children: const [...])` 内部组件必须 const-constructible**：`AppPalette.*` 已声明为 `const Color`，新增标签/Pill 类型时也要写 `const` 构造函数，否则一改 home 就会全屏触发 lint 报错。
+- **公式渲染 V1 用 Unicode 占位**：尚未引入 `flutter_math_fork`，所有 `\sqrt{...}` / `\frac{a}{b}` / `\cdot` 等 token 由 `widgets/formula_text.dart` 转 Unicode。**真正接入流式 LLM 之前必须替换为原生 Canvas KaTeX，否则 16.x 章节中复杂分式会丢括号、丢上下标。**
+
 ### 平板交互与双工打断（待验证）
 
 - 手写轨迹与音频输入是核心交互；公网 HTTP 下浏览器可能限制麦克风，平板部署需考虑 HTTPS 或原生壳。
