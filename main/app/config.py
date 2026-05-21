@@ -23,13 +23,22 @@ class Config:
     QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen-vl-plus")
 
     VOLC_API_KEY = os.getenv("VOLC_API_KEY", "")
-    # Most Volc capabilities in this project share VOLC_API_KEY. Keep the
-    # stream-specific names as optional overrides for SDKs that require them.
-    VOLC_ASR_STREAM_APP_ID = os.getenv("VOLC_ASR_STREAM_APP_ID", "")
-    VOLC_ASR_STREAM_ACCESS_TOKEN = os.getenv(
-        "VOLC_ASR_STREAM_ACCESS_TOKEN",
-        VOLC_API_KEY,
+    # Most Volc capabilities in this project share VOLC_API_KEY. New Volc ASR
+    # console uses X-Api-Key, so stream ASR can reuse VOLC_API_KEY unless an
+    # explicit override is provided.
+    VOLC_ASR_STREAM_API_KEY = os.getenv("VOLC_ASR_STREAM_API_KEY", VOLC_API_KEY)
+    VOLC_ASR_STREAM_URL = os.getenv(
+        "VOLC_ASR_STREAM_URL",
+        "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
     )
+    VOLC_ASR_STREAM_RESOURCE_ID = os.getenv("VOLC_ASR_STREAM_RESOURCE_ID", "")
+    VOLC_ASR_STREAM_TIMEOUT_SECONDS = float(
+        os.getenv("VOLC_ASR_STREAM_TIMEOUT_SECONDS", "8")
+    )
+    # Legacy console fields are kept for operators who still use the old ASR
+    # app-key/access-token pair, but the new implementation prefers X-Api-Key.
+    VOLC_ASR_STREAM_APP_ID = os.getenv("VOLC_ASR_STREAM_APP_ID", "")
+    VOLC_ASR_STREAM_ACCESS_TOKEN = os.getenv("VOLC_ASR_STREAM_ACCESS_TOKEN", "")
     OCR_HWR_API_KEY = os.getenv("OCR_HWR_API_KEY", VOLC_API_KEY)
     EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
     REPLAY_STORAGE_DIR = os.getenv("REPLAY_STORAGE_DIR", "data/replays")

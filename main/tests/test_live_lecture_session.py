@@ -31,6 +31,12 @@ def _b64_pcm(seconds: float, sample_rate: int = 16000) -> str:
     return base64.b64encode(b"\x00\x01" * (n_bytes // 2)).decode("ascii")
 
 
+@pytest.fixture(autouse=True)
+def _disable_stream_asr_for_session_tests(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.volc_asr_stream.Config.VOLC_ASR_STREAM_API_KEY", "")
+    monkeypatch.setattr("app.services.volc_asr_stream.Config.VOLC_ASR_STREAM_RESOURCE_ID", "")
+
+
 def _fake_recognize(audio_b64: str, fmt: str) -> dict:
     return {"text": "我先把根号十二化成二根号三"}
 

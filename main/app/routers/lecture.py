@@ -15,7 +15,7 @@
 - 强 Schema：Pydantic v2 模型，所有字段显式声明，前端就能直接 from_json。
 - 不引入 `require_user`：当前 Flutter 客户端尚未做登录态，演示链路不应被 401 拦腰截断。
 - 错误：参数缺失走 422（由 FastAPI / Pydantic 自动产生）；
-       未知章节走 404；空步骤数组走 400 —— 全部经 HTTPException 抛出，
+       空步骤数组走 400 —— 经 HTTPException 抛出，
        不走 `return {"error": ...}` 假 200。
 - LLM 错误**不**抛 HTTPException：会让前端看到红色错误条，破坏 Demo；
   统一由 service 回落 fallback，路由层只看 `source` 字段写日志。
@@ -79,8 +79,8 @@ class LectureStep(BaseModel):
 class LectureHistoryItem(BaseModel):
     """单条多轮上下文历史项。
 
-    第五轮新增：把当前题目内的「学生上一轮说了什么 / AI 上一轮追问了什么」一并随
-    `/lecture/submit` 上传，让后端 LLM 不再每次「失忆式」追问同一个问题。
+    把当前题目内的「学生上一轮说了什么 / AI 上一轮追问了什么」一并随
+    `/lecture/submit` 上传，让后端 LLM 能延续上下文，而不是重复追问同一个问题。
 
     字段约束故意宽松：
       * `role` 用 str 而不是枚举，遇到陌生 role 由 service 静默忽略，避免打错字段
@@ -109,9 +109,9 @@ class LectureSubmitRequest(BaseModel):
     student_speech_text: str = Field("", alias="studentSpeechText", max_length=4000)
     steps: list[LectureStep] = Field(default_factory=list)
 
-    # 第五轮新增可选字段：保持旧 Flutter 客户端不传这两个字段也能通过。
+    # 保持旧 Flutter 客户端不传这两个字段也能通过。
     # `round_index` 从 1 开始，第一次提交是第 1 轮；第二次提交（学生在回答 AI 追问）
-    # 应当是 2，依此类推。这个语义对 Prompt 工程很关键 ——「回答上一轮追问」与
+    # 应当是 2，依此类推。这个语义对追问生成很关键 ——「回答上一轮追问」与
     # 「重新讲一遍」要求 LLM 输出风格完全不同。
     round_index: int = Field(1, alias="roundIndex", ge=1, le=20)
     history: list[LectureHistoryItem] = Field(default_factory=list)
@@ -161,13 +161,6 @@ class LectureSubmitResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-_SUPPORTED_SECTIONS: tuple[str, ...] = (
-    "pep-g8-down-s16-1",
-    "pep-g8-down-s16-2",
-    "pep-g8-down-s16-3",
-)
-
-
 @router.post(
     "/submit",
     response_model=LectureSubmitResponse,
@@ -179,15 +172,6 @@ async def submit_lecture(
     user: User | None = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> LectureSubmitResponse:
-    if req.section_id not in _SUPPORTED_SECTIONS:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"Section '{req.section_id}' is not part of the V1 launch scope. "
-                f"Supported sections: {list(_SUPPORTED_SECTIONS)}"
-            ),
-        )
-
     if not req.steps:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

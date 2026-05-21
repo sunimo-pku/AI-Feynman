@@ -76,7 +76,7 @@
 - **目标用户**：初中数学（初一～初三）
 - **运行形态**：Android App（Flutter / Dart，平板优先）
 - **技术栈**：Flutter 客户端 + Python FastAPI 后端
-- **当前阶段**：🚧 MVP 规划与骨架搭建
+- **当前阶段**：🚧 Round 12 V2 演示闭环收口
 
 ### 产品主张
 
@@ -89,10 +89,11 @@
 | 层面 | 策略 |
 |------|------|
 | 目录 | **做全**：人教版初中数学完整章节树（见 `data/curriculum/pep-junior-math.json`） |
-| 内容 | **只填「第十六章 二次根式」**（八年级下册，章 id `pep-g8-down-ch16`） |
-| 其余章节 | 目录可见，标记「即将上线」，不可进入练习 |
+| 题库 | **全册 90 节均可练**：每节基础 / 巩固 / 挑战 3 题，见 `data/questions/pep-junior-math-questions.json` |
+| 追问闭环 | **所有章节同等可追问**：均走同一套多 Agent 讲题、掌握度与回顾链路 |
+| 知识材料 | **第十六章二次根式**当前额外有本地知识库 chunks；其它章节先依靠题面、学生口述和手写步骤追问，后续逐章补知识库 |
 
-原则：**壳子做全、肉先填一块**。
+原则：**壳子做全、全册同等可追问，知识库逐章补强**。
 
 ### 开发策略
 
@@ -113,7 +114,7 @@
 
 ## 客户端规范（Flutter）
 
-- 新建、重构或优化页面/组件/样式前，必须先读 [`MOBILE_STYLE.md`](./MOBILE_STYLE.md)
+- 新建、重构或优化页面/组件/样式前，必须先读 [`docs/MOBILE_STYLE.md`](./docs/MOBILE_STYLE.md)
 - **技术栈**：Flutter / Dart，目标平台 **Android**（平板优先）
 - **架构**：客户端只负责 UI / 手写 / 语音采集；业务逻辑与 LLM 调用走 Python API
 - 禁止默认 AI 风格（白底灰卡片、紫蓝渐变、无状态反馈的临时页）
@@ -149,16 +150,16 @@ git push origin main
 |------|------|------|
 | GitHub 仓库 | ✅ | [AI-Feynman](https://github.com/sunimo-pku/AI-Feynman) |
 | 产品规划 V1 | ✅ | `项目规划/planV1.md` |
-| 初中数学目录数据 | ✅ | 6 册 · 29 章 · 90 节；V1 上线 **第十六章 二次根式**（3 节 `available`） |
-| 学生端讲题闭环 | ✅ | 第九轮：实时双工 · 边写边讲 → 自然停顿 → 多 Agent 流式追问 → TTS → 学生打断（16.x 章） |
+| 初中数学目录数据 | ✅ | 6 册 · 29 章 · 90 节；全册 270 道 seed 题可练，所有章节同等进入多 Agent 追问 |
+| 学生端讲题闭环 | ✅ | 第九轮：实时双工 · 边写边讲 → 自然停顿 → 多 Agent 流式追问 → TTS → 学生打断（全册题库，16.x 知识库增强） |
 | 本地掌握度沉淀 | ✅ | 第六轮：`SectionProgress` 落 `shared_preferences`，首页/讲题页徽标实时刷新 |
-| 本地小题库与下一题轮换 | ✅ | 第七轮：16.1 / 16.2 / 16.3 各 3 道题（基础/巩固/挑战），讲题页显示题号 + 难度 chip + 知识标签 chip，「下一题」循环切题 |
+| 全册题库与下一题轮换 | ✅ | 第十二轮：90 节 × 3 题（基础/巩固/挑战），讲题页显示题号 + 难度 chip + 知识标签 chip，「下一题」循环切题 |
 | 后端学习数据沉淀 | ✅ | 第十轮：`StudentProfile/LearningProgress/LectureReview/LectureSessionRecord` 四张表 + 轻量迁移；`/lecture/submit` 与 `/lecture/live` 可选 Bearer 自动落库 |
 | 家长端看板 + 总结海报 | ✅ | 第十轮：`/parent/dashboard` + `/parent/reviews` + `/parent/poster`；Flutter 家长端：总体掌握、弱项 / 已掌握章节、最近讲题、老师建议、可分享海报 |
 | 登录注册 + 本地同步 | ✅ | 第十轮：`/auth/register` + `/auth/login` JWT，Flutter `AuthService` + `LearningSyncService`（按 max/最新合并、串行化、UNIQUE client_id 去重）|
 | OCR / Ink Parser | ✅ | 第十轮：`/ocr/ink` 规则匹配（referenceSteps 优先 + 16.x fallback），Flutter `OcrService` 在 ink_snapshot 与 lecture submit 前预填 latex / plainText |
 | TTS 平滑淡出 | ✅ | 第十轮：第九轮硬截断改为 200ms × 25ms tick 的 setVolume 渐隐 + token 幂等防抖 |
-| V1 上线章节 | ✅ | 八年级下册 · 第十六章 二次根式 |
+| 知识库增强 | ✅ | 八年级下册 · 第十六章 二次根式已有本地知识库；其它章节按同一追问链路运行，后续逐章补知识库 |
 
 ---
 

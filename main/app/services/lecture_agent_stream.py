@@ -17,7 +17,7 @@ from app.services.kimi import kimi_client
 logger = logging.getLogger(__name__)
 
 _STREAM_SYSTEM_SUFFIX = """
-本轮改用 NDJSON 输出，且只能逐行输出 JSON，不要 Markdown。
+请以 NDJSON 形式逐行输出事件；每行只能是一个 JSON 对象，不要 Markdown。
 每行一个对象：
 {"type":"turn_start","turnId":"turn_1","role":"xiaoming","displayName":"小明","highlightStepIds":["step_1"]}
 {"type":"delta","turnId":"turn_1","delta":"..."}

@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 
 from app.services.live_asr_buffer import LiveAsrBuffer
+from app.services.volc_asr_stream import VolcStreamingAsrClient
 
 
 def _b64_pcm(seconds: float, sample_rate: int = 16000) -> str:
@@ -15,20 +16,26 @@ def _b64_pcm(seconds: float, sample_rate: int = 16000) -> str:
     return base64.b64encode(b"\x00\x01" * (n_bytes // 2)).decode("ascii")
 
 
+def _buffer() -> LiveAsrBuffer:
+    return LiveAsrBuffer(
+        stream_client=VolcStreamingAsrClient(api_key="", resource_id="")
+    )
+
+
 def test_should_flush_below_window() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     buf.push(seq=0, base64_data=_b64_pcm(0.5))
     assert not buf.should_flush()
 
 
 def test_should_flush_at_window() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     buf.push(seq=0, base64_data=_b64_pcm(2.5))
     assert buf.should_flush()
 
 
 def test_drain_and_recognize_success() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     buf.push(seq=0, base64_data=_b64_pcm(2.6))
 
     def fake(audio_b64: str, fmt: str) -> dict:
@@ -44,7 +51,7 @@ def test_drain_and_recognize_success() -> None:
 
 
 def test_drain_recognize_error_does_not_terminate() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     buf.push(seq=0, base64_data=_b64_pcm(2.6))
 
     def fake(audio_b64: str, fmt: str) -> dict:
@@ -59,28 +66,28 @@ def test_drain_recognize_error_does_not_terminate() -> None:
 
 
 def test_force_flush_with_partial_window() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     buf.push(seq=0, base64_data=_b64_pcm(0.8))
     assert not buf.should_flush()
     assert buf.should_flush(force=True)
 
 
 def test_seq_regression_is_dropped() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     buf.push(seq=10, base64_data=_b64_pcm(1.0))
     buf.push(seq=5, base64_data=_b64_pcm(1.0))  # 倒退，被丢弃
     assert buf.pending_seconds < 1.5  # 第二条没进来
 
 
 def test_oversize_chunk_is_dropped() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     big = "a" * (3 * 1024 * 1024)
     buf.push(seq=0, base64_data=big)
     assert not buf.has_pending
 
 
 def test_recognize_exception_is_caught() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     buf.push(seq=0, base64_data=_b64_pcm(2.6))
 
     def boom(audio_b64: str, fmt: str) -> dict:
@@ -93,7 +100,7 @@ def test_recognize_exception_is_caught() -> None:
 
 
 def test_reset_clears_pending() -> None:
-    buf = LiveAsrBuffer()
+    buf = _buffer()
     buf.push(seq=0, base64_data=_b64_pcm(1.0))
     assert buf.has_pending
     buf.reset()

@@ -477,9 +477,9 @@ async def upload_question_image(file: UploadFile = File(...), user: User = Depen
     if not vision.get("error"):
         return {**vision, "debugPreview": preview}
     return {
-        "sectionId": "pep-g8-down-s16-3",
-        "knowledgeTags": ["二次根式", "化简", "同类二次根式"],
-        "questionPrompt": r"请确认图片题目是否为二次根式化简题，可从 $\sqrt{12}-\sqrt{27}$ 类题开始讲。",
+        "sectionId": "unknown",
+        "knowledgeTags": ["图片识题", "初中数学"],
+        "questionPrompt": "请确认图片中的初中数学题目，并先讲你能看清的条件、图形或算式。",
         "confidence": 0.62 if data else 0.35,
         "source": "vision_fallback",
         "fallbackReason": vision.get("error", ""),

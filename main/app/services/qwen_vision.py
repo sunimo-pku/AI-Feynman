@@ -36,15 +36,20 @@ def recognize_question_image(
     client = OpenAI(api_key=Config.ALIYUN_API_KEY, base_url=Config.ALIYUN_BASE_URL)
     data_url = f"data:{mime_type or 'image/jpeg'};base64,{image_base64}"
     prompt = """
-你是初中数学题目识别助手。请识别图片中的题目，并判断它最可能属于哪个人教版初中数学小节。
-当前 App 最完整支持二次根式三节：
-- pep-g8-down-s16-1：二次根式的概念与取值范围
-- pep-g8-down-s16-2：二次根式的乘除
-- pep-g8-down-s16-3：二次根式的加减
+你是初中数学题目识别助手。请识别图片中的题目，并判断它最可能属于人教版初中数学哪个小节。
+请根据题面内容、章节知识点和年级范围判断 sectionId。
+
+sectionId 命名规则：pep-g{7|8|9}-{up|down}-s{章号}-{节号}
+例子：
+- 七年级上册 1.3 有理数的加减法：pep-g7-up-s1-3
+- 八年级上册 12.1 全等三角形：pep-g8-up-s12-1
+- 八年级下册 16.3 二次根式的加减：pep-g8-down-s16-3
+- 九年级上册 22.1 二次函数的图像和性质：pep-g9-up-s22-1
+- 九年级下册 27.1 图形的相似：pep-g9-down-s27-1
 
 只输出 JSON 对象，不要 Markdown：
 {
-  "sectionId": "pep-g8-down-s16-1|pep-g8-down-s16-2|pep-g8-down-s16-3|unknown",
+  "sectionId": "pep-g7-up-s1-1|pep-g8-up-s12-1|pep-g9-down-s27-1|unknown",
   "questionPrompt": "识别出的题面，数学符号尽量用 LaTeX",
   "knowledgeTags": ["标签1", "标签2"],
   "confidence": 0.0
@@ -70,8 +75,6 @@ def recognize_question_image(
         raw = (resp.choices[0].message.content or "").strip()
         parsed = _parse_json(raw)
         section_id = str(parsed.get("sectionId") or "unknown")
-        if section_id == "unknown":
-            section_id = "pep-g8-down-s16-3"
         tags_raw = parsed.get("knowledgeTags")
         tags = [
             str(t).strip()

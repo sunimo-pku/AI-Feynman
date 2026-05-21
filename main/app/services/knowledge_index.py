@@ -72,8 +72,9 @@ def search(
     candidates = _CHUNKS
     if section_id:
         scoped = [c for c in candidates if c.get("sectionId") == section_id]
-        if scoped:
-            candidates = scoped
+        if not scoped:
+            return []
+        candidates = scoped
     hits = sorted(candidates, key=lambda item: -_score(query, item))[:safe_top_k]
     return [{**h, "score": _score(query, h)} for h in hits]
 

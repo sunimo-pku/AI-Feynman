@@ -241,6 +241,26 @@ class LiveLectureSession:
             sample_rate = int(event.get("sampleRate") or self.asr_buffer.sample_rate)
         except (TypeError, ValueError):
             sample_rate = self.asr_buffer.sample_rate
+        if self.asr_buffer.stream_client.enabled:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self.asr_buffer.stream_client.accept_chunk(
+                    seq=seq,
+                    base64_data=base64_data,
+                    recognize_fallback=recognize_fn,
+                    force=False,
+                ),
+            )
+            if result is not None and not result.error:
+                await self._handle_asr_result(result.__dict__, send=send)
+                return
+            if result is not None and result.error:
+                logger.warning(
+                    "[live-session] streaming ASR failed session=%s err=%s; using fallback buffer",
+                    self.session_id,
+                    result.error,
+                )
         self.asr_buffer.push(
             seq=seq,
             base64_data=base64_data,
@@ -404,6 +424,22 @@ class LiveLectureSession:
         recognize_fn: Callable[[str, str], dict],
         force: bool = False,
     ) -> None:
+        if self.asr_buffer.stream_client.enabled:
+            if not force:
+                return
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self.asr_buffer.stream_client.accept_chunk(
+                    seq=-1,
+                    base64_data="",
+                    recognize_fallback=recognize_fn,
+                    force=True,
+                ),
+            )
+            if result is not None:
+                await self._handle_asr_result(result.__dict__, send=send)
+            return
         if not self.asr_buffer.should_flush(force=force):
             return
         # ASR 是阻塞 I/O，丢到 threadpool 跑。
@@ -414,6 +450,14 @@ class LiveLectureSession:
         )
         if result is None:
             return
+        await self._handle_asr_result(result, send=send)
+
+    async def _handle_asr_result(
+        self,
+        result: dict[str, Any],
+        *,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
         if result.get("error"):
             logger.warning(
                 "[live-session] ASR window failed session=%s err=%s",

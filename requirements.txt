@@ -7,5 +7,6 @@ passlib[bcrypt]
 python-dotenv
 openai
 httpx
+websockets
 python-multipart
 pytest

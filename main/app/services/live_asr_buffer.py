@@ -203,6 +203,14 @@ class LiveAsrBuffer:
                 recognize_fallback=recognize_fn,
             )
             if stream_result is not None:
+                if stream_result.error:
+                    return {
+                        "text": "",
+                        "seconds": seconds,
+                        "error": stream_result.error,
+                        "mode": stream_result.mode,
+                        "isFinal": stream_result.is_final,
+                    }
                 return {
                     "text": stream_result.text.strip(),
                     "seconds": seconds,
@@ -227,6 +235,10 @@ class LiveAsrBuffer:
         return {"text": text, "seconds": seconds, "error": None}
 
     def reset(self) -> None:
+        try:
+            self.stream_client.close()
+        except Exception:  # noqa: BLE001
+            pass
         self._pending.clear()
         self._pending_seconds = 0.0
         self._last_seq = -1

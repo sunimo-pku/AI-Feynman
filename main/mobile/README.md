@@ -45,9 +45,10 @@ lib/
 │   ├── curriculum_models.dart       # 课程目录模型
 │   ├── curriculum_repository.dart   # 加载 assets/curriculum/*.json
 │   ├── lecture_models.dart          # 讲题 / 多 Agent 对话数据模型
-│   └── mock_lecture_repository.dart # V1 阶段的本地 Mock 题与追问
+│   ├── mock_lecture_repository.dart # 全册 90 节题库 asset + 16 章兜底题
+│   └── round12_models.dart          # V2 游戏化 / 回放 / 题库模型
 ├── pages/
-│   ├── home_page.dart               # 课程首页（全目录 + V1 章节高亮）
+│   ├── home_page.dart               # 课程首页（全目录 + 全册可练 + V2 入口）
 │   └── lecture_page.dart            # 讲题页（左右双栏，平板优先）
 ├── services/                        # HTTP / SSE / 语音等
 ├── theme/
@@ -57,11 +58,12 @@ lib/
     ├── hand_canvas.dart             # 带 RepaintBoundary 的手写板（撤销/清空/分步/高亮）
     └── agent_message_bubble.dart    # 多 Agent 对话气泡（按角色调色）
 assets/curriculum/                   # 人教版目录 JSON（与 data/curriculum 同步）
+assets/questions/                    # 全册 90 节题库 JSON + SVG 题图
 ```
 
-## V1 演示闭环
+## 演示闭环
 
-1. 首页展示「人教版 · 初中数学」完整 6 册 29 章；只有八年级下册 · 第十六章 16.1 / 16.2 / 16.3 可进入练习，其余章节带「即将上线」灰态。
+1. 首页展示「人教版 · 初中数学」完整 6 册 29 章；全册 90 节均有基础 / 巩固 / 挑战 3 题可进入练习，所有章节都进入同一套多 Agent 追问闭环。
 2. 进入讲题页 → 在右侧手写板写出解题步骤 → 点击「提交讲解」→ 左侧出现「小明 + 李老师」围绕该节核心知识点的追问。
 3. 点击气泡里的「看这一步」可让画布上对应 `step_id` 的笔迹出现霓虹光晕高亮（对应 `MOBILE_STYLE.md` §5.5）。
 4. 「我懂了」结束当前一轮、「下一题」清空画板再来一轮。

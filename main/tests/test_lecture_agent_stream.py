@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.services import lecture_agent_stream
+from app.services import lecture_agent
 
 
 def test_stream_fallback_event_order(monkeypatch) -> None:
@@ -26,3 +27,19 @@ def test_parse_ndjson_line_filters_highlight() -> None:
     )
     assert event is not None
     assert event["highlightStepIds"] == ["step_1"]
+
+
+def test_non_radical_empty_input_prompt_is_generic() -> None:
+    prompt = lecture_agent._build_user_prompt(
+        section_id="pep-g9-up-s22-1",
+        question_id="q-fn",
+        question_prompt="已知二次函数 y=x^2-2x，说明图像顶点和对称轴。",
+        student_speech_text="",
+        steps=[{"stepId": "step_1", "strokeCount": 1}],
+        allowed_step_ids=["step_1"],
+        round_index=1,
+        history=[],
+    )
+    assert "判断本题所属领域" in prompt
+    assert "二次根式" not in prompt
+    assert "函数关系" in prompt

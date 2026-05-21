@@ -1,6 +1,6 @@
 """讲题 / 多 Agent 追问的 LLM 剧本生成服务。
 
-设计要点（覆盖第三 ~ 第五轮的 brief）：
+设计要点：
 
 - **单大模型多角色剧本**：用同一次 LLM 调用让 Kimi 同时扮演小明 / 大雄 / 班长 /
   李老师中的 1-2 个角色，避免 N 次串行调用拉爆延迟。
@@ -8,13 +8,13 @@
   双保险；解析时还要再做 markdown 去壳 + 字段白名单校验。
 - **highlightStepIds 必须命中真实 stepId**：模型最爱编造 `step_99`，路由层会把
   真实白名单注入 Prompt，service 还会再过滤一次，命中不到的直接落回画板首步。
-- **Fallback 优先于报错**：Demo 链路不能因为 Kimi 抽风、JSON 抽风、网络抽风而中断；
-  解析失败一律回落到第二/五轮的固定 Mock 剧本，保留 `source=fallback` 日志便于排查。
+- **Fallback 优先于报错**：讲题链路不能因为 Kimi 抽风、JSON 抽风、网络抽风而中断；
+  解析失败一律回落到固定追问剧本，保留 `source=fallback` 日志便于排查。
 - **不持有路由层依赖**：本模块只产出 `dict`（与 Pydantic schema 对齐的字段），
   由 `routers/lecture.py` 负责套上 `LectureSubmitResponse`。这样 service 既可
   被路由调用，也方便后续单测。
-- **第五轮新增「多轮上下文」**：`generate_lecture_turns(...)` 多收两个参数
-  `round_index` 与 `history`。Prompt 用最近 6 条历史让 LLM 评估学生本轮是
+- **多轮上下文**：`generate_lecture_turns(...)` 接收 `round_index` 与 `history`。
+  Prompt 用最近 6 条历史让 LLM 评估学生当前输入是
   「在回答上一轮 AI 追问」还是「重新讲一遍」，并据此决定 `status` 是
   `needs_explanation` 还是 `completed`。Fallback 也按 `round_index` 切换文案，
   避免学生连点两次都看到一模一样的兜底追问。
@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from pathlib import Path
 from typing import Any
 
 from app.config import Config
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 #   - 通过 `extra_body={"thinking":{"type":"disabled"}}` 关掉思考后，
 #     K2.6 在我们的 Prompt 上实测 3-6s 即可返回合规 JSON，
 #     既保住了旗舰模型对中文数学语境 + LaTeX 输出的理解力，
-#     又把延迟压到 Demo 可接受范围。
+#     又把延迟压到课堂交互可接受范围。
 _LECTURE_MODEL = "kimi-k2.6"
 
 # K2.6 关思考模式后 Moonshot 仍硬约束 `temperature=0.6`，传其他值会 400
@@ -74,7 +75,7 @@ _ALLOWED_ROLES: tuple[str, ...] = ("xiaoming", "daxiong", "monitor", "teacher")
 _ALLOWED_STATUS: tuple[str, ...] = ("needs_explanation", "completed")
 _ALLOWED_DELTA: tuple[int, ...] = (-1, 0, 1)
 
-# 第五轮：history 项里允许的 role。`student` / `system` 不在 LLM 输出
+# history 项里允许的 role。`student` / `system` 不在 LLM 输出
 # 白名单内（不允许 LLM 扮演「学生」），但**作为输入历史**它们是合法来源。
 _HISTORY_ROLES: tuple[str, ...] = (
     "student",
@@ -101,15 +102,42 @@ _DEFAULT_DISPLAY_NAME: dict[str, str] = {
 # 单条发言文本上限（中文为主，留点余量给 LaTeX）。
 _MAX_TEXT_LEN = 220
 
-_SECTION_TITLE: dict[str, str] = {
-    "pep-g8-down-s16-1": "16.1 二次根式的概念与取值范围",
-    "pep-g8-down-s16-2": "16.2 二次根式的乘除",
-    "pep-g8-down-s16-3": "16.3 二次根式的加减",
-}
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_CURRICULUM_FILE = _PROJECT_ROOT / "data" / "curriculum" / "pep-junior-math.json"
+
+
+def _load_section_titles() -> dict[str, str]:
+    try:
+        raw = json.loads(_CURRICULUM_FILE.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[lecture-agent] curriculum titles unavailable: %s", e)
+        return {}
+    titles: dict[str, str] = {}
+    for book in raw.get("books", []) if isinstance(raw, dict) else []:
+        if not isinstance(book, dict):
+            continue
+        book_label = str(book.get("label") or "").strip()
+        for chapter in book.get("chapters", []) or []:
+            if not isinstance(chapter, dict):
+                continue
+            chapter_label = str(chapter.get("label") or "").strip()
+            for section in chapter.get("sections", []) or []:
+                if not isinstance(section, dict):
+                    continue
+                section_id = str(section.get("id") or "").strip()
+                label = str(section.get("label") or section.get("title") or "").strip()
+                if section_id:
+                    titles[section_id] = " · ".join(
+                        part for part in (book_label, chapter_label, label) if part
+                    )
+    return titles
+
+
+_SECTION_TITLE: dict[str, str] = _load_section_titles()
 
 
 _SYSTEM_PROMPT = """你是「初中数学费曼学习小组剧本导演」。
-学生正在面向「人教版八年级下册 · 第十六章 二次根式」做费曼讲题。
+学生正在面向人教版初中数学任意章节题目做费曼讲题。
 你必须扮演他们的同伴和老师，用追问帮学生发现自己的卡点。
 
 【角色清单】每次只挑选 1-2 个最合适的角色发言：
@@ -118,51 +146,54 @@ _SYSTEM_PROMPT = """你是「初中数学费曼学习小组剧本导演」。
 - monitor（班长）：归纳总结型，要求把方法、步骤、易错点提炼成一句话规则。
 - teacher（李老师）：温和的老师，做脚手架式引导和收束，不直接公布答案。
 
-【硬性规则】
+【任务规则】
 1. 围绕本题与本节核心知识点，不要泛泛聊「加油」「你真棒」。
 2. 不要一次性把答案告诉学生；老师只做引导和小结。
 3. 不要嘲讽、阴阳怪气；语气友好、平视、尊重学生。
 4. 如果学生写的步骤太少或语焉不详，优先追问「这一步为什么成立」。
-5. 数学符号用 LaTeX：`\\sqrt{12}`、`\\frac{a}{b}`、`a \\cdot b`、`x \\ge 0`，
-   推导时尽量带条件，比如「需要 a \\ge 0, b \\ge 0」。
+5. 数学符号用 LaTeX：例如 `\\frac{a}{b}`、`x \\ge 0`、`\\angle A`、`y=kx+b`。
+   推导时尽量带适用条件，比如定义域、正负号、等价变形条件、几何图形条件、统计口径。
 6. 每条发言必须挂在 `highlightStepIds` 上，且只能引用「允许的 stepId 白名单」里的值。
 7. 每条发言不超过 180 个中文字符。
 8. 整体最多 2 条发言。
+9. 根据【当前小节】和【题面】判断本题所属领域，再选择相应的追问角度。
 
-【优先使用学生本人输入】（这一节最重要）
-9. 如果用户提供了「学生口述」或某些 step 的「文字说明 / latex」，你必须**优先**围绕
+【使用学生本人输入】
+10. 如果用户提供了「学生口述」或某些 step 的「文字说明 / latex」，你必须**优先**围绕
    学生自己说出来的内容追问，而不是空对空念题面。例如：
-   - 学生口述「我把 12 拆成 4×3」 → 追问「为什么 4 可以从根号里出来？这条规则的前提是什么？」
-   - 学生 step_2 写「根号 27 化成 3 根号 3」 → 追问「27 你是怎么拆的？拆成 9×3 还是 3×9，对最终结果有什么区别？」
-   - 学生口述「最后得到负一根号三」 → 追问「同类二次根式相减时，系数 2 减 3 是怎么得到 -1 的？这里要不要写括号？」
-10. 不要把学生输入当作正确答案：它可能里面藏着前提条件缺失、化简规则用错、计算
+   - 有理数题：学生说「负负得正」 → 追问符号法则和括号处理是否一致。
+   - 方程题：学生把两边同除以某个式子 → 追问这个式子能不能为 0，是否丢根。
+   - 函数题：学生说「斜率越大越陡」 → 追问 $k$ 的正负和图像经过象限。
+   - 几何题：学生用全等/相似 → 追问对应边角是否对应，条件是否足够。
+   - 统计题：学生比较平均数 → 追问样本量、极端值和方差是否也要看。
+11. 不要把学生输入当作正确答案：它可能里面藏着前提条件缺失、化简规则用错、计算
     符号错误等，你要像同学/老师一样**逐条质疑**。常见追问角度：
-    - 被开方数有没有非负条件？$\\ge 0$ 还是 $> 0$？
-    - $\\sqrt{a}\\cdot\\sqrt{b}=\\sqrt{ab}$、$\\sqrt{a/b}=\\sqrt{a}/\\sqrt{b}$ 是否要求 $a,b\\ge 0$（除法时 $b>0$）？
-    - 同类二次根式合并时，系数是否对齐、有没有漏负号？
-    - 把 $\\sqrt{n}$ 化成 $k\\sqrt{m}$ 时，是否把完全平方数全部提出来了？
-11. 引用学生原话时**用引号**简短照搬，让学生明确感到「AI 真的在听我讲」；
-    比如：「你刚才说 “把 12 拆成 4×3”，那为什么不拆成 2×6 呢？」
-12. 如果「学生口述」和所有 step 文字都为空，再回到泛泛追问本节核心知识点的兜底逻辑。
+    - 定义有没有说清？量、单位、符号、图形条件是否完整？
+    - 这一步是不是等价变形？有没有除以 0、开平方正负、取交集/并集、约分条件？
+    - 公式/定理适用条件是否满足？对应关系、定义域、样本口径是否一致？
+    - 计算有没有漏负号、括号、单位、近似精度、分类讨论？
+12. 引用学生原话时**用引号**简短照搬，让学生明确感到「AI 真的在听我讲」。
+13. 如果「学生口述」和所有 step 文字都为空，也必须根据【题面】和【当前小节】
+    选择本题所属领域的核心概念追问。
 
-【多轮追问规则（第五轮新增）】
-13. 当 user prompt 提供「上一轮历史」时，请先判断：学生这一轮的口述/步骤说明
+【多轮追问规则】
+14. 当上下文提供「上一轮历史」时，请先判断：学生这一轮的口述/步骤说明
     到底是「在回答上一轮 AI 追问」还是「在重新讲一遍 / 改了写法」。
-14. 如果是在回答上一轮追问：
+15. 如果是在回答上一轮追问：
     a. **不要重复**上一轮已经问过的问题；要先用 1 句话评价学生答得到不到位
-       （比如老师说「对，这次你说出 4 是完全平方数，所以 √4·3=2√3」）。
+       （比如老师说「对，这次你补出了公式的适用条件」）。
     b. 若学生把规则、前提条件、计算依据都讲清楚了 —— 输出 `status: "completed"`、
        `masteryDelta: 1`，并且 `turns` 仅放 1 条「李老师」收束发言。
     c. 若学生只复述结论、没解释「为什么」—— 继续 `needs_explanation`，
        由 1 名 Agent 顺着学生这次说的话往**下一层**追问（不要回到上一轮原问题）。
-15. 如果学生没回答上一轮追问、而是改写了步骤：可以由小明 / 大雄追问「为什么改」，
+16. 如果学生没回答上一轮追问、而是改写了步骤：可以由小明 / 大雄追问「为什么改」，
     然后再针对新写法继续追问。
-16. 收束 `completed` 时务必让学生看出「这一题讲清楚了」：
+17. 收束 `completed` 时务必让学生看出「这一题讲清楚了」：
     - role 必须是 `teacher`；
-    - text 中要复述学生抓到的关键规则（比如「你说出了 a≥0 的前提」）；
+    - text 中要复述学生抓到的关键规则（例如定义、定理条件、等价变形依据或计算检查点）；
     - `highlightStepIds` 仍只能命中白名单。
 
-【输出协议】
+【输出格式】
 只输出**一个 JSON 对象**，不要 Markdown 代码块、不要解释、不要前后缀。
 JSON 必须严格匹配：
 {
@@ -194,8 +225,8 @@ def _sanitize_history(
     - text 留 trim 后非空的；
     - 仅保留最近 `_HISTORY_KEEP_LAST` 条。
 
-    任何异常都按「忽略本条」处理，绝不抛出 —— 这是按 ROUND5 brief 第 7.3 节
-    要求：「不要因为 history 缺失或格式异常直接 500」。
+    任何异常都按「忽略本条」处理，绝不抛出，避免 history 缺失或格式异常
+    直接打断讲题。
     """
 
     if not history:
@@ -256,21 +287,19 @@ def _build_user_prompt(
 ) -> str:
     """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。
 
-    第四轮起 `studentSpeechText` 与 `steps[*].plainText / latex` 都来自学生
-    自己在客户端输入区里手敲的内容（在 ASR/OCR 接入之前）。所以这里要把
-    它们清楚地标成「学生自己说的话 / 学生自己写的步骤说明」，让 LLM 拿来
-    当一手语义证据，而不是当成 OCR 二手识别结果。
+    `studentSpeechText` 与 `steps[*].plainText / latex` 是学生侧语义证据。
+    这里把它们清楚标成「学生自己说的话 / 学生自己写的步骤说明」，让 LLM
+    优先围绕学生表达追问。
 
-    第五轮起新增「上一轮历史」段：让 LLM 明确知道「学生这次到底是在回答
-    上一轮的哪一个 AI 追问」，从而避免每轮都问同样的问题、能在合适时机
-    切到 `status: completed`。
+    对话历史段让 LLM 明确知道「学生这次到底是在回答上一轮的哪一个 AI 追问」，
+    从而避免每轮都问同样的问题、能在合适时机切到 `status: completed`。
     """
 
     section_title = _SECTION_TITLE.get(section_id, section_id)
 
     lines: list[str] = []
     lines.append(f"【当前小节】{section_title}（sectionId={section_id}）")
-    lines.append(f"【本题第几轮提交】{round_index}")
+    lines.append(f"【当前讲题轮次】{round_index}")
     lines.append(f"【题目 ID】{question_id}")
     lines.append(f"【题面】{question_prompt or '（题面未提供）'}")
     knowledge_context = knowledge_index.prompt_context(
@@ -290,7 +319,7 @@ def _build_user_prompt(
     if speech:
         lines.append(f'【学生口述（学生本人原话）】"{speech}"')
     else:
-        lines.append("【学生口述】（本轮学生没有补充口述文字）")
+        lines.append("【学生口述】（学生没有补充口述文字）")
     lines.append("")
     lines.append("【学生手写步骤 + 学生本人写的步骤说明】按提交顺序，每行一条：")
     if not steps:
@@ -319,8 +348,6 @@ def _build_user_prompt(
     lines.append("- " + (", ".join(allowed_step_ids) if allowed_step_ids else "（空）"))
 
     lines.append("")
-    # 第五轮：插入历史段。即便 history 为空也写一句标识，让 LLM 明确知道
-    # 「这是第一轮 / 这是延续追问」，避免它自己脑补轮次状态。
     last_followup = _last_ai_followup(history)
     if history:
         lines.append("【上一轮追问与回答历史】（按时间从早到晚，仅本题内最近若干条）")
@@ -339,7 +366,7 @@ def _build_user_prompt(
             lines.append(
                 f'重要：上一轮 AI（{last_followup["display_name"]}，role={last_followup["role"]}）'
                 f'追问的是 "{last_followup["text"]}"。'
-                "请先评估学生本轮的回答是否真正答到这条追问的点上，按系统规则第 13-16 条决定 status。"
+                "请先评估学生这次的回答是否真正答到这条追问的点上，再决定继续追问还是收束。"
             )
     else:
         lines.append("【上一轮追问与回答历史】（本题首轮，没有历史）")
@@ -347,17 +374,18 @@ def _build_user_prompt(
     lines.append("")
     if speech or has_step_text:
         lines.append(
-            "重要：本轮学生已经给出口述或步骤说明，按系统规则第 9-11 条，"
-            "你必须**优先**抓住学生的原话来追问。至少有一条发言要明显引用学生"
+            "重要：学生已经给出口述或步骤说明，你必须**优先**抓住学生的原话来追问。"
+            "至少有一条发言要明显引用学生"
             "说过的关键短语（用中文引号简短照搬），并质疑其中可能藏的前提条件 / "
             "化简规则 / 计算符号问题。"
         )
     else:
         lines.append(
-            "本轮学生没有提供口述或文字说明，按系统规则第 12 条回到泛泛追问，"
-            "聚焦本节核心：二次根式的有意义条件 / 乘除合并条件 / 同类二次根式加减。"
+            "学生没有提供口述或文字说明。请根据【当前小节】和【题面】判断本题所属领域，"
+            "再追问该领域最关键的定义、"
+            "公式适用条件、等价变形依据、图形关系、函数关系或统计口径。"
         )
-    lines.append("请只输出一个 JSON 对象，符合系统输出协议。")
+    lines.append("请只输出一个 JSON 对象，符合上面的输出格式。")
 
     return "\n".join(lines)
 
@@ -514,7 +542,7 @@ def _coerce_mastery_delta(raw_value: Any) -> int:
 
 
 # ---------------------------------------------------------------------------
-# 第二轮兜底剧本（与 routers/lecture.py 第二轮逻辑保持一致）
+# LLM 不可用时的兜底追问剧本
 # ---------------------------------------------------------------------------
 
 
@@ -527,14 +555,13 @@ def _fallback_turns(
 ) -> list[dict[str, Any]]:
     """LLM 失败时的兜底剧本。
 
-    第二轮起作为「演示链路永不中断」的安全网，第五轮起会按 `round_index`
-    输出不同文案：
+    作为「讲题链路不中断」的安全网，会按 `round_index` 输出不同文案：
       * `round_index <= 1` 或没有历史：保持原第一轮固定追问。
       * `round_index >= 2`：切到「老师顺势收束 + 让学生确认」的兜底文案，
-        避免学生连点两次都被 Mock 同样的话追问。
+        避免学生连点两次都被同样的话追问。
 
     Fallback 的 status 仍由调用方（`generate_lecture_turns`）决定 ——
-    第二轮以后的 fallback 默认改为 `completed`，让重复点击的体感更平滑。
+    多轮 fallback 默认改为 `completed`，让重复点击的体感更平滑。
     """
 
     first_step = step_ids[0] if step_ids else "step_1"
@@ -626,8 +653,28 @@ def _fallback_turns(
                 "highlight_step_ids": [mid_step],
             },
         ]
-    # 章节白名单已在路由层挡住，这里再兜一次。
-    return []
+    return [
+        {
+            "turn_id": "turn_1",
+            "role": "xiaoming",
+            "display_name": "小明",
+            "text": (
+                "我想先确认这一步：你能不能说清楚为什么可以这样变形？"
+                "用到的定义、公式或条件分别是什么？"
+            ),
+            "highlight_step_ids": [first_step],
+        },
+        {
+            "turn_id": "turn_2",
+            "role": "teacher",
+            "display_name": "李老师",
+            "text": (
+                "很好，我们先不急着看最终答案。请你按「依据是什么、条件有没有漏、"
+                "计算是否一致」这三点，把关键步骤再讲一遍。"
+            ),
+            "highlight_step_ids": [last_step],
+        },
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -668,8 +715,6 @@ def generate_lecture_turns(
 
     `source` 仅用于日志/调试，路由层不要原样塞给前端。
 
-    第五轮起新增两个可选参数：
-
     - `round_index`：本题是第几次提交，从 1 开始。
     - `history`：当前题目内的对话历史（只取最近若干条，service 内还会再清洗）。
     """
@@ -685,7 +730,7 @@ def generate_lecture_turns(
     safe_round = max(1, int(round_index or 1))
 
     def _fallback_payload() -> dict[str, Any]:
-        # 多轮 fallback：第 2+ 轮默认收束，避免重复第一轮 Mock。
+        # 多轮 fallback：第 2+ 轮默认收束，避免重复同一组追问。
         is_multi = safe_round >= 2 or has_history
         return {
             "status": "completed" if is_multi else "needs_explanation",

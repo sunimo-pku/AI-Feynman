@@ -49,7 +49,9 @@
 │   ├── questions/                 # 全册 90 节题库 JSON
 │   └── shop/                      # 工具局 SKU 数据
 ├── scripts/
-│   └── build_curriculum.py   # 重新生成课程目录 JSON
+│   ├── build_curriculum.py          # 重新生成课程目录 JSON
+│   ├── generate_section_questions.py # 生成全册 90 节题库并同步 Flutter asset
+│   └── settle_leaderboard.py        # 幂等结算周榜快照
 └── main/
     ├── app/                  # Python 后端 API
     └── mobile/               # Flutter Android 客户端
@@ -60,7 +62,8 @@
 | 原则 | 说明 |
 |------|------|
 | 目录做全 | 人教版初一～初三完整章节树，用户可浏览全貌 |
-| 内容先填一块 | V1 仅 **第十六章 二次根式**（八年级下册 · 16.1～16.3）有题目、讲题流程与掌握度 |
+| 全册可练 | 全册 90 节均有基础 / 巩固 / 挑战 3 道 seed 题，可进入讲题闭环 |
+| 全册同一闭环 | 所有章节都进入同一套多 Agent 追问、掌握度与回顾闭环；第十六章当前额外有本地知识库材料，其余章节依靠题面、学生口述和手写步骤追问 |
 | 快速迭代 | 先做可验证原型，找真实用户反馈后再改 |
 | 做深做窄 | 一个完整闭环 > 多个半成品功能 |
 
@@ -68,11 +71,18 @@
 
 > **Mac + 安卓平板预览**：见 [`docs/MAC_LOCAL_DEV.md`](./docs/MAC_LOCAL_DEV.md)（含「复制给 Cursor」指令）
 
+## CI
+
+GitHub Actions 工作流见 `.github/workflows/ci.yml`：
+
+- Backend：安装根目录 `requirements.txt`，在 `main/` 下执行 `python -m pytest tests --tb=short`。
+- Flutter：在 `main/mobile/` 下执行 `flutter pub get`、`dart analyze lib test`、`flutter test`。
+
 ### 后端 API
 
 ```bash
 cd main
-pip install -r requirements.txt   # 若尚未安装依赖
+pip install -r ../requirements.txt   # 若尚未安装依赖
 uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
@@ -83,9 +93,8 @@ API 文档：`http://127.0.0.1:8001/docs`
 
 `POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解 / 回答追问」时调用。
 
-> 后端接口与第五轮**完全兼容**，第六轮没有改变契约：客户端拿到 `status: "completed"`
-> 之后**本地**沉淀掌握度 / 完成次数 / 本题小结到 `shared_preferences`,
-> 不需要后端做账号级持久化。
+> 后端接口与第五轮**完全兼容**；第十轮起，匿名用户仍走本地沉淀，
+> 登录用户会通过 Bearer token 同步写入后端学习数据表。
 
 - **第五轮**起，讲题页在本题内维护一份「最近 6 条」的本地对话历史。
   每次提交时，前端把现存历史 + 本轮 student 发言快照一并放入请求体的
@@ -113,7 +122,7 @@ API 文档：`http://127.0.0.1:8001/docs`
   history 格式异常）都会**自动回退** Mock 剧本：第 1 轮走第二轮固定追问、
   第 2+ 轮（或带 history）走老师收束 `completed` 文案。**Demo 链路永不中断**,
   后端日志会打 `source=fallback` 便于排查。
-- 目前仍仅放行 V1 上线的 16.1 / 16.2 / 16.3 三节。
+- 全册 90 节均可提交讲题，并进入同一套多 Agent 追问链路。16.1 / 16.2 / 16.3 目前额外有本地知识库增强；其余章节同样由 LLM 根据题面、学生口述和手写步骤追问。只有在 LLM 不可用时，才会走 fallback 兜底文案。
 - 旧客户端（不传 `history` / `roundIndex`）继续兼容：默认 `roundIndex=1`、`history=[]`。
 
 ```bash
@@ -172,7 +181,7 @@ flutter pub get
 - 仓库基于 `ChangeNotifier`，首页 / 讲题页 AppBar 徽标自动跟随刷新。
 - 任何读 / 写失败仅 `developer.log` 记录，不抛回 UI；学生看到的最差情况是
   「进度回到 0」，**不会**因此看不到课程目录。
-- 仅本地持久化，**不**跨设备同步，**不**接后端 DB —— 与第五轮 brief 边界一致。
+- 本地持久化按 `ai_feynman.section_progress.v1.<namespace>` 隔离；登录后通过 `LearningSyncService` 与后端同步，guest 数据仍只留在本机。
 
 详细单元测试见 `main/mobile/test/progress_repository_test.dart`：12 个用例覆盖
 JSON 容错、`masteryScore` 加分 / 封顶 / fallback 加 8 分、跨章节独立、
@@ -180,8 +189,8 @@ JSON 容错、`masteryScore` 加分 / 封顶 / fallback 加 8 分、跨章节独
 
 #### 本地小题库与下一题轮换（第七轮新增）
 
-- 16.1 / 16.2 / 16.3 三个上线小节内置**每节 3 道题**（基础 / 巩固 / 挑战 各 1 道），
-  全部由本地 `MockLectureRepository` 提供，**不**依赖后端题库。
+- 全册 90 个小节均有**每节 3 道题**（基础 / 巩固 / 挑战 各 1 道），
+  由 `scripts/generate_section_questions.py` 生成到 `data/questions/` 并同步为 Flutter asset；所有章节都可追问，`quality=generated_seed` 仅表示题目来源，不影响讲题能力。
 - 每道题携带：
   - `questionId` / `sectionId` / `sectionLabel` / `prompt` / `hint` / `referenceSteps`（与第六轮一致）
   - `difficulty: 1|2|3`（仅开发字段，UI 由 `difficultyLabel` 翻译为「基础 / 巩固 / 挑战」）
@@ -198,7 +207,7 @@ JSON 容错、`masteryScore` 加分 / 封顶 / fallback 加 8 分、跨章节独
 - 后端契约**不变**：`/lecture/submit` 只感知 `questionId` + `questionPrompt`；
   切题后请求体里这两个字段会自然变化，LLM 追问围绕新题面进行（fallback 仍按 section 兜底）。
 - 首页可练习小节徽标：未完成时显示 `3 道题 · 可练习`；完成 ≥1 轮后切换为
-  `已完成 N 轮 · X/100`；未上线小节继续只显示「即将上线」**不**展示题量。
+  `已完成 N 轮 · X/100`。当前全册题库已覆盖 90 节，后续未接入题库的新章节才显示「即将上线」。
 - 单元测试 `main/mobile/test/mock_lecture_repository_test.dart`：15 个用例覆盖
   题库结构（每节 3 题、难度递增、tags 数量、questionId 唯一）、modulo 循环
   （正/负 index）、未知 section 兜底、`difficultyLabel` 翻译、各小节题面关键短语。
@@ -365,7 +374,7 @@ Flutter 侧同步完成：
 - `FormulaText` 接入 `flutter_math_fork`，公式不再走 Unicode 占位。
 - 实时讲题增加写字不追问、2.5s 断档提示、4s 自动追问、300ms 声音打断防抖和角色礼貌气泡。
 - 首次开始讲题前展示 `PrivacyNoticePage`；家长端支持编辑展示名/年级。
-- 非 16 章节由 `MockLectureRepository` 生成「教研中」模板题，确保全册目录均可进入讲题闭环。
+- 非 16 章节也使用全册题库 asset 进入讲题闭环；如果 asset 加载失败，`MockLectureRepository` 才生成兜底模板题。
 
 ### 第十二轮 V2 产品闭环
 
