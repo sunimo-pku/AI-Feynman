@@ -1,88 +1,62 @@
-# New Project
+# AI 费曼（AI-Feynman）
 
-基于 `workspace` 复用的全栈项目骨架：FastAPI 后端 + React 前端，API Key 与开发规范已从原项目继承。
+面向**初中数学**的定制化「费曼学习法」App（平板端）。学生通过手写 + 语音向多个 AI 角色讲题，系统追踪掌握度；家长端查看弱项与学习回放。
 
-## 技术栈
+> 详细产品规划见 [`项目规划/planV1.md`](./项目规划/planV1.md)
 
-- **后端**：Python 3.10 + FastAPI + Uvicorn + SQLAlchemy (SQLite)
-- **前端**：Vite + React 19 + TypeScript + Tailwind CSS v4
-- **大模型**：Kimi k2.6 + DeepSeek V4 Pro
-- **语音**：豆包 TTS + ASR（火山引擎）
-- **认证**：bcrypt + JWT
+## 仓库
 
-## 项目结构
+[github.com/sunimo-pku/AI-Feynman](https://github.com/sunimo-pku/AI-Feynman)
+
+## 目录结构
 
 ```
 .
 ├── README.md
-├── AGENTS.md               # AI 协作规范（从 workspace 复制）
-├── FRONTEND_STYLE.md         # 前端视觉规范（从 workspace 复制）
-├── deploy.sh                 # 一键部署脚本
-├── .env                      # API Key（已从 workspace 复制，勿提交 Git）
-├── .env.example              # 环境变量模板
-├── .gitignore
+├── AGENTS.md                 # AI 协作规范（Agent 修改前必读）
+├── FRONTEND_STYLE.md         # 前端视觉与交互规范
+├── DEMO_SCRIPT.md            # Demo 演示提纲（随功能追加）
+├── deploy.sh                 # 一键部署
+├── .env.example              # 环境变量模板（复制为 .env 后填写）
+├── 项目规划/
+│   └── planV1.md             # 产品规划 V1
+├── data/
+│   └── curriculum/
+│       └── pep-junior-math.json   # 人教版初中数学目录（6 册 · 29 章 · 90 节）
+├── scripts/
+│   └── build_curriculum.py   # 重新生成课程目录 JSON
 └── main/
-    ├── app/                  # FastAPI 后端
-    │   ├── main.py
-    │   ├── config.py
-    │   ├── db.py
-    │   ├── routers/          # chat / tts / asr / auth / sessions / upload
-    │   ├── services/         # kimi / volc_tts / volc_asr / agent_tools
-    │   └── middleware/       # auth / error_handler / rate_limit
-    ├── frontend/             # React 前端
-    ├── data/                 # SQLite 与上传文件（运行时生成）
-    └── logs/                 # 运行日志
+    ├── app/                  # 后端
+    └── frontend/             # 前端
+        └── src/data/         # 课程目录读取与类型定义
 ```
 
-## 快速启动
+## 核心设计原则
 
-### 开发模式
+| 原则 | 说明 |
+|------|------|
+| 目录做全 | 人教版初一～初三完整章节树，用户可浏览全貌 |
+| 内容先填一块 | V1 仅一个小章节有题目、讲题流程与掌握度 |
+| 快速迭代 | 先做可验证原型，找真实用户反馈后再改 |
+| 做深做窄 | 一个完整闭环 > 多个半成品功能 |
+
+## 文档索引
+
+| 文件 | 用途 |
+|------|------|
+| `项目规划/planV1.md` | 目标用户、交互模式、学生端/家长端功能、V1 边界 |
+| `data/curriculum/pep-junior-math.json` | APP 章节选择数据源 |
+| `AGENTS.md` | Git 规范、踩坑记录、Agent 强制规则 |
+| `FRONTEND_STYLE.md` | 新建/重构页面时必须遵循的视觉规范 |
+
+## 环境配置
+
+敏感信息写入根目录 `.env`（已加入 `.gitignore`），参考 `.env.example` 填写。**切勿提交 `.env`。**
+
+## 部署
 
 ```bash
-# 后端
-cd /root/new-project/main
-uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
-
-# 前端（另开终端）
-cd /root/new-project/main/frontend
-npm install
-npm run dev
+bash deploy.sh
 ```
 
-### 生产部署
-
-```bash
-bash /root/new-project/deploy.sh
-```
-
-> 默认监听 `127.0.0.1:8001`，与 workspace 的 8000 端口错开，避免冲突。
-
-## 环境变量
-
-`.env` 已从 `workspace` 复制，包含 Kimi / DeepSeek / 火山语音 / JWT 配置。如需重新填写，参考 `.env.example`：
-
-```bash
-KIMI_API_KEY=sk-xxx
-DEEPSEEK_API_KEY=sk-xxx
-VOLC_API_KEY=xxx
-JWT_SECRET_KEY=your-secret-key-here
-```
-
-## 内置页面
-
-| 路径 | 说明 |
-| --- | --- |
-| `/` | 登录 |
-| `/register` | 注册 |
-| `/chat` | AI 对话（SSE 流式） |
-| `/tts` | 语音合成 |
-| `/diagnostics` | API 连通性诊断 |
-| `/health` | 健康检查 |
-
-## 从 workspace 继承的内容
-
-- `.env` / `.env.example` / `.gitignore`
-- `AGENTS.md` / `FRONTEND_STYLE.md`
-- 后端服务层（Kimi、豆包 TTS/ASR、函数调用框架）
-- 中间件（JWT 认证、错误处理、限流）
-- 前端 UI 组件与 Chat / TTS / 登录等页面骨架
+默认本机健康检查地址：`http://127.0.0.1:8001/health`
