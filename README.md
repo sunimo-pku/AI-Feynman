@@ -29,6 +29,7 @@
 │   ├── AI_CODE_AGENT_BRIEF.md # 首个可演示小闭环的 AI 执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND2.md # 第二轮后端 Mock 闭环执行指令
 │   ├── AI_CODE_AGENT_BRIEF_ROUND3.md # 第三轮真实 LLM 结构化追问执行指令
+│   ├── AI_CODE_AGENT_BRIEF_ROUND4.md # 第四轮学生语义输入闭环执行指令
 │   └── MAC_LOCAL_DEV.md      # Mac + 平板本地预览（Cursor 协作必读）
 ├── .env.example              # 环境变量模板（复制为 .env 后填写）
 ├── 项目规划/
@@ -67,10 +68,16 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 健康检查：`http://127.0.0.1:8001/health`  
 API 文档：`http://127.0.0.1:8001/docs`
 
-#### 讲题接口（第三轮：真实 LLM 多 Agent 追问 + Mock fallback）
+#### 讲题接口（第四轮：学生语义输入驱动 LLM 追问 + Mock fallback）
 
 `POST /lecture/submit`：学生在 Flutter 客户端点击「提交讲解」时调用。
 
+- **第四轮**起，讲题页新增「我刚才是这样讲的」多行输入与「为每一步补充一句话」
+  步骤说明输入（可选 LaTeX）。客户端会把这些内容随 `studentSpeechText`、
+  `steps[*].plainText`、`steps[*].latex` 三个字段一起发到后端。
+  Prompt 已强化为「**优先**抓住学生原话追问、用引号简短照搬学生说的关键短语、
+  逐条质疑前提条件 / 化简规则 / 计算符号」，因此 AI 同伴的追问从过去的
+  「就题论题」升级到「就你的解法论你的解法」。
 - **第三轮**起，后端 `services/lecture_agent.py` 会调用 Moonshot 真实 LLM
   （旗舰模型 `kimi-k2.6` + `thinking.type=disabled` 关思考模式，
   `temperature=0.6`、`response_format=json_object`、`max_retries=0`），
@@ -83,6 +90,8 @@ API 文档：`http://127.0.0.1:8001/docs`
   都会**自动回退**到第二轮的固定 Mock 剧本，**Demo 链路永不中断**，
   后端日志会打 `source=fallback` 便于排查。
 - 目前仍仅放行 V1 上线的 16.1 / 16.2 / 16.3 三节。
+- `studentSpeechText` / `plainText` / `latex` 都可为空字符串；学生只手写不
+  补充语义时，Prompt 会自动回退到「泛泛追问本节核心知识点」分支。
 
 ```bash
 curl -X POST http://127.0.0.1:8001/lecture/submit \

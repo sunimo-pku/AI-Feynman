@@ -253,6 +253,35 @@ git push origin main
 - **`Wrap(children: const [...])` 内部组件必须 const-constructible**：`AppPalette.*` 已声明为 `const Color`，新增标签/Pill 类型时也要写 `const` 构造函数，否则一改 home 就会全屏触发 lint 报错。
 - **公式渲染 V1 用 Unicode 占位**：尚未引入 `flutter_math_fork`，所有 `\sqrt{...}` / `\frac{a}{b}` / `\cdot` 等 token 由 `widgets/formula_text.dart` 转 Unicode。**真正接入流式 LLM 之前必须替换为原生 Canvas KaTeX，否则 16.x 章节中复杂分式会丢括号、丢上下标。**
 
+### 第四轮 · 学生语义输入闭环
+
+- **`ChangeNotifier` listener 里禁用 `setState`**：第四轮把 `HandCanvasController`
+  与「每步 `TextEditingController`」做绑定，第一版把 controller 的创建放进
+  `_onCanvasChanged` listener 里，结果触发「setState() or markNeedsBuild() called
+  during build」——因为 listener 自身已经在 `notifyListeners()` 调用栈里。
+  正解：listener 只做「画板清空 → 清文本（`controller.clear()`）」这类无 setState
+  的副作用；新出现 `stepId` 的 controller 全部放到 `_buildSemanticInputsPanel` 里
+  按 `Map.putIfAbsent` 做 lazy create，靠 `AnimatedBuilder(animation: canvas)`
+  的正常 rebuild 来驱动。
+- **画板 clear 时清的是 `controller.text`，不是 `dispose`**：屏幕上仍在 mount 的
+  `TextField` 一旦发现自己绑定的 controller 被 dispose 会直接抛 `'_controller != null'`
+  断言失败。所以 `_onCanvasChanged` 里只能 `controller.clear()`；只有
+  `LecturePage` 整页 dispose 时才统一 `controller.dispose()`。
+- **「下一题」清空 vs.「重试」保留**：`_onContinue`（下一题）才会清掉学生口述、
+  每步说明、LaTeX 展开状态；`_sendRequest` 里失败分支**绝不**碰这些 controller，
+  否则学生为了重试要白白把整段讲解重打一遍，体感比"没追问"还糟。
+- **Kimi K2.6 偶发把 LaTeX 包成 `<span class="math-inline">…</span>`**：这是
+  Moonshot 模型在 web 端 MathJax 训练语料里学到的 HTML 残留。当前
+  `widgets/formula_text.dart` 只认 `$...$` 与 `\(...\)`，碰到 `<span>` 会原样
+  显示成裸文字。临时观测下来不影响 Demo（出现率 < 10%），但接下来如果要彻底治：
+  - 后端在 `_strip_markdown_fence` 之后再 regex 把 `<span class="math-(?:inline|display)">([^<]*)</span>` 抠出来还原成 `\\(...\\)`；
+  - 或者在 system prompt 里加一条「禁止使用任何 HTML 标签，公式只允许用 LaTeX 反斜杠语法」。
+- **Prompt 让 LLM「引用学生原话」效果显著**：实测对比，加上「至少有一条发言要
+  用中文引号简短照搬学生说过的关键短语」之后，K2.6 会精准抓住「我先把 12 拆成
+  4×3」「得到负一根号三」这类原句来追问前提条件 / 化简规则 / 写法规范，远比
+  纯题面追问让学生有「AI 真的在听我讲」的体感。这条规则要放在系统 Prompt 而
+  不是 user prompt 里，否则学生若提交了无关上下文，模型可能反而过度跑题。
+
 ### 平板交互与双工打断（待验证）
 
 - 手写轨迹与音频输入是核心交互；公网 HTTP 下浏览器可能限制麦克风，平板部署需考虑 HTTPS 或原生壳。

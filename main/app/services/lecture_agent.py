@@ -106,6 +106,22 @@ _SYSTEM_PROMPT = """你是「初中数学费曼学习小组剧本导演」。
 7. 每条发言不超过 180 个中文字符。
 8. 整体最多 2 条发言。
 
+【优先使用学生本人输入】（这一节最重要）
+9. 如果用户提供了「学生口述」或某些 step 的「文字说明 / latex」，你必须**优先**围绕
+   学生自己说出来的内容追问，而不是空对空念题面。例如：
+   - 学生口述「我把 12 拆成 4×3」 → 追问「为什么 4 可以从根号里出来？这条规则的前提是什么？」
+   - 学生 step_2 写「根号 27 化成 3 根号 3」 → 追问「27 你是怎么拆的？拆成 9×3 还是 3×9，对最终结果有什么区别？」
+   - 学生口述「最后得到负一根号三」 → 追问「同类二次根式相减时，系数 2 减 3 是怎么得到 -1 的？这里要不要写括号？」
+10. 不要把学生输入当作正确答案：它可能里面藏着前提条件缺失、化简规则用错、计算
+    符号错误等，你要像同学/老师一样**逐条质疑**。常见追问角度：
+    - 被开方数有没有非负条件？$\\ge 0$ 还是 $> 0$？
+    - $\\sqrt{a}\\cdot\\sqrt{b}=\\sqrt{ab}$、$\\sqrt{a/b}=\\sqrt{a}/\\sqrt{b}$ 是否要求 $a,b\\ge 0$（除法时 $b>0$）？
+    - 同类二次根式合并时，系数是否对齐、有没有漏负号？
+    - 把 $\\sqrt{n}$ 化成 $k\\sqrt{m}$ 时，是否把完全平方数全部提出来了？
+11. 引用学生原话时**用引号**简短照搬，让学生明确感到「AI 真的在听我讲」；
+    比如：「你刚才说 “把 12 拆成 4×3”，那为什么不拆成 2×6 呢？」
+12. 如果「学生口述」和所有 step 文字都为空，再回到泛泛追问本节核心知识点的兜底逻辑。
+
 【输出协议】
 只输出**一个 JSON 对象**，不要 Markdown 代码块、不要解释、不要前后缀。
 JSON 必须严格匹配：
@@ -138,7 +154,13 @@ def _build_user_prompt(
     steps: list[dict[str, Any]],
     allowed_step_ids: list[str],
 ) -> str:
-    """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。"""
+    """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。
+
+    第四轮起 `studentSpeechText` 与 `steps[*].plainText / latex` 都来自学生
+    自己在客户端输入区里手敲的内容（在 ASR/OCR 接入之前）。所以这里要把
+    它们清楚地标成「学生自己说的话 / 学生自己写的步骤说明」，让 LLM 拿来
+    当一手语义证据，而不是当成 OCR 二手识别结果。
+    """
 
     section_title = _SECTION_TITLE.get(section_id, section_id)
 
@@ -147,22 +169,32 @@ def _build_user_prompt(
     lines.append(f"【题目 ID】{question_id}")
     lines.append(f"【题面】{question_prompt or '（题面未提供）'}")
     speech = (student_speech_text or "").strip()
-    lines.append(f"【学生口述】{speech or '（学生本轮未提供语音文本）'}")
+    has_step_text = any(
+        (s.get("latex") or "").strip()
+        or (s.get("plainText") or s.get("plain_text") or "").strip()
+        for s in steps
+    )
+    if speech:
+        lines.append(f'【学生口述（学生本人原话）】"{speech}"')
+    else:
+        lines.append("【学生口述】（本轮学生没有补充口述文字）")
     lines.append("")
-    lines.append("【学生手写步骤】按提交顺序，每行一条：")
+    lines.append("【学生手写步骤 + 学生本人写的步骤说明】按提交顺序，每行一条：")
     if not steps:
         lines.append("- （学生未写任何步骤）")
     else:
         for s in steps:
             sid = s.get("stepId") or s.get("step_id") or ""
-            latex = s.get("latex") or ""
-            plain = s.get("plainText") or s.get("plain_text") or ""
+            latex = (s.get("latex") or "").strip()
+            plain = (s.get("plainText") or s.get("plain_text") or "").strip()
             strokes = s.get("strokeCount") or s.get("stroke_count") or 0
             descr_bits: list[str] = []
-            if latex:
-                descr_bits.append(f"latex=`{latex}`")
             if plain:
-                descr_bits.append(f"文字识别=`{plain}`")
+                descr_bits.append(f'学生自述="{plain}"')
+            if latex:
+                descr_bits.append(f"学生写的 LaTeX=`{latex}`")
+            if not plain and not latex:
+                descr_bits.append("（学生未补充文字说明）")
             descr_bits.append(f"笔画数={strokes}")
             lines.append(f"- {sid}: " + "; ".join(descr_bits))
 
@@ -174,10 +206,19 @@ def _build_user_prompt(
     lines.append("- " + (", ".join(allowed_step_ids) if allowed_step_ids else "（空）"))
 
     lines.append("")
-    lines.append(
-        "请按上面的硬性规则与输出协议，只输出一个 JSON 对象，"
-        "聚焦本节核心：二次根式的有意义条件 / 乘除合并条件 / 同类二次根式加减。"
-    )
+    if speech or has_step_text:
+        lines.append(
+            "重要：本轮学生已经给出口述或步骤说明，按系统规则第 9-11 条，"
+            "你必须**优先**抓住学生的原话来追问。至少有一条发言要明显引用学生"
+            "说过的关键短语（用中文引号简短照搬），并质疑其中可能藏的前提条件 / "
+            "化简规则 / 计算符号问题。"
+        )
+    else:
+        lines.append(
+            "本轮学生没有提供口述或文字说明，按系统规则第 12 条回到泛泛追问，"
+            "聚焦本节核心：二次根式的有意义条件 / 乘除合并条件 / 同类二次根式加减。"
+        )
+    lines.append("请只输出一个 JSON 对象，符合系统输出协议。")
 
     return "\n".join(lines)
 

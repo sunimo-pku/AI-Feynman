@@ -32,6 +32,27 @@ class _LecturePageState extends State<LecturePage> {
   final ScrollController _discussionScrollController = ScrollController();
   final LectureService _lectureService = LectureService();
 
+  /// 学生口述讲解：第四轮新增。
+  ///
+  /// 该 controller 在 [_onContinue]（「下一题」）时才会被清空，
+  /// 提交成功或失败都**不**清空，避免学生为了重试白白重写一遍。
+  final TextEditingController _speechController = TextEditingController();
+
+  /// 每个 `stepId` 对应的「中文说明」与「LaTeX 选填」输入控制器。
+  ///
+  /// 在 [_canvasController] 变化（写新步骤 / 撤销 / 清空）时按需补建或清空：
+  ///   * 新出现的 stepId 自动 lazy-create 一对控制器。
+  ///   * 画板被 [HandCanvasController.clear] 清空时，所有步骤说明随之清空，
+  ///     避免「同一个 step_1 名字下残留上一道题的文字」。
+  final Map<String, TextEditingController> _stepPlainControllers =
+      <String, TextEditingController>{};
+  final Map<String, TextEditingController> _stepLatexControllers =
+      <String, TextEditingController>{};
+
+  /// 当前展开了「LaTeX 选填」入口的 stepId 集合；默认不展示，避免初中生被
+  /// 看不懂的反斜杠语法吓退。
+  final Set<String> _stepLatexExpanded = <String>{};
+
   late LectureQuestion _question;
   final List<AgentTurn> _turns = <AgentTurn>[];
   _LectureStatus _status = _LectureStatus.idle;
@@ -44,14 +65,54 @@ class _LecturePageState extends State<LecturePage> {
     super.initState();
     _question = MockLectureRepository.instance.questionForSection(widget.section.id);
     _turns.add(_introTurn());
+    _canvasController.addListener(_onCanvasChanged);
   }
 
   @override
   void dispose() {
+    _canvasController.removeListener(_onCanvasChanged);
     _canvasController.dispose();
     _discussionScrollController.dispose();
+    _speechController.dispose();
+    for (final c in _stepPlainControllers.values) {
+      c.dispose();
+    }
+    for (final c in _stepLatexControllers.values) {
+      c.dispose();
+    }
     _lectureService.close();
     super.dispose();
+  }
+
+  /// 监听手写板变化：
+  ///   * 画板被清空（`isEmpty`）时把所有步骤说明输入框文本归零，
+  ///     而不是销毁 controller（销毁会让 [TextField] state 报错）。
+  ///   * 出现新 stepId 时不在这里建 controller，留给 [_ensureStepControllers]
+  ///     在 build 阶段 lazy 创建，避免在 listener 里 setState 抖动。
+  void _onCanvasChanged() {
+    if (_canvasController.isEmpty) {
+      for (final c in _stepPlainControllers.values) {
+        if (c.text.isNotEmpty) c.clear();
+      }
+      for (final c in _stepLatexControllers.values) {
+        if (c.text.isNotEmpty) c.clear();
+      }
+      if (_stepLatexExpanded.isNotEmpty) {
+        // 不直接调 setState；canvasController 的 notifyListeners 已经
+        // 触发 AnimatedBuilder 重建，这里只清状态即可。
+        _stepLatexExpanded.clear();
+      }
+    }
+  }
+
+  /// 为当前画板上的 stepId 集合确保都有对应的输入控制器。
+  ///
+  /// 在 build 阶段调用，无需 setState。
+  void _ensureStepControllers(List<String> stepIds) {
+    for (final id in stepIds) {
+      _stepPlainControllers.putIfAbsent(id, () => TextEditingController());
+      _stepLatexControllers.putIfAbsent(id, () => TextEditingController());
+    }
   }
 
   AgentTurn _introTurn() {
@@ -69,10 +130,12 @@ class _LecturePageState extends State<LecturePage> {
     final stepInfos = _canvasController.collectStepInfos();
     final steps = stepInfos.map((info) {
       final r = info.bounds;
+      final plain = _stepPlainControllers[info.stepId]?.text.trim() ?? '';
+      final latex = _stepLatexControllers[info.stepId]?.text.trim() ?? '';
       return LectureStepPayload(
         stepId: info.stepId,
-        latex: '',
-        plainText: '',
+        latex: latex,
+        plainText: plain,
         strokeCount: info.strokeCount,
         boundingBox: BoundingBoxPayload(
           x: r.left.isFinite ? r.left : 0,
@@ -87,7 +150,7 @@ class _LecturePageState extends State<LecturePage> {
       sectionId: widget.section.id,
       questionId: _question.questionId,
       questionPrompt: _question.prompt,
-      studentSpeechText: '',
+      studentSpeechText: _speechController.text.trim(),
       steps: steps,
     );
   }
@@ -188,6 +251,16 @@ class _LecturePageState extends State<LecturePage> {
 
   void _onContinue() {
     _canvasController.clear();
+    // 「下一题」语义 = 重新开始一题，所以学生上一题的口述与步骤说明也清空。
+    // 提交失败 / 错误重试时**不**走这里，仍保留输入（见 `_sendRequest` 错误分支）。
+    _speechController.clear();
+    for (final c in _stepPlainControllers.values) {
+      c.clear();
+    }
+    for (final c in _stepLatexControllers.values) {
+      c.clear();
+    }
+    _stepLatexExpanded.clear();
     setState(() {
       _status = _LectureStatus.idle;
       _errorMessage = null;
@@ -372,6 +445,19 @@ class _LecturePageState extends State<LecturePage> {
         const SizedBox(height: 12),
         Expanded(child: HandCanvas(controller: _canvasController)),
         const SizedBox(height: 12),
+        // 第四轮新增「学生语义输入区」：讲解文字 + 每步说明 + 选填 LaTeX。
+        // 用 ConstrainedBox 控住最大高度，避免占掉太多手写板主体空间；
+        // 内部用 SingleChildScrollView 防止键盘弹起时溢出。
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 240),
+          child: SingleChildScrollView(
+            child: AnimatedBuilder(
+              animation: _canvasController,
+              builder: (context, _) => _buildSemanticInputsPanel(context),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         AnimatedBuilder(
           animation: _canvasController,
           builder: (context, _) {
@@ -414,6 +500,177 @@ class _LecturePageState extends State<LecturePage> {
           },
         ),
       ],
+    );
+  }
+
+  /// 「我刚才是这样讲的」+「为每一步补充一句话」输入区。
+  ///
+  /// 第四轮目标：在不接 ASR/OCR 之前，先让学生把自己的解法语义带进
+  /// `studentSpeechText` 与 `steps[*].plainText / latex`，给后端 LLM
+  /// 真东西可读，而不是只看到光秃秃的笔画数。
+  Widget _buildSemanticInputsPanel(BuildContext context) {
+    final stepIds = _canvasController.collectStepIds();
+    _ensureStepControllers(stepIds);
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.cardR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.record_voice_over_outlined,
+                  size: 18, color: AppPalette.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('我刚才是这样讲的', style: theme.textTheme.titleSmall),
+              ),
+              Text(
+                'AI 同伴会照着这段话追问',
+                style: theme.textTheme.bodySmall,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _SoftTextField(
+            controller: _speechController,
+            minLines: 2,
+            maxLines: 4,
+            hintText:
+                '例如：我先把 12 拆成 4×3，所以根号 12 可以化成 2 根号 3……',
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const Icon(Icons.format_list_numbered_outlined,
+                  size: 18, color: AppPalette.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '为每一步补充一句话（可选）',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              if (stepIds.isNotEmpty)
+                Text(
+                  '共 ${stepIds.length} 步',
+                  style: theme.textTheme.bodySmall,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (stepIds.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                '在右侧手写后，会自动出现每一步的说明输入框，可用一句中文写出这一步在做什么。',
+                style: theme.textTheme.bodySmall,
+              ),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < stepIds.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 8),
+                  _buildStepInputRow(
+                    context: context,
+                    stepId: stepIds[i],
+                    order: i + 1,
+                  ),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepInputRow({
+    required BuildContext context,
+    required String stepId,
+    required int order,
+  }) {
+    final plainController = _stepPlainControllers[stepId]!;
+    final latexController = _stepLatexControllers[stepId]!;
+    final latexExpanded = _stepLatexExpanded.contains(stepId);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 8, 10),
+      decoration: BoxDecoration(
+        color: AppPalette.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _StepOrderBadge(order: order),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SoftTextField(
+                  controller: plainController,
+                  minLines: 1,
+                  maxLines: 2,
+                  dense: true,
+                  hintText: '例如：根号 12 化成 2 根号 3',
+                ),
+              ),
+              const SizedBox(width: 6),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    if (latexExpanded) {
+                      _stepLatexExpanded.remove(stepId);
+                    } else {
+                      _stepLatexExpanded.add(stepId);
+                    }
+                  });
+                },
+                icon: Icon(
+                  latexExpanded
+                      ? Icons.expand_less
+                      : Icons.functions_outlined,
+                  size: 16,
+                ),
+                label: Text(latexExpanded ? '收起' : '加公式'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppPalette.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (latexExpanded) ...[
+            const SizedBox(height: 8),
+            _SoftTextField(
+              controller: latexController,
+              minLines: 1,
+              maxLines: 2,
+              dense: true,
+              monospace: true,
+              hintText: r'可选 LaTeX：\sqrt{12}=2\sqrt{3}',
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -560,6 +817,102 @@ class _ThinkingBubble extends StatelessWidget {
             style: TextStyle(color: AppPalette.textSecondary, fontSize: 14),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 温和「纸张」风格输入框，遵循 `MOBILE_STYLE.md`：
+///   * 浅米白底 + 1dp 柔和描边，不要冷调灰；
+///   * 圆角 12，焦点态用 primary 提亮但不过分；
+///   * 触控热区随父高度自适应，外层调用方负责 `minLines/maxLines`。
+class _SoftTextField extends StatelessWidget {
+  const _SoftTextField({
+    required this.controller,
+    required this.hintText,
+    this.minLines = 1,
+    this.maxLines = 2,
+    this.dense = false,
+    this.monospace = false,
+  });
+
+  final TextEditingController controller;
+  final String hintText;
+  final int minLines;
+  final int maxLines;
+  final bool dense;
+  final bool monospace;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Theme.of(context).textTheme.bodyMedium;
+    return TextField(
+      controller: controller,
+      minLines: minLines,
+      maxLines: maxLines,
+      textInputAction:
+          maxLines > 1 ? TextInputAction.newline : TextInputAction.done,
+      style: base?.copyWith(
+        fontFamily: monospace ? 'monospace' : base.fontFamily,
+        color: AppPalette.textPrimary,
+      ),
+      cursorColor: AppPalette.primary,
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: TextStyle(
+          color: AppPalette.textSecondary.withValues(alpha: 0.75),
+          fontSize: dense ? 13 : 14,
+          height: 1.4,
+        ),
+        isDense: dense,
+        filled: true,
+        fillColor: AppPalette.background,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: dense ? 10 : 12,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppPalette.outlineSoft),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppPalette.outlineSoft),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppPalette.primary, width: 1.4),
+        ),
+      ),
+    );
+  }
+}
+
+class _StepOrderBadge extends StatelessWidget {
+  const _StepOrderBadge({required this.order});
+
+  final int order;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppPalette.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppPalette.primary.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Text(
+        '$order',
+        style: const TextStyle(
+          color: AppPalette.primary,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
       ),
     );
   }
