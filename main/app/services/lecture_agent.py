@@ -2,13 +2,13 @@
 
 设计要点：
 
-- **单大模型多角色剧本**：用同一次 LLM 调用让 Kimi 同时扮演小明 / 大雄 / 班长 /
+- **单大模型多角色剧本**：用同一次 LLM 调用让 DeepSeek 同时扮演小明 / 大雄 / 班长 /
   李老师中的 1-2 个角色，避免 N 次串行调用拉爆延迟。
 - **强 Schema 防御**：System Prompt 限定「只输出 JSON」、`response_format=json_object`
   双保险；解析时还要再做 markdown 去壳 + 字段白名单校验。
 - **highlightStepIds 必须命中真实 stepId**：模型最爱编造 `step_99`，路由层会把
   真实白名单注入 Prompt，service 还会再过滤一次，命中不到的直接落回画板首步。
-- **失败显式暴露**：Kimi 未配置、超时、返回非 JSON 或结构不合规时直接抛错；
+- **失败显式暴露**：DeepSeek 未配置、超时、返回非 JSON 或结构不合规时直接抛错；
   上层返回 HTTP 502 或 WebSocket error，让调试时能看到真实故障。
 - **不持有路由层依赖**：本模块只产出 `dict`（与 Pydantic schema 对齐的字段），
   由 `routers/lecture.py` 负责套上 `LectureSubmitResponse`。这样 service 既可
@@ -28,12 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Config
-# 复用 kimi.py 里已经实例化好的 OpenAI client（指向 Moonshot），
-# 而不是新建一套。`kimi.chat(...)` 内部强制把 model 锁回 `Config.KIMI_MODEL`
-# 且把 `extra_body` 这种 OpenAI SDK 扩展参数全吞掉，没法关 K2.6 的思考开关，
-# 所以这里绕过 `chat()` 封装直连 `kimi_client`，让我们能显式选择模型 +
-# 透传 `thinking={"type":"disabled"}` 把 K2.6 切到非思考模式。
-from app.services.kimi import kimi_client
+from app.services.kimi import DEEPSEEK_THINKING_DISABLED, deepseek_client
 from app.services import knowledge_index
 
 logger = logging.getLogger(__name__)
@@ -43,30 +38,13 @@ class LectureAgentError(RuntimeError):
     """Raised when the LLM lecture agent cannot produce a valid turn."""
 
 
-# Kimi 旗舰模型 K2.6 + **关闭思考模式**：
-#   - 默认开"思考"时，K2.6 会先把推理塞 `reasoning_content` 再写 `content`，
-#     单次 30-90s，且 `max_tokens=1200` 经常 `finish_reason=length`+空 `content`，
-#     对"学生提交后等 AI 同伴追问"的体感完全不可接受。
-#   - 通过 `extra_body={"thinking":{"type":"disabled"}}` 关掉思考后，
-#     K2.6 在我们的 Prompt 上实测 3-6s 即可返回合规 JSON，
-#     既保住了旗舰模型对中文数学语境 + LaTeX 输出的理解力，
-#     又把延迟压到课堂交互可接受范围。
-_LECTURE_MODEL = "kimi-k2.6"
+_LECTURE_MODEL = Config.DEEPSEEK_MODEL
+_LECTURE_TEMPERATURE = 0.3
+_LECTURE_EXTRA_BODY: dict[str, Any] = DEEPSEEK_THINKING_DISABLED
 
-# K2.6 关思考模式后 Moonshot 仍硬约束 `temperature=0.6`，传其他值会 400
-# `invalid temperature: only 0.6 is allowed for this model`。
-# 思考模式下要求 1.0、关思考后要求 0.6，是两套独立约束，切模型时都要重测。
-_LECTURE_TEMPERATURE = 0.6
-
-# 透传给 Moonshot 的扩展参数。OpenAI Python SDK 用 `extra_body` 透传
-# 非 OpenAI 标准字段；Moonshot 这边是 `thinking: {type: enabled|disabled}`。
-_LECTURE_EXTRA_BODY: dict[str, Any] = {"thinking": {"type": "disabled"}}
-
-# 后端层 LLM 调用超时（秒）。K2.6 关思考实测中位数 5-15s，偶发
-# 20-25s 拖尾（Moonshot 侧排队 + 长 Prompt 生成）。给 28s 既能盖住
-# 大部分拖尾，又比 Flutter 客户端 30s timeout 短 2s —— 让前端先于
-# 后端断开的概率最低，避免「前端报错 / 后端却拿到结果」的不一致。
-_LLM_TIMEOUT_SECONDS = 28.0
+# 非实时 `/lecture/submit` 仍需要等待完整 JSON；实时讲题走
+# `lecture_agent_stream.py`，首 token 超过 2 秒会直接报错。
+_LLM_TIMEOUT_SECONDS = 6.0
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +397,7 @@ def _strip_markdown_fence(raw: str) -> str:
 
 
 def _looks_like_failure(raw: str) -> bool:
-    """检测 `kimi.chat(...)` 返回的"友好失败"字符串（API_KEY 缺失 / 异常）。"""
+    """检测通用 chat 封装返回的友好失败字符串（API_KEY 缺失 / 异常）。"""
 
     if not raw:
         return True
@@ -596,13 +574,13 @@ def generate_lecture_turns(
     # round_index 防御：< 1 视为 1，避免上游打错数字污染多轮判断。
     safe_round = max(1, int(round_index or 1))
 
-    if not Config.KIMI_API_KEY or Config.KIMI_API_KEY == "your_kimi_api_key_here":
+    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
         logger.error(
-            "[lecture-agent] KIMI_API_KEY 未配置 section=%s round=%d",
+            "[lecture-agent] DEEPSEEK_API_KEY 未配置 section=%s round=%d",
             section_id,
             safe_round,
         )
-        raise LectureAgentError("KIMI_API_KEY is not configured")
+        raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
 
     user_prompt = _build_user_prompt(
         section_id=section_id,
@@ -620,8 +598,8 @@ def generate_lecture_turns(
         {"role": "user", "content": user_prompt},
     ]
 
-    # 直接走 `kimi_client.chat.completions.create(...)`：
-    #   - 用 `kimi-k2.6` 旗舰模型，靠 `extra_body.thinking.type=disabled` 关思考。
+    # 直接走 `deepseek_client.chat.completions.create(...)`：
+    #   - 用 DeepSeek-V4-Flash，靠 `extra_body.thinking.type=disabled` 关思考。
     #   - `response_format={"type":"json_object"}` 双保险地约束 LLM 输出 JSON。
     #   - `timeout` 走 OpenAI SDK 自带的 per-request 超时（秒），超时即抛
     #     `APITimeoutError`，被外层 `except Exception` 接住后显式返回错误。
@@ -629,7 +607,7 @@ def generate_lecture_turns(
     #     5xx 会自动 retry 2 次，会把一次 25s 超时翻成 50-75s 真实卡顿。
     #     显式关掉，让超时只发生一次。
     try:
-        resp = kimi_client.with_options(max_retries=0).chat.completions.create(
+        resp = deepseek_client.with_options(max_retries=0).chat.completions.create(
             model=_LECTURE_MODEL,
             messages=messages,
             temperature=_LECTURE_TEMPERATURE,
@@ -639,7 +617,7 @@ def generate_lecture_turns(
             extra_body=_LECTURE_EXTRA_BODY,
         )
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
-    except Exception as e:  # noqa: BLE001 — Moonshot SDK 可能抛任意异常
+    except Exception as e:  # noqa: BLE001 — OpenAI-compatible SDK 可能抛任意异常
         logger.exception("[lecture-agent] LLM 调用异常：%s", e)
         raise LectureAgentError(f"LLM request failed: {e}") from e
 

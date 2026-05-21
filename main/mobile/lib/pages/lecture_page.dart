@@ -1968,9 +1968,8 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   String _submitLabel(bool submitting) {
-    // 第三轮起 `/lecture/submit` 内部会真实调用 Kimi，端到端常常 8-15s。
-    // 文案换成「AI 同伴思考中…」让学生知道这次是真的在等模型，而不是 0.5s
-    // 假 loading 的固定 Mock。
+    // `/lecture/submit` 内部会真实调用 DeepSeek；实时讲题优先走流式路径。
+    // 文案换成「AI 同伴思考中…」让学生知道这次是真的在等模型。
     if (submitting) return 'AI 同伴思考中…';
     if (_status == _LectureStatus.error) return '重新提交';
     if (_round == 0) return '提交讲解';

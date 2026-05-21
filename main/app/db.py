@@ -71,7 +71,7 @@ class ChatSession(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String, default="新会话")
     messages_json = Column(Text, default="[]")
-    model = Column(String, default="deepseek-v4-pro")
+    model = Column(String, default="deepseek-v4-flash")
     temperature = Column(String, default="1.0")
     top_p = Column(String, default="0.95")
     max_tokens = Column(String, default="8192")

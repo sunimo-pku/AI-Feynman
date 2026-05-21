@@ -10,8 +10,8 @@ router = APIRouter(prefix="/sessions", tags=["Sessions"])
 class SessionCreate(BaseModel):
     title: str = "新会话"
     messages: list[dict] = []
-    model: str = "kimi-k2.6"
-    temperature: float = 1.0
+    model: str = "deepseek-v4-flash"
+    temperature: float = 0.3
     top_p: float = 0.95
     max_tokens: int = 8192
     system_prompt: str = ""

@@ -10,7 +10,7 @@
 |----|------|
 | 客户端 | **Flutter / Dart**（Android） |
 | 服务端 | **Python FastAPI** + Uvicorn |
-| LLM / 语音 | Kimi API、豆包 TTS / ASR |
+| LLM / 语音 | DeepSeek-V4-Flash（非思考模式）、豆包 TTS / ASR |
 
 ## 仓库
 
@@ -98,7 +98,7 @@ API 文档：`http://127.0.0.1:8001/docs`
 
 - **第五轮**起，讲题页在本题内维护一份「最近 6 条」的本地对话历史。
   每次提交时，前端把现存历史 + 本轮 student 发言快照一并放入请求体的
-  `history` + `roundIndex` 两个**可选**字段，让 Kimi 准确感知到
+  `history` + `roundIndex` 两个**可选**字段，让 DeepSeek 准确感知到
   「学生这次到底是在回答上一轮谁的追问」，并据此判定：
     - `status: "needs_explanation"`：还需要继续追问（本轮再下钻一层，不重复上轮原问题）。
     - `status: "completed"` + `masteryDelta: 1`：这一题学生讲清楚了，老师收束。
@@ -109,16 +109,15 @@ API 文档：`http://127.0.0.1:8001/docs`
 - **第四轮**起，请求体携带 `studentSpeechText` / `steps[*].plainText` / `steps[*].latex`
   三个学生语义字段；Prompt 已强化为「优先抓住学生原话、用引号简短照搬关键短语、
   逐条质疑前提条件 / 化简规则 / 计算符号」。
-- **第三轮**起，后端 `services/lecture_agent.py` 调用 Moonshot 真实 LLM
-  （旗舰模型 `kimi-k2.6` + `thinking.type=disabled` 关思考模式，
-  `temperature=0.6`、`response_format=json_object`、`max_retries=0`），
-  让 Kimi 在单次调用内扮演小明 / 大雄 / 班长 / 李老师中的 1-2 个角色。
-  实测中位数 5-15s 即可返回；后端层 28s timeout，失败直接返回 502。
+- 后端 `services/lecture_agent.py` 调用 DeepSeek-V4-Flash，所有调用都通过
+  `extra_body={"thinking":{"type":"disabled"}}` 明确关闭思考模式。
+  实时讲题走 `/lecture/live` 的 NDJSON 流式输出，首 token 超过 2 秒直接报错；
+  `/lecture/submit` 保留完整 JSON 路径，后端层 6s timeout，失败直接返回 502。
 - LLM 返回的 JSON 经过严格校验：`role` 白名单、`text` 非空且 ≤180 中文字符、
   `highlightStepIds` 必须命中请求里真实存在的 `stepId`、`masteryDelta ∈ {-1, 0, 1}`。
   额外防御：第一轮若 LLM 直接返回 `completed` 会被强制改回 `needs_explanation`，
   避免学生还没解释就被收束。
-- **任意核心环节失败**（`KIMI_API_KEY` 缺失、LLM 超时、返回非 JSON、字段不合规）
+- **任意核心环节失败**（`DEEPSEEK_API_KEY` 缺失、LLM 超时、返回非 JSON、字段不合规）
   都会显式报错；`/lecture/submit` 返回 502，实时讲题发送 WebSocket `error` 事件。
   不再用 Mock 追问或老师通用文案伪装成功。
 - 全册 90 节均可提交讲题，并进入同一套多 Agent 追问链路。16.1 / 16.2 / 16.3 目前额外有本地知识库增强；其余章节同样由 LLM 根据题面、学生口述和手写步骤追问。

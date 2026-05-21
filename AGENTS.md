@@ -200,7 +200,20 @@ git push origin main
 - **用户级 localStorage 必须带 user id**：切换账号时不能用全局固定 key，否则偏好串号。
 - **LLM 结构化输出需持久化**：仅放 `useState` 的内容，用户切页再回来会丢失；应写入 session / DB 对应字段。
 
-### Kimi / Moonshot LLM（第三轮 `/lecture/submit` 实接踩坑）
+### DeepSeek-V4-Flash LLM（当前讲题主路径）
+
+- **讲题主路径统一使用 DeepSeek-V4-Flash 非思考模式**：`/lecture/submit`、
+  `/lecture/live` 与通用 chat 默认模型都走 `Config.DEEPSEEK_MODEL`
+  （默认 `deepseek-v4-flash`）。每次 OpenAI SDK 调用都必须带
+  `extra_body={"thinking":{"type":"disabled"}}`，禁止输出或转发
+  `reasoning_content`。
+- **实时讲题必须流式**：`lecture_agent_stream.py` 直接消费 DeepSeek NDJSON
+  流，`timeout=2.0`。超过 2 秒未进入有效流式事件就发送 WebSocket `error`，
+  不允许退回非流式 `/lecture/submit` 或固定文案。
+- **非实时 `/lecture/submit` 只是备用完整 JSON 路径**：它也走 DeepSeek
+  非思考模式，后端 timeout 为 6s；失败返回 502，不写伪造进度。
+
+### Kimi / Moonshot LLM（历史踩坑记录，当前讲题主路径已停用）
 
 - **K2.6 默认思考模式，单次 30-90s，不能直接接讲题闭环**：默认开思考时
   K2.6 会先把推理塞 `reasoning_content` 再写 `content`，`max_tokens=1200`
@@ -319,7 +332,7 @@ git push origin main
   `needs_explanation` + `mastery_delta=0`」做硬防御，并打 `warning` 日志
   方便观测频率。如果以后这条警告频繁出现，要回 prompt 加更强约束。
 - **历史记录：fallback 曾按 round 切文案，但现已禁用**：第五轮曾为 Demo
-  完整性在 KIMI_API_KEY 缺失或 LLM 抽风时生成固定追问。当前口径已改为
+  完整性在旧 Kimi key 缺失或 LLM 抽风时生成固定追问。当前口径已改为
   “讲题主链路失败必须显式报错”，不要恢复这类 Mock 文案。
 - **history 校验放宽不放严**：按 brief 7.3，「不要因为 history 缺失或格式
   异常直接 500」。`history` 不在路由层做严格枚举校验，service 层
@@ -689,7 +702,7 @@ git push origin main
 
 ### 第十一轮 · 全量收口（流式 / 回放 / 游戏化）
 
-- **LLM 流式 NDJSON 必须逐行校验**：Kimi 流式主路径输出
+- **LLM 流式 NDJSON 必须逐行校验**：DeepSeek 流式主路径输出
   `turn_start/delta/turn_done/round_meta`；任何一行解析失败或整流无有效事件，
   必须发送 WebSocket `error`，不能切 Mock/非流式替代路径。
 - **本地学习数据 key 必须带 namespace**：`guest`、`userA`、`userB` 分别写

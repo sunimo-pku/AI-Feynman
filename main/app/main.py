@@ -33,7 +33,7 @@ logging.basicConfig(
 
 app = FastAPI(
     title="AI Feynman API",
-    description="Flutter Android 客户端后端（FastAPI + Kimi / 豆包语音）",
+    description="Flutter Android 客户端后端（FastAPI + DeepSeek / 豆包语音）",
     version="0.2.0",
 )
 

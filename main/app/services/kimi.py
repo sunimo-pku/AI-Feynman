@@ -7,13 +7,29 @@ from app.services.agent_tools import AVAILABLE_TOOLS, TOOL_SCHEMAS
 kimi_client = OpenAI(api_key=Config.KIMI_API_KEY, base_url=Config.KIMI_BASE_URL)
 deepseek_client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
 
+DEEPSEEK_THINKING_DISABLED: dict = {"thinking": {"type": "disabled"}}
+
 WEB_SEARCH_TOOL = {"type": "builtin_function", "function": {"name": "$web_search"}}
 
 
 def _get_client(model: str | None):
-    if model and model.startswith("deepseek"):
-        return deepseek_client, model
-    return kimi_client, Config.KIMI_MODEL
+    actual_model = model or Config.DEEPSEEK_MODEL
+    if actual_model.startswith("kimi"):
+        return kimi_client, actual_model
+    return deepseek_client, actual_model
+
+
+def _provider_for_model(model: str) -> str:
+    return "Kimi" if model.startswith("kimi") else "DeepSeek"
+
+
+def _with_non_thinking(kwargs: dict, actual_model: str) -> dict:
+    if not actual_model.startswith("kimi"):
+        kwargs["extra_body"] = {
+            **kwargs.get("extra_body", {}),
+            **DEEPSEEK_THINKING_DISABLED,
+        }
+    return kwargs
 
 
 def _sse(event: dict) -> str:
@@ -105,6 +121,7 @@ def _execute_web_search(client, actual_model, messages, temperature, top_p, max_
         kwargs["top_p"] = top_p
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
+    kwargs = _with_non_thinking(kwargs, actual_model)
     kwargs["tools"] = [WEB_SEARCH_TOOL]
 
     for _ in range(3):
@@ -165,6 +182,7 @@ def chat_with_tools(
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
 
+        kwargs = _with_non_thinking(kwargs, actual_model)
         resp = client.chat.completions.create(**kwargs)
         msg = resp.choices[0].message
 
@@ -173,11 +191,9 @@ def chat_with_tools(
             return msg.content or ""
 
         # 记录 assistant 的 tool_calls 请求
-        # Kimi k2.6 思考模式要求 assistant 消息包含 reasoning_content，否则 400
         assistant_msg = {
             "role": "assistant",
             "content": msg.content or "",
-            "reasoning_content": "",
             "tool_calls": [
                 {
                     "id": tc.id,
@@ -228,7 +244,7 @@ def chat(
 ) -> str:
     client, actual_model = _get_client(model)
     if not client.api_key or client.api_key == "your_kimi_api_key_here":
-        provider = "DeepSeek" if model and model.startswith("deepseek") else "Kimi"
+        provider = _provider_for_model(actual_model)
         return f"⚠️ {provider} API_KEY 未配置，请在项目根目录的 .env 文件中设置。"
 
     try:
@@ -261,6 +277,7 @@ def chat(
             kwargs["max_tokens"] = max_tokens
         if response_format is not None:
             kwargs["response_format"] = response_format
+        kwargs = _with_non_thinking(kwargs, actual_model)
         resp = client.chat.completions.create(**kwargs)
         return resp.choices[0].message.content
     except Exception as e:
@@ -291,7 +308,7 @@ def chat_stream(
     """
     client, actual_model = _get_client(model)
     if not client.api_key or client.api_key == "your_kimi_api_key_here":
-        provider = "DeepSeek" if model and model.startswith("deepseek") else "Kimi"
+        provider = _provider_for_model(actual_model)
         yield _sse({"error": f"⚠️ {provider} API_KEY 未配置，请在项目根目录的 .env 文件中设置。"})
         yield _sse({"done": True})
         return
@@ -337,13 +354,11 @@ def chat_stream(
             kwargs["max_tokens"] = max_tokens
         if response_format is not None:
             kwargs["response_format"] = response_format
+        kwargs = _with_non_thinking(kwargs, actual_model)
         stream = client.chat.completions.create(**kwargs)
         for chunk in stream:
             choice = chunk.choices[0]
-            reasoning = getattr(choice.delta, "reasoning_content", None)
             content = choice.delta.content
-            if reasoning:
-                yield _sse({"reasoning": reasoning})
             if content:
                 yield _sse({"delta": content})
         yield _sse({"done": True})

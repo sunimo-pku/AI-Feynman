@@ -20,11 +20,11 @@ class LectureService {
   LectureService({http.Client? client, Duration? timeout, OcrService? ocrService})
       : _client = client ?? http.Client(),
         _ocrService = ocrService ?? OcrService(),
-        // 第三轮起 `/lecture/submit` 内部走真实 Kimi K2.6（关思考模式），
-        // 端到端中位数 5-15s、偶发 25s 拖尾；后端层自己有 28s timeout。
-        // 前端 timeout 给 35s，严格大于后端 28s，确保后端能先返回明确错误，
+        // `/lecture/submit` 走 DeepSeek-V4-Flash 非思考模式的完整 JSON 路径；
+        // 实时讲题优先走 `/lecture/live` 流式路径。后端层自己有 6s timeout。
+        // 前端 timeout 给 12s，严格大于后端，确保后端能先返回明确错误，
         // 而不是前端先断开但后端继续跑。
-        _timeout = timeout ?? const Duration(seconds: 35);
+        _timeout = timeout ?? const Duration(seconds: 12);
 
   final http.Client _client;
   final Duration _timeout;
@@ -103,7 +103,7 @@ class LectureService {
           .timeout(_timeout);
     } on TimeoutException {
       throw const LectureApiException(
-        userMessage: 'AI 同伴想得有点久（超过 35 秒），可能是网络不稳或 LLM 拥塞，'
+        userMessage: 'AI 同伴想得有点久（超过 12 秒），可能是网络不稳或 LLM 拥塞，'
             '稍等几秒再点一次「重新提交」试试。',
       );
     } on SocketException catch (e) {

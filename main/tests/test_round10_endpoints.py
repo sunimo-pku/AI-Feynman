@@ -438,7 +438,7 @@ def test_lecture_submit_with_auth_persists_progress(client: TestClient, monkeypa
 
 
 def test_lecture_submit_without_llm_key_returns_502(client: TestClient, monkeypatch) -> None:
-    monkeypatch.setattr("app.services.lecture_agent.Config.KIMI_API_KEY", "")
+    monkeypatch.setattr("app.services.lecture_agent.Config.DEEPSEEK_API_KEY", "")
     resp = client.post(
         "/lecture/submit",
         json={

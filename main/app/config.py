@@ -9,11 +9,11 @@ load_dotenv(os.path.join(project_root, ".env"))
 class Config:
     KIMI_API_KEY = os.getenv("KIMI_API_KEY", "")
     KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-    KIMI_MODEL = "kimi-k2.6"
+    KIMI_MODEL = os.getenv("KIMI_MODEL", "kimi-k2.6")
 
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-    DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
-    DEEPSEEK_MODEL = "deepseek-v4-pro"
+    DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
     ALIYUN_API_KEY = os.getenv("ALIYUN_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
     ALIYUN_BASE_URL = os.getenv(

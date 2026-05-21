@@ -1,6 +1,6 @@
 """Token/行级流式多 Agent 追问。
 
-主路径要求 Kimi 输出 NDJSON：turn_start/delta/turn_done/round_meta。解析失败时
+主路径要求 DeepSeek-V4-Flash 输出 NDJSON：turn_start/delta/turn_done/round_meta。解析失败时
 直接抛错，由 session 层向前端发送 error 事件。
 """
 
@@ -12,7 +12,7 @@ from typing import Any, Iterator
 
 from app.config import Config
 from app.services import lecture_agent
-from app.services.kimi import kimi_client
+from app.services.kimi import DEEPSEEK_THINKING_DISABLED, deepseek_client
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,8 @@ def generate_turn_events(
         for s in steps
         if str(s.get("stepId") or s.get("step_id") or "").strip()
     ]
-    if not Config.KIMI_API_KEY or Config.KIMI_API_KEY == "your_kimi_api_key_here":
-        raise lecture_agent.LectureAgentError("KIMI_API_KEY is not configured")
+    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+        raise lecture_agent.LectureAgentError("DEEPSEEK_API_KEY is not configured")
 
     cleaned_history = lecture_agent._sanitize_history(history)  # noqa: SLF001
     user_prompt = lecture_agent._build_user_prompt(  # noqa: SLF001
@@ -60,14 +60,14 @@ def generate_turn_events(
         {"role": "user", "content": user_prompt},
     ]
     try:
-        stream = kimi_client.with_options(max_retries=0).chat.completions.create(
-            model="kimi-k2.6",
+        stream = deepseek_client.with_options(max_retries=0).chat.completions.create(
+            model=Config.DEEPSEEK_MODEL,
             messages=messages,
-            temperature=0.6,
-            max_tokens=1200,
+            temperature=0.3,
+            max_tokens=700,
             stream=True,
-            timeout=28.0,
-            extra_body={"thinking": {"type": "disabled"}},
+            timeout=2.0,
+            extra_body=DEEPSEEK_THINKING_DISABLED,
         )
         buf = ""
         saw_event = False
