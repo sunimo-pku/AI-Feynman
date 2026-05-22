@@ -384,7 +384,7 @@ Flutter 侧同步完成：
 第十二轮把 Round 11 的 V2 API 接到平板 App 产品路径：
 
 - 首页新增 5 个学习工具入口：每日挑战、晶石奖励、学习榜单、拍照识题、我的成长。
-- 每日挑战正式页：`DailyChallengePage` 展示今日进度、复习/弱项/进阶 3 题、错题草稿、红框圈选、讲解输入、评分反馈与“继续讲清本节”入口；不再把标准 `errorBox` 当作学生提交。
+- 每日挑战正式页：`DailyChallengePage` 上方展示 `wrongSolution` 错误步骤并拖红框圈错，下方全屏白板 + 语音（`/asr` PCM 转写）提交；无文字输入、无跳转讲题页；`circledBox` 仍由学生真实拖拽生成。
 - 新增/接线 Flutter 页面：`DailyChallengePage`、`ShopPage`、`GeekShopPage`、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
 - 回放闭环：`ReplayService` 记录 live 讲题的音频片段、白板时间轴和气泡时间轴，**学生账号**登录后 `POST /replays`；**家长账号**在 dashboard「精彩回放」可点进 `ReplayPage`。
 - 家长账号模型：`User.role` 为 `student` | `parent`；家长注册时绑定唯一孩子用户名，登录需账号密码 + 家长密码；`/parent/*` 仅家长可访问，自动展示绑定孩子学习数据。
