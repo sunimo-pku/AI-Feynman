@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'pages/auth_page.dart';
-import 'pages/home_page.dart';
+import 'pages/student_main_shell.dart';
 import 'pages/parent_home_page.dart';
 import 'services/auth_service.dart';
 import 'services/learning_sync_service.dart';
@@ -70,7 +70,7 @@ class _AuthGateState extends State<_AuthGate> {
             if (AuthService.instance.isParent) {
               return const ParentHomePage();
             }
-            return const HomePage();
+            return const StudentMainShell();
           },
         );
       },

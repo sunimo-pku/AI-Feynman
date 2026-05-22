@@ -48,7 +48,11 @@ lib/
 │   ├── mock_lecture_repository.dart # 全册 90 节题库 asset + 16 章兜底题
 │   └── round12_models.dart          # V2 游戏化 / 回放 / 题库模型
 ├── pages/
-│   ├── home_page.dart               # 课程首页（全目录 + 全册可练 + V2 入口）
+│   ├── student_main_shell.dart      # 学生主壳（底部四 Tab）
+│   ├── home_dashboard_tab.dart      # 今日 Tab
+│   ├── curriculum_tab_page.dart     # 课程 Tab + curriculum_book_page 二级目录
+│   ├── more_tab_page.dart           # 更多 Tab
+│   ├── home_page.dart               # 导出 StudentMainShell（兼容旧 import）
 │   └── lecture_page.dart            # 讲题页（左右双栏，平板优先）
 ├── services/                        # HTTP / SSE / 语音等
 ├── theme/

@@ -805,6 +805,8 @@ git push origin main
 - **旧 DB 迁移**：`users.role` / `users.parent_password_hash` 走
   `_run_lightweight_migrations`；老账号默认 `role=student`，需单独注册家长账号
   才能进家长端。
+- **学生首页勿单页堆叠全册目录**：课程应走底部「课程」Tab → 点册别 →
+  `CurriculumBookPage` 二级页；今日 Tab 只保留推荐小节与快捷入口。
 - **全屏讲题页勿在 `awaiting` 态开放「下一题」**：第十二轮 UI 重构时曾在
   `_LectureStatus.awaiting` 加 `skip_next` 圆钮，学生可在同伴未听懂时跳题，
   破坏讲题闭环。正解：「下一题」仅 `finished` 且 `_lastResponseStatus ==

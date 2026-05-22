@@ -15,7 +15,10 @@ import 'lecture_page.dart';
 const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
 
 class PowerProfilePage extends StatefulWidget {
-  const PowerProfilePage({super.key});
+  const PowerProfilePage({super.key, this.embeddedInTab = false});
+
+  /// 嵌入学生端底部「我的」Tab 时不重复套 AppBar。
+  final bool embeddedInTab;
 
   @override
   State<PowerProfilePage> createState() => _PowerProfilePageState();
@@ -33,49 +36,64 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    return _ScaffoldShell(
-      title: '我的战力',
-      child: FutureBuilder<PowerProfile>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return _loadingOrError(
-              snapshot,
-              () => setState(() => _future = _service.fetchPowerProfile()),
-            );
-          }
-          final p = snapshot.data!;
-          final total = p.sections.fold<int>(0, (sum, s) => sum + s.powerScore);
-          return ListView(
-            padding: const EdgeInsets.all(AppSpacing.pageEdge),
-            children: [
-              _InfoCard(
-                title: p.studentName,
-                subtitle:
-                    '总战力 $total · ${p.equippedTitle.isEmpty ? '数学练习生' : p.equippedTitle} · 晶石 ${p.crystalBalance}',
-                icon: Icons.bolt_outlined,
-              ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed:
-                    () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const StudentProfileEditPage(),
-                      ),
-                    ),
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('编辑展示名 / 学校地区'),
-              ),
-              const SizedBox(height: 12),
-              if (p.sections.isEmpty)
-                const _EmptyCard('完成一轮讲题或今日悬赏后，这里会出现章节战力。')
-              else
-                ...p.sections.map((s) => _PowerRow(section: s)),
-            ],
+    final body = FutureBuilder<PowerProfile>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return _loadingOrError(
+            snapshot,
+            () => setState(() => _future = _service.fetchPowerProfile()),
           );
-        },
-      ),
+        }
+        final p = snapshot.data!;
+        final total = p.sections.fold<int>(0, (sum, s) => sum + s.powerScore);
+        return ListView(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.pageEdge,
+            widget.embeddedInTab ? 12 : AppSpacing.pageEdge,
+            AppSpacing.pageEdge,
+            24,
+          ),
+          children: [
+            if (widget.embeddedInTab) ...[
+              Text(
+                '我的成长',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            _InfoCard(
+              title: p.studentName,
+              subtitle:
+                  '总战力 $total · ${p.equippedTitle.isEmpty ? '数学练习生' : p.equippedTitle} · 晶石 ${p.crystalBalance}',
+              icon: Icons.bolt_outlined,
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const StudentProfileEditPage(),
+                    ),
+                  ),
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('编辑展示名 / 年级'),
+            ),
+            const SizedBox(height: 12),
+            if (p.sections.isEmpty)
+              const _EmptyCard('完成一轮讲题或今日悬赏后，这里会出现章节战力。')
+            else
+              ...p.sections.map((s) => _PowerRow(section: s)),
+          ],
+        );
+      },
     );
+    if (widget.embeddedInTab) {
+      return body;
+    }
+    return _ScaffoldShell(title: '我的战力', child: body);
   }
 }
 
