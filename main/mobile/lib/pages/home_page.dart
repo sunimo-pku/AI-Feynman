@@ -4,6 +4,7 @@ import '../data/curriculum_models.dart';
 import '../data/curriculum_repository.dart';
 import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
+import '../services/assignment_service.dart';
 import '../services/auth_service.dart';
 import '../services/learning_sync_service.dart';
 import '../services/progress_repository.dart';
@@ -13,9 +14,9 @@ import '../theme/app_theme.dart';
 import '../widgets/study_layout.dart';
 import 'daily_challenge_page.dart';
 import 'lecture_page.dart';
-import 'parent_dashboard_page.dart';
 import 'privacy_notice_page.dart';
 import 'review_page.dart';
+import 'student_assignments_page.dart';
 import 'v2_pages.dart';
 
 class HomePage extends StatefulWidget {
@@ -29,7 +30,9 @@ class _HomePageState extends State<HomePage> {
   late final Future<MathCurriculum> _curriculumFuture =
       CurriculumRepository.instance.load();
   final Round12Service _profileService = Round12Service();
+  final AssignmentService _assignmentService = AssignmentService();
   String _studentGradeLabel = '八年级';
+  int _pendingAssignments = 0;
 
   @override
   void initState() {
@@ -52,13 +55,28 @@ class _HomePageState extends State<HomePage> {
         // 静默同步：失败仅在 sync service 的 lastError 里暴露。
         LearningSyncService.instance.pullAndMerge();
         _loadStudentGrade();
+        _loadPendingAssignments();
       }
     });
+  }
+
+  Future<void> _loadPendingAssignments() async {
+    if (!AuthService.instance.isLoggedIn || !AuthService.instance.isStudent) {
+      return;
+    }
+    try {
+      final result = await _assignmentService.fetchStudentAssignments();
+      if (!mounted) return;
+      setState(() => _pendingAssignments = result.pendingCount);
+    } catch (_) {
+      // 作业条是增强入口，失败不阻塞首页。
+    }
   }
 
   @override
   void dispose() {
     _profileService.close();
+    _assignmentService.close();
     super.dispose();
   }
 
@@ -92,13 +110,8 @@ class _HomePageState extends State<HomePage> {
     ).showSnackBar(const SnackBar(content: Text('这一节正在整理练习内容，先选一个可练习小节开始吧。')));
   }
 
-  Future<void> _onParentEntryTap(BuildContext context) async {
-    final navigator = Navigator.of(context);
-    await navigator.push(
-      MaterialPageRoute(builder: (_) => const ParentDashboardPage()),
-    );
-    if (!mounted) return;
-    setState(() {});
+  Future<void> _onLogout() async {
+    await AuthService.instance.logout();
   }
 
   /// 第八轮：从首页进入指定小节的讲题回顾页。
@@ -126,11 +139,13 @@ class _HomePageState extends State<HomePage> {
         AnimatedBuilder(
           animation: AuthService.instance,
           builder: (_, __) {
+            final username = AuthService.instance.currentUsername;
             return Padding(
               padding: const EdgeInsets.only(right: 6),
               child: Center(
-                child: _ParentEntryButton(
-                  onTap: () => _onParentEntryTap(context),
+                child: _StudentAccountChip(
+                  label: username.isEmpty ? '学生' : username,
+                  onLogout: _onLogout,
                 ),
               ),
             );
@@ -164,6 +179,18 @@ class _HomePageState extends State<HomePage> {
                 curriculum: curriculum,
                 studentGradeLabel: _studentGradeLabel,
               ),
+              if (_pendingAssignments > 0) ...[
+                const SizedBox(height: AppSpacing.itemGap),
+                _PendingAssignmentsBanner(
+                  count: _pendingAssignments,
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const StudentAssignmentsPage()),
+                    );
+                    await _loadPendingAssignments();
+                  },
+                ),
+              ],
               const SizedBox(height: AppSpacing.moduleGap),
               _TodayStudyCard(
                 curriculum: curriculum,
@@ -398,6 +425,11 @@ class _LearningToolsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = <_LearningToolEntry>[
       _LearningToolEntry(
+        '我的作业',
+        Icons.assignment_outlined,
+        () => const StudentAssignmentsPage(),
+      ),
+      _LearningToolEntry(
         '每日挑战',
         Icons.where_to_vote_outlined,
         () => const DailyChallengePage(),
@@ -529,44 +561,46 @@ class _Tag extends StatelessWidget {
   }
 }
 
-/// 首页 AppBar 上的「家长端」入口。
-class _ParentEntryButton extends StatelessWidget {
-  const _ParentEntryButton({required this.onTap});
-  final VoidCallback onTap;
+/// 首页 AppBar 上的学生账号与退出入口。
+class _StudentAccountChip extends StatelessWidget {
+  const _StudentAccountChip({required this.label, required this.onLogout});
+  final String label;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
-    final loggedIn = AuthService.instance.isLoggedIn;
-    final username = AuthService.instance.currentUsername;
-    final color = loggedIn ? AppPalette.primary : AppPalette.textSecondary;
-    final label = loggedIn ? '家长端 · $username' : '家长端';
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.family_restroom_outlined, size: 14, color: color),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+    return PopupMenuButton<String>(
+      tooltip: '账号',
+      onSelected: (key) {
+        if (key == 'logout') onLogout();
+      },
+      itemBuilder:
+          (_) => const [PopupMenuItem(value: 'logout', child: Text('退出登录'))],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppPalette.primary.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppPalette.primary.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.school_outlined,
+              size: 14,
+              color: AppPalette.primary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppPalette.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -944,6 +978,48 @@ class _SectionStatusBadge extends StatelessWidget {
           color: color,
           fontSize: 11,
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _PendingAssignmentsBanner extends StatelessWidget {
+  const _PendingAssignmentsBanner({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppPalette.primary.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppPalette.primary.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.assignment, color: AppPalette.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('家长布置了 $count 项作业', style: Theme.of(context).textTheme.titleSmall),
+                    Text('点这里查看截止时间与题面', style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppPalette.primary),
+            ],
+          ),
         ),
       ),
     );

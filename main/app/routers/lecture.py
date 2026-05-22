@@ -558,4 +558,17 @@ def _persist_lecture_submission(
                     progress.last_summary or ""
                 )
 
+        from app.services.assignment_service import mark_assignments_completed
+
+        summary_text = turns_payload[-1].get("text", "") if turns_payload else ""
+        mark_assignments_completed(
+            db,
+            student_id=profile.id,
+            section_id=req.section_id,
+            question_id=req.question_id,
+            summary=summary_text,
+            mastery_delta=mastery_delta,
+            round_count=int(req.round_index or 1),
+        )
+
     db.commit()

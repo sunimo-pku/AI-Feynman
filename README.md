@@ -178,7 +178,7 @@ flutter pub get
 - 仓库基于 `ChangeNotifier`，首页 / 讲题页 AppBar 徽标自动跟随刷新。
 - 任何读 / 写失败仅 `developer.log` 记录，不抛回 UI；学生看到的最差情况是
   「进度回到 0」，**不会**因此看不到课程目录。
-- 本地持久化按 `ai_feynman.section_progress.v1.<namespace>` 隔离；登录后通过 `LearningSyncService` 与后端同步，guest 数据仍只留在本机。
+- 本地持久化按 `ai_feynman.section_progress.v1.<namespace>` 隔离（namespace = 登录用户名）；仅**学生账号**登录后通过 `LearningSyncService` 与后端同步。App **必须登录**，无游客模式。
 
 详细单元测试见 `main/mobile/test/progress_repository_test.dart`：12 个用例覆盖
 JSON 容错、`masteryScore` 加分 / 封顶 / fallback 加 8 分、跨章节独立、
@@ -300,22 +300,26 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
   - 带 token 时把每轮提交 / 实时会话写入 `LectureSessionRecord`，
     completed 时同步更新 `LearningProgress`。
 - **Flutter 客户端**：
-  - `services/auth_service.dart`：登录 / 注册 / token 落
-    `shared_preferences`，`ChangeNotifier` 通知首页 AppBar 切换文案。
-  - `services/learning_sync_service.dart`：本地 progress + reviews 一键
+  - `services/auth_service.dart`：学生 / 家长独立注册与登录；家长需额外「家长密码」；
+    token + role 落 `shared_preferences`；未登录不能进入 App。
+  - `services/learning_sync_service.dart`：学生账号本地 progress + reviews 一键
     `POST /learning/progress/sync`；服务端返回的合并结果回灌本地仓库。
   - `services/parent_service.dart` + `data/parent_models.dart`：家长端
     dashboard / poster / reviews 强类型客户端。
-  - `pages/auth_page.dart`：登录 / 注册同页 Tab 切换；作为启动门禁时登录成功后
-    直接进入学生首页，作为二级页面时仍可 pop(true) 返回调用方。
-  - `pages/parent_dashboard_page.dart`：家长端入口页 + DraggableScrollableSheet
-    总结海报。
+  - `pages/auth_page.dart`：登录 / 注册同页 Tab；SegmentedButton 切换「学生 /
+    家长」；家长注册填孩子用户名；登录成功后按 role 进入学生首页或家长看板。
+  - `pages/parent_dashboard_page.dart`：家长学习看板 + DraggableScrollableSheet
+    总结海报；编辑孩子资料走 `PATCH /parent/profile`。
+  - `pages/parent_home_page.dart` + `pages/parent_assignments_page.dart`：家长端
+    底部 Tab「学习看板 / 作业」；可布置小节+难度或拍照识题自定义题，设截止时间，
+    查看详细完成报告；学生端 `StudentAssignmentsPage` + 首页待办条深链讲题页。
+  - `services/assignment_service.dart` + `POST /parent/assignments` /
+    `GET /learning/assignments`：布置、待办、讲题 completed 自动核销。
   - `widgets/realtime_audio_panel.dart` / `services/live_lecture_service.dart`:
     `stopTts` 实现 ~200ms 渐隐 fade-out（25ms tick + `setVolume`）,
     并发打断幂等。
-- **启动门禁**：App 首屏先加载登录态；未登录时停留在 AuthPage，登录 /
-  注册成功后才进入学生首页。首页 AppBar 保留「家长端」入口，已登录用户可直接
-  进入 ParentDashboardPage。
+- **启动门禁**：App 首屏加载登录态；未登录停留在 AuthPage。**学生**登录 →
+  `HomePage`；**家长**登录 → `ParentHomePage`（看板 + 作业 Tab；1 孩子 : 1 家长）。
 
 新增测试：
 - 后端 `main/tests/test_round10_endpoints.py`（11 个用例）：覆盖 401 /
@@ -363,16 +367,16 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
 - 学习数据：`GET/PATCH /learning/profile`、`POST /learning/reviews`、`POST /learning/progress/sync` 支持 `mode=merge|overwrite`。
 - 游戏化：`GET /gamification/me`、`POST /gamification/power/adjust`、`GET /leaderboard`、`GET /leaderboard/my-titles`。
 - 每日挑战与晶石：`GET /bounty/today` 登录后返回今日 3 道找错题与完成状态；`POST /bounty/submit` 按真实圈选 IoU + 讲解评分幂等发放晶石/战力；`GET /bounty/history` 可回看挑战记录；商城接口为 `GET /shop/catalog`、`POST /shop/redeem`、`GET /shop/orders`。
-- 回放与家长端：`POST /replays`、`GET /parent/replays`、`GET /replays/{sessionId}`、`GET/POST /parent/children*`。
+- 回放与家长端：`POST /replays`（学生）、`GET /parent/replays`、`GET /replays/{sessionId}`（家长或学生）、`GET /parent/children`（返回唯一绑定孩子）。
 - 识题与知识库：`POST /questions/upload-image`、`POST /knowledge/search`。
 - OCR/HWR：`POST /ocr/ink` 支持 `mode=rule|hwr`，响应和日志包含 `source/confidence`。
 
 Flutter 侧同步完成：
 
-- `ProgressRepository` / `ReviewRepository` 按 `AuthService.storageNamespace` 隔离本地数据，guest 与不同用户互不串号。
+- `ProgressRepository` / `ReviewRepository` 按 `AuthService.storageNamespace`（登录用户名）隔离本地数据；不同学生账号互不串号。
 - `FormulaText` 接入 `flutter_math_fork`，公式不再走 Unicode 占位。
 - 实时讲题增加写字不追问、2.5s 断档提示、4s 自动追问、300ms 声音打断防抖和角色礼貌气泡。
-- 首次开始讲题前展示 `PrivacyNoticePage`；家长端支持编辑展示名/年级。
+- 首次开始讲题前展示 `PrivacyNoticePage`；家长通过 `PATCH /parent/profile` 编辑绑定孩子展示名/年级。
 - 非 16 章节也使用全册题库 asset 进入讲题闭环；如果 asset 加载失败，`MockLectureRepository` 才生成兜底模板题。
 
 ### 第十二轮 V2 产品闭环
@@ -382,8 +386,8 @@ Flutter 侧同步完成：
 - 首页新增 5 个学习工具入口：每日挑战、晶石奖励、学习榜单、拍照识题、我的成长。
 - 每日挑战正式页：`DailyChallengePage` 展示今日进度、复习/弱项/进阶 3 题、错题草稿、红框圈选、讲解输入、评分反馈与“继续讲清本节”入口；不再把标准 `errorBox` 当作学生提交。
 - 新增/接线 Flutter 页面：`DailyChallengePage`、`ShopPage`、`GeekShopPage`、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
-- 回放闭环：`ReplayService` 记录 live 讲题的音频片段、白板时间轴和气泡时间轴，登录后 `POST /replays`；家长端「精彩回放」可点进播放器。
-- 家长端多孩子：`/parent/dashboard`、`/parent/reviews`、`/parent/poster` 和 `/parent/replays` 支持 `studentId` / `X-Student-Id`，App 内可绑定和切换孩子。
+- 回放闭环：`ReplayService` 记录 live 讲题的音频片段、白板时间轴和气泡时间轴，**学生账号**登录后 `POST /replays`；**家长账号**在 dashboard「精彩回放」可点进 `ReplayPage`。
+- 家长账号模型：`User.role` 为 `student` | `parent`；家长注册时绑定唯一孩子用户名，登录需账号密码 + 家长密码；`/parent/*` 仅家长可访问，自动展示绑定孩子学习数据。
 - 数据化题库与知识库：`scripts/generate_section_questions.py` 生成 `data/questions/pep-junior-math-questions.json`（90 节 × 基础/巩固/挑战 3 题，共 270 题），几何/坐标/函数/统计类题附带 SVG 题图；`data/knowledge/pep-g8-down-ch16_chunks.json` 由 `knowledge_index` 注入讲题 prompt。
 - HWR / OCR 可观测：白板 step payload 带 `imageBase64`；`DEBUG_OCR=1` 时讲题页展示 `stepId | latex | source | confidence | mode`。
 - 排行榜周结算：`scripts/settle_leaderboard.py` 幂等写入 `LeaderboardSnapshot`，`GET /leaderboard` 优先读 snapshot，缺失时回退实时聚合。

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
     asr,
+    assignments,
     auth,
     chat,
     learning,
@@ -64,6 +65,7 @@ app.include_router(lecture_live.router)
 # 第十轮：学习同步、家长端、OCR 兜底
 app.include_router(learning.router)
 app.include_router(parent.router)
+app.include_router(assignments.router)
 app.include_router(ocr.router)
 app.include_router(round11.router)
 

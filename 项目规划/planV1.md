@@ -247,13 +247,19 @@
 
 ## 6. 产品形态 · 家长端
 
+家长使用**独立账号**登录（账号密码 + 家长密码），与孩子账号 **1:1 绑定**（注册家长时填写已注册的学生用户名）。家长登录后直接进入看板，查看绑定孩子的学习数据。
+
 
 | 功能   | 说明                     |
 | ---- | ---------------------- |
-| 弱项看板 | **分维度**精确展示学生弱项（非单一分数） |
+| 弱项看板 | **分维度**精确展示绑定孩子的弱项（非单一分数） |
 | 总结海报 | 一键生成可转发朋友圈的学习总结海报      |
-| 精彩回放 | 查看学生**精彩讲题过程**（视频）     |
+| 精彩回放 | 查看孩子**精彩讲题过程**（笔迹 + 气泡时间轴）     |
+| 孩子资料 | 家长可编辑绑定孩子的展示名与年级（`PATCH /parent/profile`） |
+| **布置作业** | 独立「作业」Tab：按小节+难度选题或拍照上传自定义题，设截止时间；查看详细完成报告 |
 
+
+**不做**：同一家长账号绑定多个孩子、App 内事后「绑定孩子」、游客免登录浏览。
 
 ---
 
@@ -263,7 +269,8 @@
 |------|------|------------|----------|
 | 学生端讲题闭环 | 已落地 | 是 | Flutter `LecturePage` + FastAPI `/lecture/submit` / `/lecture/live` |
 | 真 LLM 流式 | 已落地 | 是 | `lecture_agent_stream.py` NDJSON 事件；异常发送 WebSocket `error` |
-| 账号级本地隔离 | 已落地 | 是 | `AuthService.storageNamespace` + progress/review namespaced prefs |
+| 账号级本地隔离 | 已落地 | 是 | `AuthService.storageNamespace` + progress/review namespaced prefs；**必须登录，无游客** |
+| 学生/家长独立账号 | 已落地 | 是 | `User.role` + `parent_password_hash`；注册时 1:1 绑定；`/parent/*` vs `/learning/*` 分权 |
 | 原生公式渲染 | 已落地 | 是 | `flutter_math_fork` 封装在 `FormulaText` |
 | 实时礼貌策略 | 已落地 | 是 | 写字 3s 内不追问、2.5s 提示、4s 收束、300ms 声音打断防抖 |
 | 多角色 TTS | 已落地 | 是 | `/tts` role/speaker 映射：小明/大雄/班长/老师 |
@@ -280,7 +287,7 @@
 | 拍照识题 | 已落地 | 是 | `PhotoQuestionPage` + `image_picker` + `/questions/upload-image` |
 | 知识库检索 | 已落地 | 是 | `data/knowledge/*_chunks.json` + `knowledge_index` 注入 prompt |
 | 全册题库 | 已落地 | 是 | `data/questions/pep-junior-math-questions.json` 覆盖 90 节 |
-| 多孩子绑定 | 已落地 | 是 | `ParentDashboardPage` child switcher + `/parent/children` |
+| 多孩子绑定 | **已改为 1:1 家长账号** | 是 | 注册时 `childUsername` 绑定；`ParentStudentLink` parent/child 各 UNIQUE |
 | 掌握度驱动难度 | 已落地 | 是 | `LecturePage` 按 mastery 推荐初始题目难度 |
 
 仅保留真实支付、真实物流 API、家长充值/打赏为不做项；晶石只能通过讲题、悬赏与排行玩法获得。

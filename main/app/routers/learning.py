@@ -33,7 +33,7 @@ from app.db import (
     get_db,
     load_json,
 )
-from app.middleware.auth import require_user
+from app.middleware.auth import require_student_user
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ def _profile_to_out(profile: StudentProfile) -> ProfileOut:
     response_model_by_alias=True,
 )
 async def list_progress(
-    user: User = Depends(require_user),
+    user: User = Depends(require_student_user),
     db: Session = Depends(get_db),
 ) -> list[ProgressOut]:
     profile = ensure_student_profile(db, user)
@@ -221,7 +221,7 @@ async def list_progress(
     response_model_by_alias=True,
 )
 async def list_reviews(
-    user: User = Depends(require_user),
+    user: User = Depends(require_student_user),
     db: Session = Depends(get_db),
     section_id: str | None = Query(None, alias="sectionId", max_length=64),
     limit: int = Query(30, ge=1, le=100),
@@ -236,7 +236,7 @@ async def list_reviews(
 
 @router.get("/profile", response_model=ProfileOut, response_model_by_alias=True)
 async def get_profile(
-    user: User = Depends(require_user),
+    user: User = Depends(require_student_user),
     db: Session = Depends(get_db),
 ) -> ProfileOut:
     return _profile_to_out(ensure_student_profile(db, user))
@@ -245,7 +245,7 @@ async def get_profile(
 @router.patch("/profile", response_model=ProfileOut, response_model_by_alias=True)
 async def patch_profile(
     req: ProfilePatchRequest,
-    user: User = Depends(require_user),
+    user: User = Depends(require_student_user),
     db: Session = Depends(get_db),
 ) -> ProfileOut:
     profile = ensure_student_profile(db, user)
@@ -274,7 +274,7 @@ async def patch_profile(
 )
 async def upsert_review(
     req: ReviewItem,
-    user: User = Depends(require_user),
+    user: User = Depends(require_student_user),
     db: Session = Depends(get_db),
 ) -> ReviewOut:
     profile = ensure_student_profile(db, user)
@@ -301,6 +301,19 @@ async def upsert_review(
     existing.created_at = req.completed_at
     db.commit()
     db.refresh(existing)
+    from app.services.assignment_service import mark_assignments_completed
+
+    mark_assignments_completed(
+        db,
+        student_id=profile.id,
+        section_id=req.section_id,
+        question_id=req.question_id,
+        review_client_id=req.client_id,
+        summary=req.summary,
+        agent_highlights=req.agent_highlights,
+        caution_points=req.caution_points,
+    )
+    db.commit()
     return _review_to_out(existing)
 
 
@@ -312,7 +325,7 @@ async def upsert_review(
 )
 async def sync_progress(
     req: SyncRequest,
-    user: User = Depends(require_user),
+    user: User = Depends(require_student_user),
     db: Session = Depends(get_db),
 ) -> SyncResponse:
     profile = ensure_student_profile(db, user)
@@ -409,6 +422,20 @@ async def sync_progress(
         )
         existing.caution_points_json = dump_json(
             incoming.caution_points or load_json(existing.caution_points_json, [])
+        )
+
+    from app.services.assignment_service import mark_assignments_completed
+
+    for incoming in req.reviews:
+        mark_assignments_completed(
+            db,
+            student_id=profile.id,
+            section_id=incoming.section_id,
+            question_id=incoming.question_id,
+            review_client_id=incoming.client_id,
+            summary=incoming.summary,
+            agent_highlights=incoming.agent_highlights,
+            caution_points=incoming.caution_points,
         )
 
     try:

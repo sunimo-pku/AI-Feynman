@@ -269,6 +269,20 @@ def _persist_live_session_if_needed(
                 if transcript:
                     progress.last_summary = transcript[:200]
 
+        if (session.last_status or "") == "completed" and session.question_id:
+            from app.services.assignment_service import mark_assignments_completed
+
+            summary_text = turns_payload[-1].get("text", "") if turns_payload else transcript[:200]
+            mark_assignments_completed(
+                db,
+                student_id=profile.id,
+                section_id=session.section_id or "",
+                question_id=session.question_id or "",
+                summary=summary_text,
+                mastery_delta=int(session.last_mastery_delta or 0),
+                round_count=session.round_index,
+            )
+
         db.commit()
     except Exception as e:  # noqa: BLE001
         logger.warning(

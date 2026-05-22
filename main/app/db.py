@@ -61,6 +61,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    # student | parent — 家长账号额外持有 parent_password_hash，登录时需校验。
+    role = Column(String(16), default="student", nullable=False, index=True)
+    parent_password_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -312,16 +315,50 @@ class RedeemOrder(Base):
 
 
 class ParentStudentLink(Base):
-    __tablename__ = "parent_student_links"
+    """家长与孩子 1:1 绑定：一名家长只对应一名孩子，一名孩子也只对应一名家长。"""
+
     __table_args__ = (
-        UniqueConstraint("parent_user_id", "student_profile_id", name="uq_parent_student_link"),
+        UniqueConstraint("parent_user_id", name="uq_parent_student_links_parent"),
+        UniqueConstraint("student_profile_id", name="uq_parent_student_links_child"),
     )
+
+    __tablename__ = "parent_student_links"
 
     id = Column(Integer, primary_key=True, index=True)
     parent_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     student_profile_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
     nickname = Column(String(64), default="")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ParentAssignment(Base):
+    """家长布置的作业：题库选题或自定义题面，学生走讲题闭环完成。"""
+
+    __tablename__ = "parent_assignments"
+
+    id = Column(String(36), primary_key=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    parent_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    source_type = Column(String(16), default="catalog", nullable=False)
+    section_id = Column(String(64), nullable=False, index=True)
+    section_label = Column(String(128), default="")
+    question_id = Column(String(96), nullable=False, index=True)
+    question_prompt = Column(Text, default="")
+    difficulty = Column(Integer, default=1)
+    title = Column(String(128), default="")
+    note = Column(Text, default="")
+    custom_image_json = Column(Text, default="{}")
+    due_at = Column(DateTime, nullable=False, index=True)
+    status = Column(String(32), default="pending", index=True)
+    opened_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    review_client_id = Column(String(96), nullable=True, index=True)
+    completion_summary = Column(Text, default="")
+    completion_mastery_delta = Column(Integer, default=0)
+    completion_round_count = Column(Integer, default=0)
+    report_json = Column(Text, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -415,10 +452,54 @@ def _run_lightweight_migrations() -> None:
                 except Exception as e:  # noqa: BLE001
                     logger.warning("[db-migrate] add bounty_attempts.%s failed: %s", col, e)
 
+        user_cols = _columns("users")
+        user_additions = {
+            "role": "ALTER TABLE users ADD COLUMN role VARCHAR(16) DEFAULT 'student'",
+            "parent_password_hash": "ALTER TABLE users ADD COLUMN parent_password_hash VARCHAR",
+        }
+        if user_cols:
+            for col, sql in user_additions.items():
+                if col in user_cols:
+                    continue
+                try:
+                    conn.execute(text(sql))
+                    logger.info("[db-migrate] added users.%s", col)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[db-migrate] add users.%s failed: %s", col, e)
+
+        link_indexes = (
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_student_links_parent "
+            "ON parent_student_links (parent_user_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_student_links_child "
+            "ON parent_student_links (student_profile_id)",
+        )
+        for sql in link_indexes:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[db-migrate] parent link index failed: %s", e)
+
         try:
             conn.commit()
         except Exception:  # noqa: BLE001
             pass
+
+
+def linked_child_profile(db: Session, parent_user: User) -> StudentProfile | None:
+    """家长账号绑定的唯一孩子 profile；未绑定则 None。"""
+
+    link = (
+        db.query(ParentStudentLink)
+        .filter(ParentStudentLink.parent_user_id == parent_user.id)
+        .first()
+    )
+    if link is None:
+        return None
+    return (
+        db.query(StudentProfile)
+        .filter(StudentProfile.id == link.student_profile_id)
+        .first()
+    )
 
 
 def init_db() -> None:

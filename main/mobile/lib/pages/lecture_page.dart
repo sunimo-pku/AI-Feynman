@@ -52,6 +52,8 @@ class LecturePage extends StatefulWidget {
     required this.section,
     this.initialQuestionId,
     this.initialQuestionIndex,
+    this.questionOverride,
+    this.assignmentId,
   });
 
   final CurriculumSection section;
@@ -66,6 +68,12 @@ class LecturePage extends StatefulWidget {
   /// 或未命中时使用。允许任意整数，超出范围时按 modulo 循环（与第七轮
   /// `MockLectureRepository.questionForSection` 的 index 行为一致）。
   final int? initialQuestionIndex;
+
+  /// 家长布置作业：覆盖题库题目（自定义题面或指定 questionId）。
+  final LectureQuestion? questionOverride;
+
+  /// 关联的作业 id，用于打开态标记（可选）。
+  final String? assignmentId;
 
   @override
   State<LecturePage> createState() => _LecturePageState();
@@ -238,21 +246,27 @@ class _LecturePageState extends State<LecturePage> {
   void initState() {
     super.initState();
     final repo = MockLectureRepository.instance;
-    // 第七轮：题库一次性加载，后续翻题只动 [_questionIndex] —— 仓库本身
-    // 是不可变 const list，多次调用 questionsForSection 也安全，但保留
-    // 一份快照能让讲题页所有 sub-widget 看到的题序保持一致。
-    _questions = repo.questionsForSection(widget.section.id);
-    // 第八轮：优先用 widget.initialQuestionId 定位（来自回顾页「再讲这题」）,
-    // 命中失败时回落 widget.initialQuestionIndex，再不行回落第 1 题。
-    _questionIndex = _resolveInitialQuestionIndex();
-    if (widget.initialQuestionId == null &&
-        widget.initialQuestionIndex == null) {
-      _questionIndex = _recommendedInitialQuestionIndex();
+    if (widget.questionOverride != null) {
+      _questions = [widget.questionOverride!];
+      _questionIndex = 0;
+      _question = widget.questionOverride!;
+    } else {
+      // 第七轮：题库一次性加载，后续翻题只动 [_questionIndex] —— 仓库本身
+      // 是不可变 const list，多次调用 questionsForSection 也安全，但保留
+      // 一份快照能让讲题页所有 sub-widget 看到的题序保持一致。
+      _questions = repo.questionsForSection(widget.section.id);
+      // 第八轮：优先用 widget.initialQuestionId 定位（来自回顾页「再讲这题」）,
+      // 命中失败时回落 widget.initialQuestionIndex，再不行回落第 1 题。
+      _questionIndex = _resolveInitialQuestionIndex();
+      if (widget.initialQuestionId == null &&
+          widget.initialQuestionIndex == null) {
+        _questionIndex = _recommendedInitialQuestionIndex();
+      }
+      _question =
+          _questions.isEmpty
+              ? repo.questionForSection(widget.section.id)
+              : _questions[_questionIndex];
     }
-    _question =
-        _questions.isEmpty
-            ? repo.questionForSection(widget.section.id)
-            : _questions[_questionIndex];
     _turns.add(_introTurn());
     _canvasController.addListener(_onCanvasChanged);
     _reasonPlayback.addListener(_onReasonPlaybackChanged);
