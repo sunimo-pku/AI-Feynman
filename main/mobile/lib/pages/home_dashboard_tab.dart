@@ -107,72 +107,76 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
             const SizedBox(height: 14),
             StudyPanel(
               tone: StudyPanelTone.accent,
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppPalette.primaryAccent.withValues(alpha: 0.14),
-                          borderRadius: AppRadius.buttonR,
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppPalette.primaryAccent.withValues(alpha: 0.14),
+                      borderRadius: AppRadius.buttonR,
+                    ),
+                    child: const Icon(
+                      Icons.edit_outlined,
+                      color: AppPalette.primaryAccent,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '每日挑战',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.edit_outlined,
-                          color: AppPalette.primaryAccent,
+                        const SizedBox(height: 4),
+                        Text(
+                          streak > 0
+                              ? '帮同学找错 · 已连续打卡 $streak 天'
+                              : '帮同学找错 · 完成今日挑战开始打卡',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppPalette.textSecondary,
+                            height: 1.35,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
-                            Text(
-                              '每日挑战',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                            StudySoftTag(
+                              text:
+                                  _loadingBounty
+                                      ? '加载今日进度…'
+                                      : '今日 $done / $total 题',
+                              accent: AppPalette.primary,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              streak > 0
-                                  ? '帮同学找错 · 已连续打卡 $streak 天'
-                                  : '帮同学找错 · 完成今日挑战开始打卡',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: AppPalette.textSecondary,
-                                height: 1.35,
+                            if (!_loadingBounty && todayDone)
+                              const StudySoftTag(
+                                text: '今日已打卡',
+                                accent: AppPalette.primaryAccent,
                               ),
-                            ),
                           ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      StudySoftTag(
-                        text:
-                            _loadingBounty
-                                ? '加载今日进度…'
-                                : '今日 $done / $total 题',
-                        accent: AppPalette.primary,
-                      ),
-                      if (!_loadingBounty && todayDone)
-                        const StudySoftTag(
-                          text: '今日已打卡',
-                          accent: AppPalette.primaryAccent,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
+                  const SizedBox(width: 10),
                   FilledButton(
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      minimumSize: const Size(0, 44),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     onPressed: _loadingBounty ? null : _openDailyChallenge,
                     child: Text(todayDone ? '再练一遍' : '开始挑战'),
                   ),
