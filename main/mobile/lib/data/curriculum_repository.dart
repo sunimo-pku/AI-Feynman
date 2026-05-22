@@ -4,6 +4,28 @@ import 'package:flutter/services.dart';
 
 import 'curriculum_models.dart';
 
+/// `pep-g7-down-s9-2` → `七年级`
+String? gradeLabelFromSectionId(String sectionId) {
+  final match = RegExp(r'^pep-g(\d)-').firstMatch(sectionId.trim());
+  if (match == null) return null;
+  switch (match.group(1)) {
+    case '7':
+      return '七年级';
+    case '8':
+      return '八年级';
+    case '9':
+      return '九年级';
+    default:
+      return null;
+  }
+}
+
+bool sectionMatchesGrade(String sectionId, String gradeLabel) {
+  final sectionGrade = gradeLabelFromSectionId(sectionId);
+  if (sectionGrade == null) return false;
+  return sectionGrade == gradeLabel.trim();
+}
+
 class CurriculumRepository {
   CurriculumRepository._();
 

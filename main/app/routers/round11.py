@@ -44,6 +44,7 @@ from app.middleware.auth import (
 )
 from app.services import knowledge_index
 from app.services.qwen_vision import recognize_question_image
+from app.services.section_grade import section_in_student_grade
 
 router = APIRouter(tags=["Round11"])
 logger = logging.getLogger(__name__)
@@ -484,13 +485,16 @@ def _bounty_public(challenge: dict[str, Any], attempt: BountyAttempt | None) -> 
 @router.get("/gamification/me")
 async def gamification_me(user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
+    grade = (profile.grade or "八年级").strip() or "八年级"
     powers = db.query(SectionPower).filter(SectionPower.student_id == profile.id).all()
+    in_grade = [p for p in powers if section_in_student_grade(p.section_id, grade)]
     wallet = _wallet(db, profile)
     return {
         "studentName": profile.display_name or user.username,
         "equippedTitle": getattr(profile, "equipped_title", "") or "",
         "crystalBalance": wallet.balance,
-        "sections": [_power_payload(p) for p in powers],
+        "grade": grade,
+        "sections": [_power_payload(p) for p in in_grade],
     }
 
 
@@ -517,6 +521,12 @@ async def leaderboard(
     db: Session = Depends(get_db),
 ):
     profile = ensure_student_profile(db, user)
+    grade = (profile.grade or "八年级").strip() or "八年级"
+    if not section_in_student_grade(section_id, grade):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Leaderboard section must belong to {grade}.",
+        )
     scope_attr = {
         "school": "school_name",
         "district": "district",

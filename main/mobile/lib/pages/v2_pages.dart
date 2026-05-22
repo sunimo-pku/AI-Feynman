@@ -55,6 +55,14 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
     return _sectionLabels[section.sectionId] ?? section.sectionId;
   }
 
+  List<PowerSection> _sectionsForGrade(PowerProfile profile) {
+    final grade = StudentGradeStore.instance.gradeLabel;
+    if (grade == null) return profile.sections;
+    return profile.sections
+        .where((s) => sectionMatchesGrade(s.sectionId, grade))
+        .toList(growable: false);
+  }
+
   @override
   void dispose() {
     _service.close();
@@ -63,131 +71,144 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final body = FutureBuilder<PowerProfile>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return _loadingOrError(
-            snapshot,
-            () => setState(() => _future = _service.fetchPowerProfile()),
-          );
-        }
-        final p = snapshot.data!;
-        final total = p.sections.fold<int>(0, (sum, s) => sum + s.powerScore);
-        return ListView(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.pageEdge,
-            widget.embeddedInTab ? 12 : AppSpacing.pageEdge,
-            AppSpacing.pageEdge,
-            24,
-          ),
-          children: [
-            if (widget.embeddedInTab) ...[
-              Text(
-                '我的成长',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+    final body = AnimatedBuilder(
+      animation: StudentGradeStore.instance,
+      builder: (context, _) {
+        return FutureBuilder<PowerProfile>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return _loadingOrError(
+                snapshot,
+                () => setState(() => _future = _service.fetchPowerProfile()),
+              );
+            }
+            final p = snapshot.data!;
+            final grade = StudentGradeStore.instance.gradeLabel;
+            final sections = _sectionsForGrade(p);
+            final total = sections.fold<int>(0, (sum, s) => sum + s.powerScore);
+            return ListView(
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.pageEdge,
+                widget.embeddedInTab ? 12 : AppSpacing.pageEdge,
+                AppSpacing.pageEdge,
+                24,
               ),
-              const SizedBox(height: 12),
-            ],
-            StudyPanel(
-              tone: StudyPanelTone.primary,
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  StudyDenseTile(
-                    title: p.studentName,
-                    subtitle:
-                        p.equippedTitle.isEmpty
-                            ? '数学练习生'
-                            : p.equippedTitle,
-                    icon: Icons.bolt_outlined,
+              children: [
+                if (widget.embeddedInTab) ...[
+                  Text(
+                    '我的成长',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      StudyStatPill(
-                        label: '总战力',
-                        value: '$total',
-                        icon: Icons.trending_up,
-                      ),
-                      StudyStatPill(
-                        label: '晶石',
-                        value: '${p.crystalBalance}',
-                        icon: Icons.diamond_outlined,
-                        accent: AppPalette.primaryAccent,
-                      ),
-                    ],
-                  ),
+                  const SizedBox(height: 12),
                 ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const StudentProfileEditPage(),
-                  ),
-                );
-                await widget.onProfileSaved?.call();
-              },
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('编辑展示名 / 年级'),
-            ),
-            const SizedBox(height: 12),
-            const StudySectionTitle(title: '章节战力'),
-            if (p.sections.isEmpty)
-              const StudyEmptyHint('完成一轮讲题或今日悬赏后，这里会出现章节战力。')
-            else
-              StudyGroupedPanel(
-                children:
-                    p.sections
-                        .map(
-                          (s) => StudyDenseTile(
-                            title: _sectionTitle(s),
-                            subtitle: '${s.rankTier} · ${s.powerScore} 战力',
-                            icon: Icons.insights_outlined,
-                            dense: true,
-                          ),
-                        )
-                        .toList(),
-              ),
-            if (widget.embeddedInTab) ...[
-              const SizedBox(height: 20),
-              const StudySectionTitle(title: '账号'),
-              AnimatedBuilder(
-                animation: AuthService.instance,
-                builder: (context, _) {
-                  final username = AuthService.instance.currentUsername;
-                  return StudyGroupedPanel(
+                StudyPanel(
+                  tone: StudyPanelTone.primary,
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       StudyDenseTile(
-                        title: username.isEmpty ? '当前账号' : username,
-                        subtitle: '学生端',
-                        icon: Icons.person_outline,
-                        showIconBox: true,
+                        title: p.studentName,
+                        subtitle:
+                            p.equippedTitle.isEmpty
+                                ? '数学练习生'
+                                : p.equippedTitle,
+                        icon: Icons.bolt_outlined,
                       ),
-                      StudyListRow(
-                        title: '切换到家长账号',
-                        subtitle: '查看学习报告与作业',
-                        onTap: () => _showSwitchParentDialog(context),
-                      ),
-                      StudyListRow(
-                        title: '退出账号',
-                        subtitle: '退出后需重新登录',
-                        onTap: () => unawaited(_logoutAccount()),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          StudyStatPill(
+                            label: grade == null ? '总战力' : '$grade总战力',
+                            value: '$total',
+                            icon: Icons.trending_up,
+                          ),
+                          StudyStatPill(
+                            label: '晶石',
+                            value: '${p.crystalBalance}',
+                            icon: Icons.diamond_outlined,
+                            accent: AppPalette.primaryAccent,
+                          ),
+                        ],
                       ),
                     ],
-                  );
-                },
-              ),
-            ],
-          ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const StudentProfileEditPage(),
+                      ),
+                    );
+                    await widget.onProfileSaved?.call();
+                  },
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('编辑展示名 / 年级'),
+                ),
+                const SizedBox(height: 12),
+                StudySectionTitle(
+                  title: grade == null ? '章节战力' : '$grade · 章节战力',
+                ),
+                if (sections.isEmpty)
+                  StudyEmptyHint(
+                    grade == null
+                        ? '完成一轮讲题或今日悬赏后，这里会出现章节战力。'
+                        : '完成$grade讲题或每日挑战后，这里会出现本章节的战力。',
+                  )
+                else
+                  StudyGroupedPanel(
+                    children:
+                        sections
+                            .map(
+                              (s) => StudyDenseTile(
+                                title: _sectionTitle(s),
+                                subtitle: '${s.rankTier} · ${s.powerScore} 战力',
+                                icon: Icons.insights_outlined,
+                                dense: true,
+                              ),
+                            )
+                            .toList(),
+                  ),
+                if (widget.embeddedInTab) ...[
+                  const SizedBox(height: 20),
+                  const StudySectionTitle(title: '账号'),
+                  AnimatedBuilder(
+                    animation: AuthService.instance,
+                    builder: (context, _) {
+                      final username = AuthService.instance.currentUsername;
+                      return StudyGroupedPanel(
+                        children: [
+                          StudyDenseTile(
+                            title: username.isEmpty ? '当前账号' : username,
+                            subtitle: '学生端',
+                            icon: Icons.person_outline,
+                            showIconBox: true,
+                          ),
+                          StudyListRow(
+                            title: '切换到家长账号',
+                            subtitle: '查看学习报告与作业',
+                            onTap: () => _showSwitchParentDialog(context),
+                          ),
+                          StudyListRow(
+                            title: '退出账号',
+                            subtitle: '退出后需重新登录',
+                            onTap: () => unawaited(_logoutAccount()),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ],
+            );
+          },
         );
       },
     );
@@ -337,16 +358,32 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
     try {
       final labels = await CurriculumRepository.instance.sectionLabelIndex();
       final profile = await _service.fetchPowerProfile();
-      final ranked = [...profile.sections]
+      final grade = StudentGradeStore.instance.gradeLabel;
+      var sections = profile.sections;
+      if (grade != null) {
+        sections = sections
+            .where((s) => sectionMatchesGrade(s.sectionId, grade))
+            .toList(growable: false);
+      }
+      final ranked = [...sections]
         ..sort((a, b) => b.powerScore.compareTo(a.powerScore));
       final withPower = ranked.where((s) => s.powerScore > 0).toList();
+      var sectionId = _sectionId;
+      if (withPower.isNotEmpty) {
+        sectionId = withPower.first.sectionId;
+      } else if (ranked.isNotEmpty) {
+        sectionId = ranked.first.sectionId;
+      } else if (grade != null) {
+        sectionId = labels.keys.firstWhere(
+          (id) => sectionMatchesGrade(id, grade),
+          orElse: () => _sectionId,
+        );
+      }
       if (!mounted) return;
       setState(() {
         _sectionLabels = labels;
         _rankedSections = withPower.isNotEmpty ? withPower : ranked;
-        if (_rankedSections.isNotEmpty) {
-          _sectionId = _rankedSections.first.sectionId;
-        }
+        _sectionId = sectionId;
         _bootstrapping = false;
         _bootstrapError = null;
         _entriesFuture = _loadEntries();

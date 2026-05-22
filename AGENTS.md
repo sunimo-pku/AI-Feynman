@@ -833,6 +833,10 @@ git push origin main
   `StudentGradeStore` + `/learning/profile`；「今日」「课程」只读该年级，
   禁止在课程 Tab 用 SegmentedButton 切换年级；勿再拼 `人教版 · X年级数学`
   长副标题；`_booksForGrade` 匹配失败时展示空状态，勿回退全册目录。
+- **战力 / 排行榜按年级过滤小节**：战力存于 `SectionPower`（**每小节一条**）；
+  `GET /gamification/me` 与 Flutter「章节战力 / 排行榜」必须只展示
+  `profile.grade` 对应册别的小节（`pep-g7-*`↔七年级等）；跨年级
+  `sectionId` 调 `/leaderboard` 应 400。八年级账号看到七年级小节战力是 bug。
 - **每日挑战 `/asr` 勿直接上传裸 PCM**：火山录音文件识别要求容器格式；
   Flutter 发 `format: pcm` 时后端须 `pcm16le_mono_to_wav` 再标 `wav`，否则
   query 阶段 `45000151 Invalid audio format`。短音频（≤120s）优先走

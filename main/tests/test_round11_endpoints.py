@@ -129,3 +129,44 @@ def test_shop_redeem_requires_full_address(client: TestClient) -> None:
     )
     assert missing_address.status_code == 400
     assert "address" in missing_address.json()["detail"].lower()
+
+
+def test_gamification_me_and_leaderboard_filter_by_grade(client: TestClient) -> None:
+    token = _register_and_login(client, f"gr{uuid.uuid4().hex[:8]}")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assert client.patch(
+        "/learning/profile",
+        headers=headers,
+        json={"grade": "八年级"},
+    ).status_code == 200
+
+    for section_id, mastery in [("pep-g7-down-s9-2", 20), ("pep-g8-down-s16-3", 40)]:
+        resp = client.post(
+            "/gamification/power/adjust",
+            headers=headers,
+            json={
+                "sectionId": section_id,
+                "masteryScore": mastery,
+                "completedRounds": 1,
+                "bountyWins": 0,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+
+    me = client.get("/gamification/me", headers=headers)
+    assert me.status_code == 200, me.text
+    body = me.json()
+    assert body["grade"] == "八年级"
+    section_ids = {s["sectionId"] for s in body["sections"]}
+    assert "pep-g7-down-s9-2" not in section_ids
+    assert "pep-g8-down-s16-3" in section_ids
+
+    assert client.get(
+        "/leaderboard?sectionId=pep-g7-down-s9-2&scope=school",
+        headers=headers,
+    ).status_code == 400
+    assert client.get(
+        "/leaderboard?sectionId=pep-g8-down-s16-3&scope=school",
+        headers=headers,
+    ).status_code == 200
