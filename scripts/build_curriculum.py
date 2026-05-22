@@ -183,6 +183,39 @@ CURRICULUM = [
     ),
 ]
 
+# 九年级专属：中考冲刺大目录（模块制，与上下册并列展示）
+SPRINT_BOOK = (
+    "g9-sprint",
+    9,
+    3,
+    "冲刺",
+    "中考冲刺",
+    [
+        (1, "代数综合", [
+            ("1.1", "方程与不等式综合"),
+            ("1.2", "二次函数与方程综合"),
+            ("1.3", "代数压轴训练"),
+        ]),
+        (2, "几何综合", [
+            ("2.1", "相似与全等综合"),
+            ("2.2", "圆的综合证明"),
+            ("2.3", "几何压轴训练"),
+        ]),
+        (3, "函数与应用", [
+            ("3.1", "函数图象综合"),
+            ("3.2", "应用题建模"),
+        ]),
+        (4, "统计与概率", [
+            ("4.1", "统计图表综合"),
+            ("4.2", "概率综合训练"),
+        ]),
+        (5, "全真模拟", [
+            ("5.1", "中考模拟卷 A"),
+            ("5.2", "中考模拟卷 B"),
+        ]),
+    ],
+)
+
 TOPIC_SECTIONS = {
     "4.4", "10.3", "13.4", "19.3", "20.3", "23.3", "29.3",
 }
@@ -203,6 +236,46 @@ def section_label(num: str, title: str, stype: str) -> str:
     if stype == "topic_study":
         return f"{num} 课题学习 {title}"
     return f"{num} {title}"
+
+
+def build_sprint_book() -> dict:
+    """构建九年级「中考冲刺」模块目录，全部小节可练。"""
+    book_key, grade, semester, sem_label, book_label, chapters = SPRINT_BOOK
+    book_id = f"pep-{book_key}"
+    grade_labels = {7: "七年级", 8: "八年级", 9: "九年级"}
+    ch_list = []
+    for ch_num, ch_title, sections in chapters:
+        ch_id = f"{book_id}-ch{ch_num}"
+        sec_list = []
+        for sec_num, sec_title in sections:
+            stype = section_type(sec_num, sec_title)
+            sec_id = f"{book_id}-s{sec_num.replace('.', '-')}"
+            sec_list.append({
+                "id": sec_id,
+                "number": sec_num,
+                "title": sec_title,
+                "label": section_label(sec_num, sec_title, stype),
+                "type": stype,
+                "contentStatus": "available",
+            })
+        ch_list.append({
+            "id": ch_id,
+            "number": ch_num,
+            "title": ch_title,
+            "label": f"模块{_cn_num(ch_num)} {ch_title}",
+            "sections": sec_list,
+        })
+    return {
+        "id": book_id,
+        "publisher": "人教版",
+        "grade": grade,
+        "gradeLabel": grade_labels[grade],
+        "semester": semester,
+        "semesterLabel": sem_label,
+        "label": book_label,
+        "bookType": "exam_sprint",
+        "chapters": ch_list,
+    }
 
 
 def build() -> dict:
@@ -258,6 +331,8 @@ def build() -> dict:
             "chapters": ch_list,
         })
 
+    books.append(build_sprint_book())
+
     return {
         "version": "1.0.0",
         "subject": "math",
@@ -302,9 +377,10 @@ def main() -> None:
         for book in data["books"]
         for ch in book["chapters"]
     )
+    chapter_count = sum(len(book["chapters"]) for book in data["books"])
     print(f"Wrote {OUT_JSON}")
     print(f"Synced {MOBILE_ASSET_JSON}")
-    print(f"Books: {len(data['books'])}, Chapters: 29, Sections: {section_count}")
+    print(f"Books: {len(data['books'])}, Chapters: {chapter_count}, Sections: {section_count}")
 
 
 if __name__ == "__main__":

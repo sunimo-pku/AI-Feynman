@@ -1036,6 +1036,154 @@
           ]
         }
       ]
+    },
+    {
+      "id": "pep-g9-sprint",
+      "publisher": "人教版",
+      "grade": 9,
+      "gradeLabel": "九年级",
+      "semester": 3,
+      "semesterLabel": "冲刺",
+      "label": "中考冲刺",
+      "bookType": "exam_sprint",
+      "chapters": [
+        {
+          "id": "pep-g9-sprint-ch1",
+          "number": 1,
+          "title": "代数综合",
+          "label": "模块一 代数综合",
+          "sections": [
+            {
+              "id": "pep-g9-sprint-s1-1",
+              "number": "1.1",
+              "title": "方程与不等式综合",
+              "label": "1.1 方程与不等式综合",
+              "type": "lesson",
+              "contentStatus": "available"
+            },
+            {
+              "id": "pep-g9-sprint-s1-2",
+              "number": "1.2",
+              "title": "二次函数与方程综合",
+              "label": "1.2 二次函数与方程综合",
+              "type": "lesson",
+              "contentStatus": "available"
+            },
+            {
+              "id": "pep-g9-sprint-s1-3",
+              "number": "1.3",
+              "title": "代数压轴训练",
+              "label": "1.3 代数压轴训练",
+              "type": "lesson",
+              "contentStatus": "available"
+            }
+          ]
+        },
+        {
+          "id": "pep-g9-sprint-ch2",
+          "number": 2,
+          "title": "几何综合",
+          "label": "模块二 几何综合",
+          "sections": [
+            {
+              "id": "pep-g9-sprint-s2-1",
+              "number": "2.1",
+              "title": "相似与全等综合",
+              "label": "2.1 相似与全等综合",
+              "type": "lesson",
+              "contentStatus": "available"
+            },
+            {
+              "id": "pep-g9-sprint-s2-2",
+              "number": "2.2",
+              "title": "圆的综合证明",
+              "label": "2.2 圆的综合证明",
+              "type": "lesson",
+              "contentStatus": "available"
+            },
+            {
+              "id": "pep-g9-sprint-s2-3",
+              "number": "2.3",
+              "title": "几何压轴训练",
+              "label": "2.3 几何压轴训练",
+              "type": "lesson",
+              "contentStatus": "available"
+            }
+          ]
+        },
+        {
+          "id": "pep-g9-sprint-ch3",
+          "number": 3,
+          "title": "函数与应用",
+          "label": "模块三 函数与应用",
+          "sections": [
+            {
+              "id": "pep-g9-sprint-s3-1",
+              "number": "3.1",
+              "title": "函数图象综合",
+              "label": "3.1 函数图象综合",
+              "type": "lesson",
+              "contentStatus": "available"
+            },
+            {
+              "id": "pep-g9-sprint-s3-2",
+              "number": "3.2",
+              "title": "应用题建模",
+              "label": "3.2 应用题建模",
+              "type": "lesson",
+              "contentStatus": "available"
+            }
+          ]
+        },
+        {
+          "id": "pep-g9-sprint-ch4",
+          "number": 4,
+          "title": "统计与概率",
+          "label": "模块四 统计与概率",
+          "sections": [
+            {
+              "id": "pep-g9-sprint-s4-1",
+              "number": "4.1",
+              "title": "统计图表综合",
+              "label": "4.1 统计图表综合",
+              "type": "lesson",
+              "contentStatus": "available"
+            },
+            {
+              "id": "pep-g9-sprint-s4-2",
+              "number": "4.2",
+              "title": "概率综合训练",
+              "label": "4.2 概率综合训练",
+              "type": "lesson",
+              "contentStatus": "available"
+            }
+          ]
+        },
+        {
+          "id": "pep-g9-sprint-ch5",
+          "number": 5,
+          "title": "全真模拟",
+          "label": "模块五 全真模拟",
+          "sections": [
+            {
+              "id": "pep-g9-sprint-s5-1",
+              "number": "5.1",
+              "title": "中考模拟卷 A",
+              "label": "5.1 中考模拟卷 A",
+              "type": "lesson",
+              "contentStatus": "available"
+            },
+            {
+              "id": "pep-g9-sprint-s5-2",
+              "number": "5.2",
+              "title": "中考模拟卷 B",
+              "label": "5.2 中考模拟卷 B",
+              "type": "lesson",
+              "contentStatus": "available"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -179,6 +179,8 @@ def _topic_kind(title: str) -> str:
         ]
     ):
         return "geometry"
+    if any(k in title for k in ["模拟", "压轴", "综合", "建模"]):
+        return "concept"
     return "concept"
 
 

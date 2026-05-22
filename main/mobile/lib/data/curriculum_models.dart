@@ -64,23 +64,31 @@ class CurriculumBook {
   const CurriculumBook({
     required this.id,
     required this.gradeLabel,
+    required this.semester,
     required this.semesterLabel,
     required this.label,
     required this.chapters,
+    this.bookType = '',
   });
 
   final String id;
   final String gradeLabel;
+  final int semester;
   final String semesterLabel;
   final String label;
   final List<CurriculumChapter> chapters;
+  final String bookType;
+
+  bool get isExamSprint => bookType == 'exam_sprint' || id.contains('sprint');
 
   factory CurriculumBook.fromJson(Map<String, dynamic> json) {
     return CurriculumBook(
       id: json['id'] as String,
       gradeLabel: json['gradeLabel'] as String,
+      semester: (json['semester'] as num?)?.toInt() ?? 0,
       semesterLabel: json['semesterLabel'] as String,
       label: json['label'] as String,
+      bookType: json['bookType'] as String? ?? '',
       chapters: (json['chapters'] as List<dynamic>)
           .map((e) => CurriculumChapter.fromJson(e as Map<String, dynamic>))
           .toList(),

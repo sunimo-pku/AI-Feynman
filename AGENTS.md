@@ -837,7 +837,10 @@ git push origin main
   汇总（同章各小节战力求和）。`GET /gamification/me` 返回 `chapters[]`（含
   `chapterId`）；`/leaderboard?chapterId=` 按章实时汇总排名，旧 `sectionId`
   参数会自动映射成大章 id。必须只含 `profile.grade` 对应册别（`pep-g7-*`↔七年级等）。
-- **每日挑战按年级选题**：`_select_today_bounties` 必须先按
+- **九年级「中考冲刺」大目录**：`scripts/build_curriculum.py` 的 `SPRINT_BOOK`
+  生成 `pep-g9-sprint`（`bookType=exam_sprint`，`semester=3`）；仅
+  `gradeLabel=九年级` 时在课程 Tab 与上下册并列展示；小节 id 形如
+  `pep-g9-sprint-s1-1`，战力汇总 regex 需含 `sprint`。
   `profile.grade` 过滤 `challenges.json`（`section_in_student_grade`）；
   弱项优先也只认同年级 `sectionId`；`/bounty/submit` 走当日集合校验，
   不能完成跨年级挑战领奖励。

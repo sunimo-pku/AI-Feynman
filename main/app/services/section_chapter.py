@@ -12,7 +12,7 @@ from app.services.section_grade import section_grade_label
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _CURRICULUM_FILE = _PROJECT_ROOT / "data" / "curriculum" / "pep-junior-math.json"
 
-_SECTION_TO_CHAPTER = re.compile(r"^(pep-g\d-(?:up|down)-)s(\d+)-\d+$")
+_SECTION_TO_CHAPTER = re.compile(r"^(pep-g\d-(?:up|down|sprint)-)s(\d+)-\d+$")
 
 
 def chapter_id_from_section_id(section_id: str) -> str | None:

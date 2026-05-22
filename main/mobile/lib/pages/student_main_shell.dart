@@ -152,9 +152,12 @@ class _StudentMainShellState extends State<StudentMainShell> {
     MathCurriculum curriculum,
     String gradeLabel,
   ) {
-    return curriculum.books
-        .where((book) => book.gradeLabel == gradeLabel)
-        .toList(growable: false);
+    final books =
+        curriculum.books
+            .where((book) => book.gradeLabel == gradeLabel)
+            .toList(growable: true);
+    books.sort((a, b) => a.semester.compareTo(b.semester));
+    return books;
   }
 
   @override

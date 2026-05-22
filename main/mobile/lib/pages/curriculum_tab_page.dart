@@ -102,7 +102,10 @@ class _BookDenseTile extends StatelessWidget {
 
     return StudyListRow(
       title: book.label,
-      subtitle: '${book.chapters.length} 章 · $totalSections 节 · $practicable 节可练',
+      subtitle:
+          book.isExamSprint
+              ? '${book.chapters.length} 个模块 · $totalSections 节 · $practicable 节可练'
+              : '${book.chapters.length} 章 · $totalSections 节 · $practicable 节可练',
       onTap: onTap,
     );
   }

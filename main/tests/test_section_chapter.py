@@ -17,6 +17,11 @@ def test_chapter_id_from_section_id() -> None:
 def test_section_belongs_to_chapter() -> None:
     assert section_belongs_to_chapter("pep-g8-down-s16-1", "pep-g8-down-ch16")
     assert not section_belongs_to_chapter("pep-g8-down-s16-1", "pep-g8-down-ch19")
+    assert section_belongs_to_chapter("pep-g9-sprint-s2-1", "pep-g9-sprint-ch2")
+
+
+def test_chapter_id_from_sprint_section() -> None:
+    assert chapter_id_from_section_id("pep-g9-sprint-s1-3") == "pep-g9-sprint-ch1"
 
 
 def test_resolve_leaderboard_chapter_id() -> None:

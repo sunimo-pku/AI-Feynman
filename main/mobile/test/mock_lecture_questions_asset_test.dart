@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('question asset covers 90 curriculum sections with 3 questions each', () async {
+  test('question asset covers 102 curriculum sections with 3 questions each', () async {
     final raw = await rootBundle.loadString(
       MockLectureRepository.questionBankAssetPath,
     );
@@ -18,8 +18,8 @@ void main() {
         .map((q) => q['sectionId'] as String? ?? '')
         .where((id) => id.isNotEmpty)
         .toSet();
-    expect(sectionIds.length, 90);
-    expect(questions.length, 270);
+    expect(sectionIds.length, 102);
+    expect(questions.length, 306);
 
     for (final sectionId in sectionIds) {
       final sectionQuestions = questions
