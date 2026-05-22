@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import time
 import uuid
@@ -66,6 +67,10 @@ EVT_AGENT_TURN_DONE = "agent_turn_done"
 EVT_ROUND_DONE = "round_done"
 EVT_WARNING = "warning"
 EVT_ERROR = "error"
+# 第十二轮第三轮（流式 TTS）：LLM 流式 delta 累积一句完整中文（句号 / 问号 / 感叹号）
+# 后立刻调火山流式 TTS，每段 mp3 bytes base64 一发就推。前端按 turnId 累积、
+# 按 seq 顺序播放（首段直接播，后续段排队）。failure 时只 warning，不影响气泡显示。
+EVT_AGENT_TTS_CHUNK = "agent_tts_chunk"
 
 
 # 单次 LLM 追问产出的整段 text 切成多少字一条 delta 推给前端。
@@ -125,6 +130,14 @@ class LiveLectureSession:
     # ---- 中断 ----
     _interrupt_event: asyncio.Event = field(default_factory=asyncio.Event)
     _started: bool = False
+
+    # ---- 流式 TTS（第十二轮第三轮）----
+    # 在 delta 累积时按中文标点切句，每完整一句异步调火山流式 TTS，
+    # mp3 bytes base64 通过 ws `agent_tts_chunk` 推给前端。
+    # `_tts_seq_by_turn` 只在主协程里递增，保证 (turnId, seq) 全局有序。
+    _tts_buffer_by_turn: dict[str, str] = field(default_factory=dict)
+    _tts_seq_by_turn: dict[str, int] = field(default_factory=dict)
+    _tts_role_by_turn: dict[str, str] = field(default_factory=dict)
 
     # ============================================================== #
     # 事件入口
@@ -656,11 +669,22 @@ class LiveLectureSession:
                     "turnId": turn_id,
                     "delta": delta,
                 })
+                # 流式 TTS：累积 delta 到完整一句就抠出来异步合成。
+                role = turns_by_id[turn_id].get("role") or "teacher"
+                self._tts_role_by_turn[turn_id] = role
+                self._maybe_dispatch_tts_sentence(
+                    turn_id=turn_id,
+                    delta=delta,
+                    send=send,
+                )
             elif typ == "turn_done":
+                turn_id = str(event.get("turnId") or (order[-1] if order else "turn_1"))
+                # turn 结束，把缓冲里残留的不带句号的尾句也送去合成。
+                self._flush_tts_remainder(turn_id=turn_id, send=send)
                 await self._safe_send(send, {
                     "type": EVT_AGENT_TURN_DONE,
                     "sessionId": self.session_id,
-                    "turnId": str(event.get("turnId") or (order[-1] if order else "turn_1")),
+                    "turnId": turn_id,
                 })
             elif typ == "round_meta":
                 status = str(event.get("status") or status)
@@ -675,6 +699,150 @@ class LiveLectureSession:
             "turns": turns,
             "source": "llm_stream",
         }
+
+    # ============================================================== #
+    # 流式 TTS（第十二轮第三轮）
+    # ============================================================== #
+
+    # 中文句子切分：句号 / 问号 / 感叹号 / 中文分号 都视为句末（注意 LaTeX 里的
+    # `\.` 不该被切；这里只匹配单字符标点，避开反斜杠转义）。
+    _SENTENCE_END_PUNCT: tuple[str, ...] = ("。", "！", "？", "!", "?", "；", ";")
+
+    # 一句太长时强制截断（给火山的单次合成上限做预防），按字符数。
+    _SENTENCE_MAX_CHARS = 80
+
+    def _maybe_dispatch_tts_sentence(
+        self,
+        *,
+        turn_id: str,
+        delta: str,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """累积一段 delta；遇到完整句子或缓冲超长时切出去丢给后台流式 TTS。"""
+        if not delta:
+            return
+        buf = self._tts_buffer_by_turn.get(turn_id, "") + delta
+        # 反复扫描句末标点，把每个完整句切出去。
+        while True:
+            idx = -1
+            for p in self._SENTENCE_END_PUNCT:
+                pos = buf.find(p)
+                if pos >= 0 and (idx < 0 or pos < idx):
+                    idx = pos
+            if idx < 0:
+                # 没有句末标点；如果累积太长也强切，避免一句话憋到 turn_done 才合成。
+                if len(buf) >= self._SENTENCE_MAX_CHARS:
+                    sentence = buf[: self._SENTENCE_MAX_CHARS]
+                    buf = buf[self._SENTENCE_MAX_CHARS :]
+                    self._launch_tts_task(turn_id, sentence, send)
+                    continue
+                break
+            sentence = buf[: idx + 1]
+            buf = buf[idx + 1 :]
+            self._launch_tts_task(turn_id, sentence, send)
+        self._tts_buffer_by_turn[turn_id] = buf
+
+    def _flush_tts_remainder(
+        self,
+        *,
+        turn_id: str,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        rest = self._tts_buffer_by_turn.pop(turn_id, "").strip()
+        if rest:
+            self._launch_tts_task(turn_id, rest, send)
+
+    def _launch_tts_task(
+        self,
+        turn_id: str,
+        sentence: str,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        sentence = sentence.strip()
+        if not sentence:
+            return
+        seq = self._tts_seq_by_turn.get(turn_id, 0)
+        self._tts_seq_by_turn[turn_id] = seq + 1
+        role = self._tts_role_by_turn.get(turn_id, "teacher")
+        # 立刻派一个 background task 跑流式 TTS；不 await（要保证主协程
+        # 继续接收下一段 LLM delta）。失败只发 warning，不影响主流程。
+        asyncio.create_task(
+            self._stream_tts_for_sentence(
+                send=send,
+                turn_id=turn_id,
+                seq=seq,
+                role=role,
+                sentence=sentence,
+            )
+        )
+
+    async def _stream_tts_for_sentence(
+        self,
+        *,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+        turn_id: str,
+        seq: int,
+        role: str,
+        sentence: str,
+    ) -> None:
+        from app.config import Config
+        from app.services import volc_tts
+
+        speaker = Config.SPEAKER_BY_ROLE.get(role, Config.VOLC_DEFAULT_SPEAKER)
+
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        sentinel = object()
+
+        def _producer() -> None:
+            try:
+                for audio_bytes in volc_tts.synthesize_stream(sentence, speaker):
+                    asyncio.run_coroutine_threadsafe(queue.put(audio_bytes), loop)
+            except Exception as exc:  # noqa: BLE001
+                asyncio.run_coroutine_threadsafe(
+                    queue.put(("__error__", exc)), loop
+                )
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put(sentinel), loop)
+
+        loop.run_in_executor(None, _producer)
+
+        chunk_index = 0
+        while True:
+            item = await queue.get()
+            if item is sentinel:
+                break
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "__error__":
+                logger.warning(
+                    "[live-session] tts stream failed turn=%s seq=%d err=%s",
+                    turn_id,
+                    seq,
+                    item[1],
+                )
+                # 给前端一条 warning，让 UI 可以选择性提示但不阻塞气泡。
+                await self._safe_send(send, {
+                    "type": EVT_WARNING,
+                    "sessionId": self.session_id,
+                    "message": f"tts_failed:{turn_id}:{seq}",
+                })
+                return
+            if self._interrupt_event.is_set():
+                # 学生打断 → 把后续 mp3 chunk 全吞掉。
+                continue
+            chunk_index += 1
+            await self._safe_send(send, {
+                "type": EVT_AGENT_TTS_CHUNK,
+                "sessionId": self.session_id,
+                "turnId": turn_id,
+                "seq": seq,
+                "chunkIndex": chunk_index,
+                "audioBase64": base64.b64encode(item).decode("ascii"),
+                "format": "mp3",
+                # done=True 由调用方在 last chunk 标记 —— 这里我们用前端能识别的
+                # 「chunkIndex 不再增加」语义；后端无法判断「下一段是否还有」，
+                # 简单做法：每段都不带 done，前端按 turn 的 agent_turn_done 来
+                # 判断"本 turn 不会再有 tts chunk"。
+            })
 
     def _append_student_history_snapshot(self) -> None:
         speech = " ".join(self.transcript_segments[-6:]).strip()

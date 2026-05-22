@@ -37,6 +37,7 @@ enum LiveServerEventType {
   agentTurnStart,
   agentTurnDelta,
   agentTurnDone,
+  agentTtsChunk,
   roundDone,
   warning,
   error,
@@ -57,6 +58,8 @@ LiveServerEventType parseLiveServerEventType(String raw) {
       return LiveServerEventType.agentTurnDelta;
     case 'agent_turn_done':
       return LiveServerEventType.agentTurnDone;
+    case 'agent_tts_chunk':
+      return LiveServerEventType.agentTtsChunk;
     case 'round_done':
       return LiveServerEventType.roundDone;
     case 'warning':
@@ -116,6 +119,22 @@ class LiveAgentTurnDeltaPayload extends LiveServerPayload {
 class LiveAgentTurnDonePayload extends LiveServerPayload {
   const LiveAgentTurnDonePayload({required this.turnId});
   final String turnId;
+}
+
+/// 服务端推送的流式 TTS 段：每段是一句话（按句号 / 问号切）的火山合成
+/// 输出，base64 编码的 mp3。前端按 (turnId, seq) 顺序排队播放即可。
+class LiveAgentTtsChunkPayload extends LiveServerPayload {
+  const LiveAgentTtsChunkPayload({
+    required this.turnId,
+    required this.seq,
+    required this.audioBase64,
+    required this.format,
+  });
+
+  final String turnId;
+  final int seq;
+  final String audioBase64;
+  final String format;
 }
 
 class LiveRoundDonePayload extends LiveServerPayload {
@@ -191,6 +210,14 @@ class LiveServerEvent {
       case LiveServerEventType.agentTurnDone:
         return LiveAgentTurnDonePayload(
           turnId: (json['turnId'] as String?) ?? '',
+        );
+      case LiveServerEventType.agentTtsChunk:
+        final s = json['seq'];
+        return LiveAgentTtsChunkPayload(
+          turnId: (json['turnId'] as String?) ?? '',
+          seq: s is num ? s.toInt() : 0,
+          audioBase64: (json['audioBase64'] as String?) ?? '',
+          format: (json['format'] as String?) ?? 'mp3',
         );
       case LiveServerEventType.roundDone:
         final delta = json['masteryDelta'];

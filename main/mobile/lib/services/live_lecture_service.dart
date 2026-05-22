@@ -83,6 +83,25 @@ class LiveLectureService {
   Timer? _ttsFadeTimer;
   int _currentTtsToken = 0;
 
+  /// 第十二轮第三轮（流式 TTS）：把后端 `agent_tts_chunk` 推过来的每段 mp3
+  /// bytes 排队，按到达顺序播放。流式 TTS 让 LLM 第一句还在打字时就能听见
+  /// 第一段声音；只要流式 TTS 在该 turn 上至少送出一段，前端就**不再**调
+  /// 整段 `requestTts`（避免双播）。
+  ///
+  /// 设计：
+  ///   * `_ttsQueue` 严格按到达顺序入队；audioplayers 没有 append API，
+  ///     只能"播完一段→拿下一段"。短句间隙人感知大约 50-150ms，可接受。
+  ///   * `_streamedTtsTurnIds` 记录哪些 turn 已经在流式 TTS 路径上；
+  ///     [didStreamTtsForTurn] 暴露给 page 用来跳过重复整段 TTS。
+  ///   * 学生打断 / 关闭 session / dispose 时清空队列并立即 stop。
+  final List<_TtsQueueItem> _ttsQueue = [];
+  bool _ttsQueueBusy = false;
+  final Set<String> _streamedTtsTurnIds = <String>{};
+  StreamSubscription? _ttsCompleteSub;
+
+  bool didStreamTtsForTurn(String turnId) =>
+      _streamedTtsTurnIds.contains(turnId);
+
   final _eventsController = StreamController<LiveServerEvent>.broadcast();
   final _connectionController = StreamController<LiveConnectionState>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
@@ -334,6 +353,7 @@ class LiveLectureService {
     // 用户主动结束本题：取消所有未来的自动重连，避免「学生关掉后端口又
     // 被 service 自己拉起来」的鬼畜体验。
     _cancelReconnect();
+    _clearTtsQueue();
     if (_isConnected && _sessionId.isNotEmpty) {
       _sendJson(LiveClientEvent.sessionEnd(sessionId: _sessionId));
     }
@@ -345,13 +365,86 @@ class LiveLectureService {
     _markDisconnected();
   }
 
+  /// 把后端流式 TTS 推过来的一段 mp3 入队 + 触发消费。
+  void _onTtsChunk(LiveAgentTtsChunkPayload p) {
+    if (_disposed) return;
+    if (p.audioBase64.isEmpty) return;
+    final Uint8List bytes;
+    try {
+      bytes = base64Decode(p.audioBase64);
+    } catch (_) {
+      return;
+    }
+    if (bytes.isEmpty) return;
+    _streamedTtsTurnIds.add(p.turnId);
+    _ttsQueue.add(_TtsQueueItem(
+      turnId: p.turnId,
+      seq: p.seq,
+      bytes: bytes,
+    ));
+    unawaited(_consumeTtsQueue());
+  }
+
+  Future<void> _consumeTtsQueue() async {
+    if (_ttsQueueBusy) return;
+    if (_ttsQueue.isEmpty) return;
+    _ttsQueueBusy = true;
+    try {
+      while (_ttsQueue.isNotEmpty && !_disposed) {
+        final item = _ttsQueue.removeAt(0);
+        // 取消可能正在跑的 fade timer，把音量复位。
+        _ttsFadeTimer?.cancel();
+        _ttsFadeTimer = null;
+        final myToken = ++_currentTtsToken;
+        try {
+          await _audioPlayer.stop();
+        } catch (_) {}
+        try {
+          await _audioPlayer.setVolume(1.0);
+        } catch (_) {}
+        if (myToken != _currentTtsToken) {
+          // 中途被新的 stopTts / 下一段 enqueue 抢走 token
+          continue;
+        }
+        if (!_ttsStateController.isClosed) {
+          _ttsStateController.add(TtsState.playing);
+        }
+        try {
+          await _audioPlayer.play(
+            BytesSource(item.bytes, mimeType: 'audio/mpeg'),
+          );
+          // 等播放完成；onPlayerComplete 是 Stream，每段播完都会 emit。
+          await _audioPlayer.onPlayerComplete.first;
+        } catch (e) {
+          _emitError('TTS 段播放失败：$e');
+        }
+      }
+    } finally {
+      _ttsQueueBusy = false;
+      if (_ttsQueue.isEmpty && !_ttsStateController.isClosed) {
+        _ttsStateController.add(TtsState.idle);
+      } else if (_ttsQueue.isNotEmpty) {
+        // 队列在 finally 期间又来了新 item，重新驱动。
+        unawaited(_consumeTtsQueue());
+      }
+    }
+  }
+
+  void _clearTtsQueue() {
+    _ttsQueue.clear();
+    _streamedTtsTurnIds.clear();
+  }
+
   /// 调用现有 `POST /tts`，把 [text] 合成 mp3 → 播放。
   ///
-  /// 设计：
-  ///   * 第九轮 brief 第 11 节允许"等 agent_turn_done 后再 TTS"；
-  ///   * 学生开口 / 落笔时调用 [stopTts]，目前是快速 stop()，
-  ///     TODO：接入 200ms 淡出（audioplayers 暂不直接支持 fade，
-  ///     需要平台侧实现或用 just_audio）。
+  /// 注意：第十二轮第三轮起，**优先走流式 TTS**（[_onTtsChunk]）。
+  /// page 端在 `agent_turn_done` 处应当先用 [didStreamTtsForTurn] 判断
+  /// 当前 turn 是否已经走过流式 TTS；走过就别再调本方法（双播）。
+  /// 仅在流式 TTS 未启用 / 失败 / 后端兜底（如 turn 整段早于句末就 done）
+  /// 时回退到本方法整段合成。
+  ///
+  /// 设计（保留旧行为）：
+  ///   * 学生开口 / 落笔时调用 [stopTts]，200ms 渐隐 fade-out；
   ///   * 任意失败都只走 [errors] / [ttsState]，不抛。
   Future<void> requestTts(String text, {String role = ''}) async {
     if (_disposed || text.trim().isEmpty) return;
@@ -418,6 +511,9 @@ class LiveLectureService {
   /// 不阻塞调用方：方法本身仍是 Future，但内部 tick 走异步 Timer，
   /// 学生白板继续可写（brief 第 11 节）。
   Future<void> stopTts({Duration fadeDuration = const Duration(milliseconds: 220)}) async {
+    // 学生打断 / 主动 stop：把流式 TTS 的剩余段全清掉，否则 fade 完毕后
+    // 队列里下一段又会自动接着播。
+    _clearTtsQueue();
     final myToken = ++_currentTtsToken;
     _ttsFadeTimer?.cancel();
     final stepMs = 25;
@@ -458,6 +554,10 @@ class LiveLectureService {
     _disposed = true;
     _ttsFadeTimer?.cancel();
     _ttsFadeTimer = null;
+    _clearTtsQueue();
+    try {
+      await _ttsCompleteSub?.cancel();
+    } catch (_) {}
     _stopAppPing();
     _cancelReconnect();
     try {
@@ -521,6 +621,11 @@ class LiveLectureService {
       final decoded = jsonDecode(message);
       if (decoded is! Map<String, dynamic>) return;
       final event = LiveServerEvent.fromJson(decoded);
+      // 流式 TTS chunk：不流出去给 page 处理，service 内部排队播放即可。
+      // 同时仍 emit 一次 agent_tts_chunk 让上层有机会做日志 / debug 面板。
+      if (event.type == LiveServerEventType.agentTtsChunk) {
+        _onTtsChunk(event.payload as LiveAgentTtsChunkPayload);
+      }
       if (!_eventsController.isClosed) {
         _eventsController.add(event);
       }
@@ -552,3 +657,14 @@ class LiveLectureService {
 enum LiveConnectionState { disconnected, connected }
 
 enum TtsState { idle, playing }
+
+class _TtsQueueItem {
+  const _TtsQueueItem({
+    required this.turnId,
+    required this.seq,
+    required this.bytes,
+  });
+  final String turnId;
+  final int seq;
+  final Uint8List bytes;
+}

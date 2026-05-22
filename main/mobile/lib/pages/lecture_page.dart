@@ -1330,15 +1330,25 @@ class _LecturePageState extends State<LecturePage> {
               _history.length - _maxHistoryItems,
             );
           }
-          // 触发 TTS。失败由 LiveLectureService 写到 errors 流并显示为失败态。
-          unawaited(_liveService.requestTts(
-            doneTurn.text,
-            role: agentRoleWire(doneTurn.role),
-          ));
+          // 第十二轮第三轮：流式 TTS 优先。LLM 流式 delta 在后端逐句切句、
+          // 边合成边推 `agent_tts_chunk`，前端 LiveLectureService 已经按
+          // 队列播过了。这里如果再调一次整段 requestTts → 同一段话播两遍。
+          // 用 didStreamTtsForTurn 判断；只有当流式 TTS 完全没出过段（极少
+          // 见的"turn done 时连一段都没合成出来"）才 fallback 到整段合成。
+          if (!_liveService.didStreamTtsForTurn(p.turnId)) {
+            unawaited(_liveService.requestTts(
+              doneTurn.text,
+              role: agentRoleWire(doneTurn.role),
+            ));
+          }
         }
         if (_activeStreamingTurnId == p.turnId) {
           _activeStreamingTurnId = '';
         }
+        break;
+      case LiveServerEventType.agentTtsChunk:
+        // 第十二轮第三轮：流式 TTS 段已经在 LiveLectureService 内部按队列播放，
+        // page 这里不需要任何动作；仅做 case 完整以让 dart_lints 通过。
         break;
       case LiveServerEventType.roundDone:
         _cancelThinkingWatchdog();

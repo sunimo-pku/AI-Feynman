@@ -771,6 +771,23 @@ git push origin main
   历史上有人手动 `nohup uvicorn ... --port 8000` 起过老进程不会被它清理。
   排查"反复 disconnect"时务必 `ps -ef | grep uvicorn` 确认只有 8001 在跑，
   否则前端连的是新代码，但其它接口可能随机命中老代码。
+- **流式 TTS（agent_tts_chunk）双播防御**：第十二轮第三轮把 TTS 从「等
+  整段 LLM 完成 → 调一次 `/tts` 拿整段 mp3 → BytesSource 播」改成「LLM
+  流式 delta 累积到完整一句（句号 / 问号 / 感叹号 / `；`）就在后端
+  `_stream_agent_events_to_client` 里调 `volc_tts.synthesize_stream`，
+  每段 mp3 bytes base64 通过 ws `agent_tts_chunk` 推给前端」。  
+  关键坑：前端原本在 `agent_turn_done` 还会调一次 `requestTts` 整段合成；
+  必须用 `LiveLectureService.didStreamTtsForTurn(turnId)` 判断该 turn 是否
+  已经走过流式 TTS，走过就**不要**再调 `requestTts`，否则同一段话会播两遍。
+  仅当流式 TTS 一段都没出（极少见）时才 fallback 到整段 `requestTts`。
+- **流式 TTS 队列要在打断 / endSession 时显式清空**：`_clearTtsQueue` 在
+  `stopTts` / `endSession` / `dispose` 都要调，否则学生开口打断后 fade 完毕，
+  audioplayers 会自动接队列里的下一段继续播，体感"AI 被打断了又自顾自接着说"。
+- **火山 TTS 接口本来就是 NDJSON 流式**：每行一个
+  `{"code":0,"data":"<base64 mp3>"}`，把 `httpx.Client.post` 改成
+  `httpx.stream(...) + iter_lines()` 就能边收边 yield mp3 bytes，不用上
+  WebSocket 协议。不要把 `synthesize` 改掉破坏现有 `/tts` 全量返回路径，
+  新加 `synthesize_stream` 这个 generator 就够了。
 
 ---
 
