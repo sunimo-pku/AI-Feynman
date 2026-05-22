@@ -334,12 +334,23 @@ class LiveLectureSession:
                 "sessionId": self.session_id,
             })
             return
-        if not self.latest_steps:
-            # 白板还没东西，老师追问的根都没有 —— 提示学生先写两步再继续。
+        # 「白板空 + 学生也没讲过话」才真正拦下，否则继续走 LLM。
+        # 第十二轮踩坑：之前只要 latest_steps 为空就 warning + return，
+        # 但前端已经切到 thinking 状态，warning 又不让它回退，UI 永远卡在
+        # 「AI 正在想问题」。新策略：
+        #   * 任何一边（白板 / 转写）有内容 → LLM 拿现有上下文做追问；
+        #   * 都没有 → 发 warning 后**显式补一条 listening**，让前端切回，
+        #     学生再继续写 / 讲。
+        has_speech = any(seg.strip() for seg in self.transcript_segments)
+        if not self.latest_steps and not has_speech:
             await self._safe_send(send, {
                 "type": EVT_WARNING,
                 "sessionId": self.session_id,
                 "message": "no_steps_yet",
+            })
+            await self._safe_send(send, {
+                "type": EVT_LISTENING,
+                "sessionId": self.session_id,
             })
             return
         # 进入 thinking 前先把剩余音频 flush 给 ASR；这样 LLM 看到的

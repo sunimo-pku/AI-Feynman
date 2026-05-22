@@ -199,6 +199,24 @@ class _LecturePageState extends State<LecturePage> {
   Timer? _voiceDebounceTimer;
   bool _interruptOnCooldown = false;
 
+  /// thinking 状态的「看门狗」：发出 pause_detected 后启动，
+  /// [_thinkingWatchdogTimeout] 内仍未收到任何 [LiveServerEventType.thinking]
+  /// / [agentTurnStart] / [error] / [warning] 事件，则前端主动把状态切回
+  /// listening + 显示一句友好提示，避免 UI 永远卡在「AI 正在想问题」。
+  ///
+  /// 触发场景：
+  ///   * 后端发了 warning + listening，但 listening 在网络层丢失（罕见）；
+  ///   * 后端 LLM 调用挂在 connect / 流式 yield 期间，pause_detected 后没有
+  ///     任何下行事件；
+  ///   * WebSocket 在 pause_detected 之后立刻断（NAT 超时 / 服务端进程
+  ///     重启），onError / onDone 已经把 _isConnected 切 false，但 setState
+  ///     还停留在 thinking。
+  ///
+  /// 14 秒是经验值：DeepSeek-V4-Flash 关思考模式实测 1-8s 一轮，留出充足
+  /// 余量；超过这个时间几乎可以判定后端无响应。
+  Timer? _thinkingWatchdogTimer;
+  static const Duration _thinkingWatchdogTimeout = Duration(seconds: 14);
+
   /// 本轮 (上次 round_done 之后) 累计的 ASR 文本字符数。用来作为
   /// 「自动追问触发」的最后一道门槛 —— 学生开口讲了 ≥ 5 个字之后再
   /// 触发，避免学生只是清嗓子 / 思考几秒就把 LLM 调一次空炮。
@@ -306,6 +324,7 @@ class _LecturePageState extends State<LecturePage> {
     _stuckHintTimer?.cancel();
     _wrapUpTimer?.cancel();
     _voiceDebounceTimer?.cancel();
+    _thinkingWatchdogTimer?.cancel();
     unawaited(_liveEventsSub.cancel());
     unawaited(_liveErrorsSub.cancel());
     unawaited(_liveConnSub.cancel());
@@ -858,6 +877,7 @@ class _LecturePageState extends State<LecturePage> {
     // 都属于「新一轮」语义；不重置会导致连续两题只留下第一题的回顾）。
     _reviewSavedForCurrentRound = false;
     _currentRoundAsrChars = 0;
+    _cancelThinkingWatchdog();
   }
 
   /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题
@@ -970,13 +990,40 @@ class _LecturePageState extends State<LecturePage> {
   void _onManualPause() {
     if (!_liveService.isConnected) return;
     _liveService.sendPauseDetected(silenceMs: 1500);
+    _armThinkingWatchdog();
     setState(() {
       _liveStatus = _LiveStatus.thinking;
     });
   }
 
+  /// 启动 thinking 看门狗。重复调用幂等：每次调用都会 cancel 旧定时器。
+  ///
+  /// 看门狗超时后做的事：
+  ///   * 切回 listening（保留 WS / 录音 / 已识别 ASR）；
+  ///   * 设一句 `_liveFailureReason` 友好提示，不切到 failed 态以免
+  ///     学生觉得整次会话挂了；
+  ///   * 不主动断 WS，因为后端可能还在生成、只是慢；如果 WS 真的断了，
+  ///     `_onLiveConnection(disconnected)` 会单独把状态切到 disconnected。
+  void _armThinkingWatchdog() {
+    _thinkingWatchdogTimer?.cancel();
+    _thinkingWatchdogTimer = Timer(_thinkingWatchdogTimeout, () {
+      if (!mounted) return;
+      if (_liveStatus != _LiveStatus.thinking) return;
+      setState(() {
+        _liveStatus = _LiveStatus.listening;
+        _liveFailureReason = '后端暂时没回，请再讲两句或重新点「我讲到这里」';
+      });
+    });
+  }
+
+  void _cancelThinkingWatchdog() {
+    _thinkingWatchdogTimer?.cancel();
+    _thinkingWatchdogTimer = null;
+  }
+
   /// 「暂停倾听」按钮：thinking 阶段允许学生取消本轮，回到 idle 重写白板。
   void _onStopLive() {
+    _cancelThinkingWatchdog();
     unawaited(_audioService.stop());
     unawaited(_liveService.stopTts());
     setState(() {
@@ -988,6 +1035,7 @@ class _LecturePageState extends State<LecturePage> {
   /// 兜底状态，让学生有机会用「下一题」继续。
   Future<void> _onEndLiveSession() async {
     _inkSnapshotDebounce?.cancel();
+    _cancelThinkingWatchdog();
     await _audioService.stop();
     await _liveService.endSession();
     await _liveService.stopTts();
@@ -1050,6 +1098,7 @@ class _LecturePageState extends State<LecturePage> {
           return;
         }
         _liveService.sendPauseDetected(silenceMs: 2500);
+        _armThinkingWatchdog();
         setState(() {
           _liveStatus = _LiveStatus.thinking;
         });
@@ -1179,6 +1228,9 @@ class _LecturePageState extends State<LecturePage> {
         }
         break;
       case LiveServerEventType.thinking:
+        // 后端 thinking 是「LLM 调用确认开始」的信号，看门狗在收到第一条
+        // turn_start 之前不能解除（thinking 只表示后端进入了 LLM 调用阶段，
+        // 真正卡死往往发生在 thinking → turn_start 之间）。这里不取消看门狗。
         if (mounted) {
           setState(() {
             _liveStatus = _LiveStatus.thinking;
@@ -1186,6 +1238,8 @@ class _LecturePageState extends State<LecturePage> {
         }
         break;
       case LiveServerEventType.agentTurnStart:
+        // 后端开始流式吐 turn 内容，确认 LLM 真的在产出 → 取消看门狗。
+        _cancelThinkingWatchdog();
         final p = event.payload as LiveAgentTurnStartPayload;
         final role = parseAgentRole(p.role);
         setState(() {
@@ -1260,6 +1314,7 @@ class _LecturePageState extends State<LecturePage> {
         }
         break;
       case LiveServerEventType.roundDone:
+        _cancelThinkingWatchdog();
         final p = event.payload as LiveRoundDonePayload;
         setState(() {
           _round += 1;
@@ -1302,8 +1357,26 @@ class _LecturePageState extends State<LecturePage> {
         break;
       case LiveServerEventType.warning:
         // warning 只用于非致命协议提示；真实链路错误走 error。
+        // 第十二轮：后端 no_steps_yet 之类的 warning 之后会显式补一条
+        // listening；这里只负责取消 thinking 看门狗、让用户看到一句友好
+        // 提示，不要把状态切到 failed（那条路径只给真错误用）。
+        final wmsg = (event.payload as LiveWarningPayload).message;
+        _cancelThinkingWatchdog();
+        if (wmsg == 'no_steps_yet' && mounted) {
+          setState(() {
+            // listening 事件马上会跟来，这里先把 thinking 状态卸掉，
+            // 避免短暂双状态（在 listening 来之前用户看见过期 thinking）。
+            if (_liveStatus == _LiveStatus.thinking) {
+              _liveStatus = _LiveStatus.listening;
+            }
+            _liveFailureReason = '请先在白板写两步、或多讲几句再点「我讲到这里」';
+          });
+        } else if (wmsg == 'heartbeat') {
+          // 应用层心跳，安静吃掉。
+        }
         break;
       case LiveServerEventType.error:
+        _cancelThinkingWatchdog();
         setState(() {
           _liveStatus = _LiveStatus.failed;
           _activeStreamingTurnId = '';
@@ -1319,6 +1392,7 @@ class _LecturePageState extends State<LecturePage> {
 
   void _onLiveServiceError(String message) {
     if (!mounted) return;
+    _cancelThinkingWatchdog();
     setState(() {
       _liveStatus = _LiveStatus.failed;
       _activeStreamingTurnId = '';
@@ -1334,6 +1408,7 @@ class _LecturePageState extends State<LecturePage> {
         // _onStartLive 已经把状态切到 listening；这里幂等。
         break;
       case LiveConnectionState.disconnected:
+        _cancelThinkingWatchdog();
         setState(() {
           _liveStatus = _LiveStatus.disconnected;
           _activeStreamingTurnId = '';
