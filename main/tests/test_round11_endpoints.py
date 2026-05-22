@@ -115,3 +115,17 @@ def test_bounty_and_parent_registration(client: TestClient) -> None:
 
     assert client.get("/parent/dashboard", headers=parent_headers).status_code == 200
     assert client.get("/parent/dashboard", headers=student_headers).status_code == 403
+
+
+def test_shop_redeem_requires_full_address(client: TestClient) -> None:
+    token = _register_and_login(client, f"shop{uuid.uuid4().hex[:8]}")
+    headers = {"Authorization": f"Bearer {token}"}
+    catalog = client.get("/shop/catalog", headers=headers).json()
+    sku_id = catalog["items"][0]["skuId"]
+    missing_address = client.post(
+        "/shop/redeem",
+        headers=headers,
+        json={"skuId": sku_id, "address": {"name": "张三", "phone": "13800138000"}},
+    )
+    assert missing_address.status_code == 400
+    assert "address" in missing_address.json()["detail"].lower()

@@ -733,10 +733,13 @@ async def shop_redeem(req: RedeemRequest, user: User = Depends(require_student_u
             detail="Only physical stationery can be redeemed.",
         )
     addr = req.address or {}
-    if not str(addr.get("name") or "").strip() or not str(addr.get("phone") or "").strip():
+    ship_name = str(addr.get("name") or "").strip()
+    ship_phone = str(addr.get("phone") or "").strip()
+    ship_address = str(addr.get("address") or "").strip()
+    if not ship_name or not ship_phone or not ship_address:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Shipping name and phone are required.",
+            detail="Shipping name, phone and address are required.",
         )
     _change_crystals(db, profile, -int(sku["crystalCost"]), reason="redeem", ref_id=req.sku_id)
     order = RedeemOrder(

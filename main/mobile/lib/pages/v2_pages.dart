@@ -371,9 +371,10 @@ class _ShopPageState extends State<ShopPage> {
   Future<void> _redeem(ShopItem item) async {
     final shipName = _name.text.trim();
     final shipPhone = _phone.text.trim();
-    if (shipName.isEmpty || shipPhone.isEmpty) {
+    final shipAddress = _address.text.trim();
+    if (shipName.isEmpty || shipPhone.isEmpty || shipAddress.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先填写收货人和电话')),
+        const SnackBar(content: Text('请先填写收货人、电话和详细地址')),
       );
       return;
     }
@@ -382,7 +383,7 @@ class _ShopPageState extends State<ShopPage> {
       address: {
         'name': shipName,
         'phone': shipPhone,
-        'address': _address.text.trim(),
+        'address': shipAddress,
       },
     );
     if (!mounted) return;
@@ -430,7 +431,7 @@ class _ShopPageState extends State<ShopPage> {
               const SizedBox(height: 14),
               const StudySectionTitle(
                 title: '收货信息',
-                subtitle: '兑换前请填写，姓名与电话必填',
+                subtitle: '兑换实物前请填写完整收货信息',
               ),
               StudyPanel(
                 tone: StudyPanelTone.quiet,
@@ -441,7 +442,7 @@ class _ShopPageState extends State<ShopPage> {
                     _TextField(controller: _phone, label: '电话'),
                     _TextField(
                       controller: _address,
-                      label: '地址（选填）',
+                      label: '详细地址',
                     ),
                   ],
                 ),
