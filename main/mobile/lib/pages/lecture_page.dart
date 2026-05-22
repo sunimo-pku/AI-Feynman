@@ -80,16 +80,6 @@ class LecturePage extends StatefulWidget {
 
 enum _LectureStatus { idle, submitting, awaiting, error, finished }
 
-/// 第九轮：是否默认在白板下方展示"文字提交兜底"入口。
-///
-/// brief 第 9 节明确"禁止默认展示文字输入框，但允许白板-only 兜底提交"。
-/// 这个开关由 `--dart-define=LIVE_FALLBACK_TEXTINPUT=1` 控制（仅
-/// debug/演示场景），不构建时保持 false 与正式 demo 同口径。
-const bool _kShowLegacyTextInputByDefault = bool.fromEnvironment(
-  'LIVE_FALLBACK_TEXTINPUT',
-  defaultValue: false,
-);
-
 const bool _debugOcr = bool.fromEnvironment('DEBUG_OCR');
 
 /// 实时讲题阶段的本地状态：
@@ -101,10 +91,7 @@ const bool _debugOcr = bool.fromEnvironment('DEBUG_OCR');
 ///   * `aiSpeaking`：有未完成的 agent_turn / TTS 在播；
 ///   * `disconnected`：WS 断开（保留白板，可重连）；
 ///   * `permissionDenied`：麦克风权限被拒绝；
-///   * `failed`：录音库 / WS 严重错误；
-///
-/// **不**与 [_LectureStatus] 合并：后者描述文字提交路径的提交
-/// 状态机；这两个状态机互相独立、可同时存在。
+///   * `failed`：录音库 / WS 严重错误。
 enum _LiveStatus {
   idle,
   connecting,
@@ -217,11 +204,6 @@ class _LecturePageState extends State<LecturePage> {
   Timer? _inkSnapshotDebounce;
   Timer? _stuckHintTimer;
   Timer? _wrapUpTimer;
-
-  /// WS 断线后延迟展示「用文字提交」纸飞机，避免 NAT 抖动时图标闪一下又被误认成「下一题」。
-  Timer? _disconnectFallbackTimer;
-  bool _disconnectFallbackVisible = false;
-  static const Duration _disconnectFallbackDelay = Duration(milliseconds: 800);
 
   /// thinking 状态的「看门狗」：发出 pause_detected 后启动，超时仍未收到
   /// [agentTurnStart] / [roundDone] / [error] / [warning] 事件就主动把状态
@@ -383,7 +365,6 @@ class _LecturePageState extends State<LecturePage> {
     _stuckHintTimer?.cancel();
     _wrapUpTimer?.cancel();
     _thinkingWatchdogTimer?.cancel();
-    _disconnectFallbackTimer?.cancel();
     unawaited(_liveEventsSub.cancel());
     unawaited(_liveErrorsSub.cancel());
     unawaited(_liveConnSub.cancel());
@@ -417,8 +398,6 @@ class _LecturePageState extends State<LecturePage> {
   /// 监听手写板变化：
   ///   * 画板被清空（`isEmpty`）时把所有步骤说明输入框文本归零，
   ///     而不是销毁 controller（销毁会让 [TextField] state 报错）。
-  ///   * 出现新 stepId 时不在这里建 controller，留给 [_ensureStepControllers]
-  ///     在 build 阶段 lazy 创建，避免在 listener 里 setState 抖动。
   void _onCanvasChanged() {
     _stuckHintTimer?.cancel();
     _wrapUpTimer?.cancel();
@@ -487,42 +466,6 @@ class _LecturePageState extends State<LecturePage> {
     }
     _liveService.sendInkSnapshot(steps);
     _replayService.appendInk(steps);
-  }
-
-  /// 为当前画板上的 stepId 集合确保都有对应的输入控制器。
-  ///
-  /// 在 build 阶段调用，无需 setState。
-  void _ensureStepControllers(List<String> stepIds) {
-    for (final id in stepIds) {
-      _stepPlainControllers.putIfAbsent(id, () => TextEditingController());
-      _stepLatexControllers.putIfAbsent(id, () => TextEditingController());
-    }
-  }
-
-  /// 「最近一条 AI 追问」：从 [_turns] 里找最后一个 role 是
-  /// xiaoming/daxiong/monitor/teacher 的气泡。仅用于：
-  /// - 切换输入区文案（「回答 XX 的追问」 vs.「我刚才是这样讲的」）
-  /// - 在 completed 之后**不再**显示「待回答」提示（此时 status 已 finished，
-  ///   输入区在 `awaiting/error` 才暴露给学生，不会出现在收束态）
-  AgentTurn? get _pendingAiFollowupTurn {
-    if (_status != _LectureStatus.awaiting && _status != _LectureStatus.error) {
-      return null;
-    }
-    for (final t in _turns.reversed) {
-      switch (t.role) {
-        case AgentRole.xiaoming:
-        case AgentRole.daxiong:
-        case AgentRole.classLeader:
-        case AgentRole.monitor:
-          return t;
-        case AgentRole.teacher:
-          // 李老师提示不要求学生「回答」，不算待回应追问。
-          continue;
-        case AgentRole.system:
-          continue;
-      }
-    }
-    return null;
   }
 
   /// intro 文案随当前题目刷新：第七轮起每节有 3 道题，老师开场白也要点出
@@ -642,18 +585,6 @@ class _LecturePageState extends State<LecturePage> {
       roundIndex: _round + 1,
       history: historyForRequest,
     );
-  }
-
-  Future<void> _onSubmit() async {
-    if (_status == _LectureStatus.submitting) return;
-    if (_canvasController.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('画板还没有内容，先把你的思路写一两行再提交吧。')));
-      return;
-    }
-    final request = _buildRequest();
-    await _sendRequest(request, retry: false);
   }
 
   Future<void> _onRetry() async {
@@ -1247,7 +1178,7 @@ class _LecturePageState extends State<LecturePage> {
   ///   2. 调 [LiveLectureService.connectAndStart] 建立 WS + 发 session_start；
   ///   3. 同时启动 [AudioStreamService.start]（含权限申请）；
   ///   4. 任一失败回落到 `disconnected` / `permissionDenied` / `failed` 状态，
-  ///      白板不动，可点「用文字提交」走 [_onSubmit] 的 `/lecture/submit` 兜底；
+  ///      白板不动，可点「重新连接」重试；
   ///   5. 都成功 → 等待麦克风事件驱动状态机进 listening。
   Future<void> _onStartLive() async {
     if (!mounted) return;
@@ -1298,7 +1229,7 @@ class _LecturePageState extends State<LecturePage> {
     if (!connected) {
       setState(() {
         _liveStatus = _LiveStatus.disconnected;
-        _liveFailureReason = '连不上后端 WebSocket，可以点「用文字提交」兜底。';
+        _liveFailureReason = '连不上后端 WebSocket，请点「重新连接」再试。';
       });
       return;
     }
@@ -1362,7 +1293,7 @@ class _LecturePageState extends State<LecturePage> {
     if (!_liveService.isConnected) {
       setState(() {
         _liveStatus = _LiveStatus.disconnected;
-        _liveFailureReason = '连接已断开，请点「重新连接」或「用文字提交」。';
+        _liveFailureReason = '连接已断开，请点「重新连接」。';
       });
       _showLiveSnack('连接已断开，未能提交本轮讲解。');
       return;
@@ -1515,16 +1446,8 @@ class _LecturePageState extends State<LecturePage> {
         }
         break;
       case LiveServerEventType.asrSegment:
-        // brief 第 9 节"禁止默认展示完整 ASR 转写文本"；这里只把片段
-        // 记进 history 供下一次提交使用，UI 主区不显示。Debug 模式（
-        // _kShowLegacyTextInputByDefault==true）下塞到 speech controller
-        // 末尾，方便学生 / 演示者校对。
-        final segment = (event.payload as LiveAsrSegmentPayload).text;
-        if (segment.isEmpty) break;
-        if (_kShowLegacyTextInputByDefault) {
-          final base = _speechController.text;
-          _speechController.text = base.isEmpty ? segment : '$base $segment';
-        }
+        // brief 第 9 节"禁止默认展示完整 ASR 转写文本"；片段仅记进 history
+        // 供下一次提交使用，UI 主区不显示。
         break;
       case LiveServerEventType.thinking:
         // 后端 thinking 是「LLM 调用确认开始」的信号，看门狗在收到第一条
@@ -1738,20 +1661,13 @@ class _LecturePageState extends State<LecturePage> {
         // 重新清零；如果学生白板上有内容，必须立刻同步过去，否则学生
         // 点「讲题结束」会撞 no_steps_yet。同步推 snapshot 是幂等的：
         // 如果白板空，`_pushInkSnapshotNow` 会自然 early-return。
-        _disconnectFallbackTimer?.cancel();
-        _disconnectFallbackTimer = null;
-        if (_disconnectFallbackVisible) {
-          setState(() => _disconnectFallbackVisible = false);
-        }
         _scheduleInkSnapshot(immediate: true);
         break;
       case LiveConnectionState.disconnected:
         _cancelThinkingWatchdog();
-        _scheduleDisconnectFallbackOrb();
         setState(() {
           _liveStatus = _LiveStatus.disconnected;
           _activeStreamingTurnId = '';
-          _disconnectFallbackVisible = false;
         });
         unawaited(_audioService.stop());
         unawaited(_liveService.stopTts());
@@ -1989,70 +1905,6 @@ class _LecturePageState extends State<LecturePage> {
     );
   }
 
-  void _showFallbackInputSheet() {
-    if (_canvasController.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('先在白板上写一两行思路。')));
-      return;
-    }
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder:
-          (ctx) => Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.viewInsetsOf(ctx).bottom,
-            ),
-            child: Container(
-              decoration: const BoxDecoration(
-                color: AppPalette.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '用文字补充讲解',
-                    style: Theme.of(ctx).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 10),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.sizeOf(ctx).height * 0.4,
-                    ),
-                    child: SingleChildScrollView(
-                      child: AnimatedBuilder(
-                        animation: _canvasController,
-                        builder:
-                            (context, _) => _buildSemanticInputsPanel(context),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      LectureOrbButton(
-                        icon: Icons.send_outlined,
-                        tooltip: '提交',
-                        filled: true,
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          unawaited(_onSubmit());
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-    );
-  }
-
   void _showErrorDialog() {
     final msg = _errorMessage ?? _liveFailureReason;
     if (msg == null) return;
@@ -2079,15 +1931,6 @@ class _LecturePageState extends State<LecturePage> {
     );
   }
 
-  void _scheduleDisconnectFallbackOrb() {
-    _disconnectFallbackTimer?.cancel();
-    _disconnectFallbackTimer = Timer(_disconnectFallbackDelay, () {
-      if (!mounted) return;
-      if (_liveStatus != _LiveStatus.disconnected) return;
-      setState(() => _disconnectFallbackVisible = true);
-    });
-  }
-
   /// 「下一题 / 再讲一遍 / 查看小结」仅在本题真正收束且不在录音/思考中展示。
   bool get _canShowCompletionOrbs {
     if (_status != _LectureStatus.finished) return false;
@@ -2104,20 +1947,6 @@ class _LecturePageState extends State<LecturePage> {
       default:
         return true;
     }
-  }
-
-  bool get _showFallbackOrbs {
-    if (_kShowLegacyTextInputByDefault) return true;
-    if (_liveStatus == _LiveStatus.permissionDenied ||
-        _liveStatus == _LiveStatus.failed) {
-      return true;
-    }
-    // 同伴评估 / HTTP 提交进行中：短连抖动不露出纸飞机（Icons.send_outlined）。
-    if (_status == _LectureStatus.submitting ||
-        _liveStatus == _LiveStatus.thinking) {
-      return false;
-    }
-    return _liveStatus == _LiveStatus.disconnected && _disconnectFallbackVisible;
   }
 
   @override
@@ -2322,11 +2151,6 @@ class _LecturePageState extends State<LecturePage> {
 
   Widget _buildOrbToolbar() {
     final submitting = _status == _LectureStatus.submitting;
-    final canSubmit =
-        (_status == _LectureStatus.idle ||
-            _status == _LectureStatus.awaiting ||
-            _status == _LectureStatus.error) &&
-        !_canvasController.isEmpty;
     final listening = _isLiveRecording;
     final orbs = <Widget>[];
 
@@ -2394,10 +2218,10 @@ class _LecturePageState extends State<LecturePage> {
       case RealtimeAudioPanelState.failed:
         orbs.add(
           LectureOrbButton(
-            icon: Icons.mic_off,
-            tooltip: '语音不可用',
-            accent: AppPalette.error,
-            onPressed: _onFallbackTextSubmit,
+            icon: Icons.refresh,
+            tooltip: '重新连接',
+            filled: true,
+            onPressed: _onStartLive,
           ),
         );
         break;
@@ -2453,22 +2277,6 @@ class _LecturePageState extends State<LecturePage> {
       ),
     ]);
 
-    if (_showFallbackOrbs) {
-      orbs.add(
-        LectureOrbButton(
-          icon:
-              _status == _LectureStatus.error
-                  ? Icons.replay
-                  : Icons.send_outlined,
-          tooltip: '文字提交',
-          filled: true,
-          loading: submitting,
-          onPressed:
-              canSubmit && !submitting ? _showFallbackInputSheet : null,
-        ),
-      );
-    }
-
     if (_canShowCompletionOrbs) {
       orbs.addAll([
         LectureOrbButton(
@@ -2514,14 +2322,6 @@ class _LecturePageState extends State<LecturePage> {
     );
   }
 
-  /// 实时面板的"用文字提交"入口。
-  ///
-  /// 当 WS / 麦克风 / 录音库出问题时，学生可以手动改用
-  /// `/lecture/submit` 路径提交本题（底部 sheet 补充文字，不占白板）。
-  void _onFallbackTextSubmit() {
-    _showFallbackInputSheet();
-  }
-
   Widget _buildDebugOcrPanel() {
     return ValueListenableBuilder<List<OcrStepGuess>>(
       valueListenable: OcrService.debugGuesses,
@@ -2561,239 +2361,6 @@ class _LecturePageState extends State<LecturePage> {
                       .toList(growable: false),
         );
       },
-    );
-  }
-
-  /// 「我刚才是这样讲的」+「为每一步补充一句话」输入区。
-  ///
-  /// 第四轮目标：在不接 ASR/OCR 之前，先让学生把自己的解法语义带进
-  /// `studentSpeechText` 与 `steps[*].plainText / latex`，给后端 LLM
-  /// 真东西可读，而不是只看到光秃秃的笔画数。
-  ///
-  /// 第五轮新增：当本题已经发生过 AI 追问（[_pendingAiFollowupTurn] 非空）时,
-  /// 把输入区的标题/副标题/placeholder 改为「回答 X 的追问」语境，让学生明确
-  /// 自己接下来该写的是「回答」，而不是「重新讲一遍」。
-  Widget _buildSemanticInputsPanel(BuildContext context) {
-    final stepIds = _canvasController.collectStepIds();
-    _ensureStepControllers(stepIds);
-    final theme = Theme.of(context);
-
-    final pendingFollowup = _pendingAiFollowupTurn;
-    final hasFollowup = pendingFollowup != null;
-    final speechTitle =
-        hasFollowup ? '回答${pendingFollowup.displayName}的追问' : '我刚才是这样讲的';
-    final speechSubtitle = hasFollowup ? 'AI 同伴会先评估你的回答' : 'AI 同伴会照着这段话追问';
-    final speechHint =
-        hasFollowup
-            ? '例如：我补充一下，这一步用到的条件是……所以可以这样推。'
-            : '例如：我先读题目条件，再说明第一步为什么能推出下一步。';
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        boxShadow: AppShadows.paper,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(
-                hasFollowup
-                    ? Icons.question_answer_outlined
-                    : Icons.record_voice_over_outlined,
-                size: 18,
-                color: AppPalette.primary,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(speechTitle, style: theme.textTheme.titleSmall),
-              ),
-              Flexible(
-                child: Text(
-                  speechSubtitle,
-                  style: theme.textTheme.bodySmall,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
-          ),
-          if (hasFollowup) ...[
-            const SizedBox(height: 6),
-            _PendingFollowupHint(turn: pendingFollowup),
-          ],
-          const SizedBox(height: 8),
-          _SoftTextField(
-            controller: _speechController,
-            minLines: 2,
-            maxLines: 4,
-            hintText: speechHint,
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              const Icon(
-                Icons.format_list_numbered_outlined,
-                size: 18,
-                color: AppPalette.primary,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text('为每一步补充一句话（可选）', style: theme.textTheme.titleSmall),
-              ),
-              if (stepIds.isNotEmpty)
-                Text('共 ${stepIds.length} 步', style: theme.textTheme.bodySmall),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (stepIds.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(
-                '在右侧手写后，会自动出现每一步的说明输入框，可用一句中文写出这一步在做什么。',
-                style: theme.textTheme.bodySmall,
-              ),
-            )
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < stepIds.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 8),
-                  _buildStepInputRow(
-                    context: context,
-                    stepId: stepIds[i],
-                    order: i + 1,
-                  ),
-                ],
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStepInputRow({
-    required BuildContext context,
-    required String stepId,
-    required int order,
-  }) {
-    final plainController = _stepPlainControllers[stepId]!;
-    final latexController = _stepLatexControllers[stepId]!;
-    final latexExpanded = _stepLatexExpanded.contains(stepId);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 8, 10),
-      decoration: BoxDecoration(
-        color: AppPalette.canvas,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: AppShadows.paper,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _StepOrderBadge(order: order),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _SoftTextField(
-                  controller: plainController,
-                  minLines: 1,
-                  maxLines: 2,
-                  dense: true,
-                  hintText: '例如：这一步用了题目里的已知条件',
-                ),
-              ),
-              const SizedBox(width: 6),
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    if (latexExpanded) {
-                      _stepLatexExpanded.remove(stepId);
-                    } else {
-                      _stepLatexExpanded.add(stepId);
-                    }
-                  });
-                },
-                icon: Icon(
-                  latexExpanded ? Icons.expand_less : Icons.functions_outlined,
-                  size: 16,
-                ),
-                label: Text(latexExpanded ? '收起' : '加公式'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppPalette.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(0, 32),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (latexExpanded) ...[
-            const SizedBox(height: 8),
-            _SoftTextField(
-              controller: latexController,
-              minLines: 1,
-              maxLines: 2,
-              dense: true,
-              monospace: true,
-              hintText: r'可选 LaTeX：x+1=3',
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// 输入区上方的「待回答 AI 追问」轻量提示卡：用引号简要复述 AI 上一句话，
-/// 让学生在写回答前能快速回看自己要解决的问题。
-///
-/// 第五轮新增。仅在 `_status` 为 awaiting / error 且本题已有 AI 追问时展示。
-class _PendingFollowupHint extends StatelessWidget {
-  const _PendingFollowupHint({required this.turn});
-
-  final AgentTurn turn;
-
-  @override
-  Widget build(BuildContext context) {
-    final preview =
-        turn.text.length > 80 ? '${turn.text.substring(0, 80)}…' : turn.text;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: AppPalette.primary.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.20)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.help_outline, size: 16, color: AppPalette.primary),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              '${turn.displayName}刚问：「$preview」',
-              style: const TextStyle(
-                color: AppPalette.primary,
-                fontSize: 12.5,
-                height: 1.45,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -3053,100 +2620,6 @@ class _QuestionImage extends StatelessWidget {
               );
             },
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 温和「纸张」风格输入框，遵循 `MOBILE_STYLE.md`：
-///   * 浅米白底 + 1dp 柔和描边，不要冷调灰；
-///   * 圆角 12，焦点态用 primary 提亮但不过分；
-///   * 触控热区随父高度自适应，外层调用方负责 `minLines/maxLines`。
-class _SoftTextField extends StatelessWidget {
-  const _SoftTextField({
-    required this.controller,
-    required this.hintText,
-    this.minLines = 1,
-    this.maxLines = 2,
-    this.dense = false,
-    this.monospace = false,
-  });
-
-  final TextEditingController controller;
-  final String hintText;
-  final int minLines;
-  final int maxLines;
-  final bool dense;
-  final bool monospace;
-
-  @override
-  Widget build(BuildContext context) {
-    final base = Theme.of(context).textTheme.bodyMedium;
-    return TextField(
-      controller: controller,
-      minLines: minLines,
-      maxLines: maxLines,
-      textInputAction:
-          maxLines > 1 ? TextInputAction.newline : TextInputAction.done,
-      style: base?.copyWith(
-        fontFamily: monospace ? 'monospace' : base.fontFamily,
-        color: AppPalette.textPrimary,
-      ),
-      cursorColor: AppPalette.primary,
-      decoration: InputDecoration(
-        hintText: hintText,
-        hintStyle: TextStyle(
-          color: AppPalette.textSecondary.withValues(alpha: 0.75),
-          fontSize: dense ? 13 : 14,
-          height: 1.4,
-        ),
-        isDense: dense,
-        filled: true,
-        fillColor: AppPalette.canvas,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: dense ? 10 : 12,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppPalette.outline.withValues(alpha: 0.55)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppPalette.outline.withValues(alpha: 0.45)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppPalette.primary, width: 1.4),
-        ),
-      ),
-    );
-  }
-}
-
-class _StepOrderBadge extends StatelessWidget {
-  const _StepOrderBadge({required this.order});
-
-  final int order;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 28,
-      height: 28,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: AppPalette.primary.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.28)),
-      ),
-      child: Text(
-        '$order',
-        style: const TextStyle(
-          color: AppPalette.primary,
-          fontWeight: FontWeight.w700,
-          fontSize: 13,
         ),
       ),
     );

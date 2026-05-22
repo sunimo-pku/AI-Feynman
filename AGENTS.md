@@ -218,7 +218,7 @@ git push origin main
   层在 onError / onDone / 发送失败之后，按 1s/2s/4s/8s 退避**最多 4 次**自动
   重连一次 `connectAndStart`；用户主动调用 `connectAndStart` / `endSession` /
   `dispose` 都会清空 `_reconnectAttempts`。封顶 4 次保证服务真的挂掉时学生在
-  ~15s 内看到红色面板停下并展示「重新连接 / 用文字提交」按钮。
+  ~15s 内看到红色面板停下并展示「重新连接」按钮。
 - **讲题主路径统一使用 DeepSeek-V4-Flash 非思考模式**：`/lecture/submit`、
   `/lecture/live` 与通用 chat 默认模型都走 `Config.DEEPSEEK_MODEL`
   （默认 `deepseek-v4-flash`）。每次 OpenAI SDK 调用都必须带
@@ -857,9 +857,9 @@ git push origin main
   破坏讲题闭环。正解：「下一题」走 `_canShowCompletionOrbs`（`finished` +
   `completed` + 三名同伴 `understood` + 非录音/思考中）；`_onContinue` 同条件
   校验并 SnackBar 拦截。
-- **WS 短断线勿立刻露 `Icons.send_outlined`**：`_showFallbackOrbs` 在
-  `disconnected` 时要 **800ms 防抖**，且 `thinking` / `submitting` 中禁止
-  露出纸飞机——否则 NAT 抖动时左下角会闪一下被误认成「下一题」。
+- **讲题页已移除「用文字提交」兜底 UI**：WS 断线 / 麦克风失败时左下角
+  只保留「重新连接 / 再试一次」，不再展示 `Icons.send_outlined` 纸飞机，
+  避免 NAT 抖动或故障态误触打断讲题闭环。
 
 ---
 

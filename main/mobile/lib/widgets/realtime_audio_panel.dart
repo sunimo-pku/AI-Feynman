@@ -13,7 +13,7 @@ import '../theme/app_theme.dart';
 ///     "禁止默认展示完整 ASR 转写文本"）；
 ///   * 主按钮 48dp 触控热区，符合 `MOBILE_STYLE.md` 平板优先；
 ///   * 状态文字 ≤ 18 字，平板远距阅读不费力；
-///   * 错误 / 权限拒绝走副文本 + 兜底"用文字提交"按钮，不破坏白板。
+///   * 错误 / 权限拒绝走副文本 +「再试一次」，不破坏白板。
 class RealtimeAudioPanel extends StatelessWidget {
   const RealtimeAudioPanel({
     super.key,
@@ -22,7 +22,6 @@ class RealtimeAudioPanel extends StatelessWidget {
     required this.onStop,
     required this.onEndQuestion,
     required this.onManualPause,
-    this.onFallbackSubmit,
     this.failureReason,
     this.canManualPause = false,
     this.shouldHighlightManualPause = false,
@@ -41,10 +40,6 @@ class RealtimeAudioPanel extends StatelessWidget {
   /// 旧版自动追问曾用这里提示「已可追问」；当前默认关闭，保留字段
   /// 仅避免调用方接口大改。
   final bool shouldHighlightManualPause;
-
-  /// 录音失败 / 权限拒绝时的"换一种方式"兜底入口：调用方可以打开传统
-  /// 「提交讲解」表单（基于打字 + 手写）。
-  final VoidCallback? onFallbackSubmit;
 
   /// 当 state 是 [RealtimeAudioPanelState.failed] /
   /// [RealtimeAudioPanelState.permissionDenied] 时显示的副文本。
@@ -155,49 +150,17 @@ class RealtimeAudioPanel extends StatelessWidget {
           label: const Text('继续讲'),
         );
       case RealtimeAudioPanelState.disconnected:
-        return Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: onStart,
-                icon: const Icon(Icons.refresh),
-                label: const Text('重新连接'),
-              ),
-            ),
-            if (onFallbackSubmit != null) ...[
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onFallbackSubmit,
-                  icon: const Icon(Icons.upload_file_outlined),
-                  label: const Text('用文字提交'),
-                ),
-              ),
-            ],
-          ],
+        return OutlinedButton.icon(
+          onPressed: onStart,
+          icon: const Icon(Icons.refresh),
+          label: const Text('重新连接'),
         );
       case RealtimeAudioPanelState.permissionDenied:
       case RealtimeAudioPanelState.failed:
-        return Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: onStart,
-                icon: const Icon(Icons.refresh),
-                label: const Text('再试一次'),
-              ),
-            ),
-            if (onFallbackSubmit != null) ...[
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onFallbackSubmit,
-                  icon: const Icon(Icons.upload_file_outlined),
-                  label: const Text('用文字提交'),
-                ),
-              ),
-            ],
-          ],
+        return OutlinedButton.icon(
+          onPressed: onStart,
+          icon: const Icon(Icons.refresh),
+          label: const Text('再试一次'),
         );
     }
   }
@@ -244,7 +207,7 @@ class RealtimeAudioPanel extends StatelessWidget {
       case RealtimeAudioPanelState.permissionDenied:
         return failureReason ?? '请到系统设置 → 应用权限里允许「麦克风」后再试。';
       case RealtimeAudioPanelState.failed:
-        return failureReason ?? '录音库初始化失败，可以切到文字提交继续学习。';
+        return failureReason ?? '录音库初始化失败，请点「再试一次」或检查麦克风权限。';
     }
   }
 
