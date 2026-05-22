@@ -848,6 +848,10 @@ git push origin main
   `_questionGeneration` 防迟到响应污染当前题。题库未加载完成前禁止开麦；
   「讲题结束」要先 await 录音 stop 再发 `pause_detected`；切题/再讲前先
   `finishAndUpload` replay、停录音、停 WS/TTS 并取消 snapshot/watchdog timer。
+- **同伴「有话要说」以当前轮评估为准**：`LecturePage._peerInlineMessage`
+  不能在当前轮已收到某同伴 assessment 且 `understood=true` 时，再 fallback 到
+  `_turns` 里上一轮的 `reason_*` 发言；否则上一轮没懂、下一轮已懂后，头像旁
+  仍残留「有话要说」。全懂时也要清 `_expandedPeerBubble` 和 reason queue。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

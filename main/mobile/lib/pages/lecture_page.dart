@@ -690,6 +690,7 @@ class _LecturePageState extends State<LecturePage> {
         ),
       );
       _status = _LectureStatus.finished;
+      _expandedPeerBubble = null;
       unawaited(_reasonPlayback.stop());
       _reasonPlayback.clearQueue();
     } else {
@@ -1969,6 +1970,12 @@ class _LecturePageState extends State<LecturePage> {
     return null;
   }
 
+  bool _isPeerRole(AgentRole role) =>
+      role == AgentRole.xiaoming ||
+      role == AgentRole.daxiong ||
+      role == AgentRole.monitor ||
+      role == AgentRole.classLeader;
+
   AgentTurn? _latestTurnFor(AgentRole role) {
     for (var i = _turns.length - 1; i >= 0; i--) {
       if (_turns[i].role == role && _turns[i].text.trim().isNotEmpty) {
@@ -2004,13 +2011,15 @@ class _LecturePageState extends State<LecturePage> {
 
   PeerInlineMessage? _peerInlineMessage(AgentRole role) {
     final assessment = _assessmentFor(role);
-    if (assessment != null &&
-        !assessment.understood &&
-        assessment.reason.trim().isNotEmpty) {
-      return PeerInlineMessage(
-        text: assessment.reason,
-        highlightStepIds: assessment.highlightStepIds,
-      );
+    if (assessment != null) {
+      if (!assessment.understood && assessment.reason.trim().isNotEmpty) {
+        return PeerInlineMessage(
+          text: assessment.reason,
+          highlightStepIds: assessment.highlightStepIds,
+        );
+      }
+      // 当前轮评估已经覆盖该同伴状态；已听懂时不能再回退显示上一轮追问。
+      if (_isPeerRole(role)) return null;
     }
     final turn = _latestTurnFor(role);
     if (turn != null && turn.text.trim().isNotEmpty) {
