@@ -132,13 +132,17 @@ class LiveAgentTurnDonePayload extends LiveServerPayload {
 class LiveAgentTtsChunkPayload extends LiveServerPayload {
   const LiveAgentTtsChunkPayload({
     required this.turnId,
+    required this.role,
     required this.seq,
+    required this.chunkIndex,
     required this.audioBase64,
     required this.format,
   });
 
   final String turnId;
+  final String role;
   final int seq;
+  final int chunkIndex;
   final String audioBase64;
   final String format;
 }
@@ -237,9 +241,12 @@ class LiveServerEvent {
         );
       case LiveServerEventType.agentTtsChunk:
         final s = json['seq'];
+        final ci = json['chunkIndex'];
         return LiveAgentTtsChunkPayload(
           turnId: (json['turnId'] as String?) ?? '',
+          role: (json['role'] as String?) ?? '',
           seq: s is num ? s.toInt() : 0,
+          chunkIndex: ci is num ? ci.toInt() : 0,
           audioBase64: (json['audioBase64'] as String?) ?? '',
           format: (json['format'] as String?) ?? 'mp3',
         );

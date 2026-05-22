@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -29,6 +30,11 @@ _ASSESSMENT_TEMPERATURE = 0.3
 _ASSESSMENT_EXTRA_BODY: dict[str, Any] = DEEPSEEK_THINKING_DISABLED
 _LLM_TIMEOUT_SECONDS = 6.0
 _MAX_REASON_LEN = 220
+
+# 「你说『…』」类表述：引号内必须出现在本轮 student_speech_text 里。
+_SPEECH_QUOTE_RE = re.compile(
+    r"(?:你说|你刚才说|你刚刚说)[「『\"']([^」』\"']{2,})[」』\"']"
+)
 
 _ROLE_FOCUS: dict[str, str] = {
     "xiaoming": (
@@ -57,7 +63,8 @@ def _system_prompt_for_role(role: str) -> str:
 2. 若还有缺口 → `"understood": false`，`reason` 说明**你没听懂的具体点**（≤180 字，可 LaTeX）。
 3. 不要直接公布完整答案；没听懂时像同学一样指出疑点。
 4. `highlightStepIds` 只能引用白名单 stepId。
-5. 禁止编造学生没说过的话；只基于题面与学生真实步骤 / 口述。
+5. **口述 vs 白板**：只有【学生口述】区块里的词句才能用「你说『…』」；白板步骤 / OCR 只能说「你写的」「白板上」。
+6. **禁止**把历史里上一轮学生的话当成「本轮刚说的」；**禁止**编造任何未出现在上下文的引号内容。
 
 只输出一个 JSON 对象：
 {{
@@ -69,7 +76,51 @@ def _system_prompt_for_role(role: str) -> str:
 """
 
 
-def _parse_assessment(raw: str, *, role: str, allowed_step_ids: list[str]) -> dict[str, Any]:
+def _step_evidence_corpus(steps: list[dict[str, Any]]) -> str:
+    bits: list[str] = []
+    for s in steps:
+        plain = str(s.get("plainText") or s.get("plain_text") or "").strip()
+        latex = str(s.get("latex") or "").strip()
+        if plain:
+            bits.append(plain)
+        if latex:
+            bits.append(latex)
+    return " ".join(bits)
+
+
+def _sanitize_reason_quotes(
+    reason: str,
+    *,
+    student_speech_text: str,
+    steps: list[dict[str, Any]],
+) -> str:
+    """把误标成「你说」但不在口述里的引用，改成「你写的」或去掉。"""
+    speech = (student_speech_text or "").strip()
+    step_corpus = _step_evidence_corpus(steps)
+    out = reason
+    for match in list(_SPEECH_QUOTE_RE.finditer(reason)):
+        quoted = match.group(1).strip()
+        if not quoted:
+            continue
+        if quoted in speech:
+            continue
+        replacement = (
+            f"你写的「{quoted}」"
+            if quoted in step_corpus
+            else "这里"
+        )
+        out = out.replace(match.group(0), replacement, 1)
+    return out
+
+
+def _parse_assessment(
+    raw: str,
+    *,
+    role: str,
+    allowed_step_ids: list[str],
+    student_speech_text: str,
+    steps: list[dict[str, Any]],
+) -> dict[str, Any]:
     cleaned = _strip_markdown_fence(raw or "")
     try:
         payload = json.loads(cleaned)
@@ -82,6 +133,11 @@ def _parse_assessment(raw: str, *, role: str, allowed_step_ids: list[str]) -> di
     reason = str(payload.get("reason") or "").strip()
     if not reason:
         reason = "这一步我听懂了。" if understood else "我还需要你再讲清楚一点。"
+    reason = _sanitize_reason_quotes(
+        reason,
+        student_speech_text=student_speech_text,
+        steps=steps,
+    )
     if len(reason) > _MAX_REASON_LEN:
         reason = reason[:_MAX_REASON_LEN].rstrip() + "…"
 
@@ -128,6 +184,7 @@ def _assess_one_peer(
         allowed_step_ids=allowed_step_ids,
         round_index=round_index,
         history=history,
+        purpose="peer_assessment",
     )
     user_prompt = (
         f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
@@ -154,7 +211,13 @@ def _assess_one_peer(
         logger.exception("[peer-assessment] %s LLM failed: %s", role, e)
         raise LectureAgentError(f"{role} assessment LLM failed: {e}") from e
 
-    return _parse_assessment(raw, role=role, allowed_step_ids=allowed_step_ids)
+    return _parse_assessment(
+        raw,
+        role=role,
+        allowed_step_ids=allowed_step_ids,
+        student_speech_text=student_speech_text,
+        steps=steps,
+    )
 
 
 def generate_peer_assessments(

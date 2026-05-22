@@ -83,6 +83,7 @@ def generate_teacher_hint(
         allowed_step_ids=allowed_step_ids,
         round_index=safe_round,
         history=cleaned_history,
+        purpose="teacher",
     )
     user_prompt = (
         "【学生请求】学生刚刚主动点击了「需要提示」。请给出一条脚手架式提示，"
@@ -202,6 +203,7 @@ def generate_teacher_summary(
         allowed_step_ids=allowed_step_ids,
         round_index=safe_round,
         history=cleaned_history,
+        purpose="teacher",
     )
     peer_lines = []
     for item in peer_assessments or []:

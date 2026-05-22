@@ -143,6 +143,17 @@ class LiveLectureSession:
     _tts_buffer_by_turn: dict[str, str] = field(default_factory=dict)
     _tts_seq_by_turn: dict[str, int] = field(default_factory=dict)
     _tts_role_by_turn: dict[str, str] = field(default_factory=dict)
+    _tts_tail_by_turn: dict[str, asyncio.Task] = field(default_factory=dict)
+    # 每轮「讲题结束」只消费此索引之后的 ASR 片段，避免上一轮语音混入本轮。
+    _transcript_round_start: int = 0
+
+    def _current_round_speech(self) -> str:
+        return " ".join(
+            self.transcript_segments[self._transcript_round_start :]
+        ).strip()
+
+    def _mark_transcript_round_consumed(self) -> None:
+        self._transcript_round_start = len(self.transcript_segments)
 
     # ============================================================== #
     # 事件入口
@@ -250,6 +261,7 @@ class LiveLectureSession:
         self.round_index = 0
         self.history.clear()
         self.transcript_segments.clear()
+        self._transcript_round_start = 0
         self.latest_steps.clear()
         self.asr_buffer.reset()
         self.is_thinking = False
@@ -462,6 +474,7 @@ class LiveLectureSession:
         self.last_status = status
         self.last_mastery_delta = mastery_delta
         self.is_thinking = False
+        self._mark_transcript_round_consumed()
 
         await self._safe_send(send, {
             "type": EVT_ROUND_DONE,
@@ -542,7 +555,7 @@ class LiveLectureSession:
             }
             for s in self.latest_steps
         ]
-        speech = " ".join(self.transcript_segments[-6:]).strip()
+        speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
@@ -572,7 +585,7 @@ class LiveLectureSession:
             }
             for s in self.latest_steps
         ]
-        speech = " ".join(self.transcript_segments[-6:]).strip()
+        speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
@@ -640,7 +653,7 @@ class LiveLectureSession:
             }
             for s in self.latest_steps
         ]
-        speech = " ".join(self.transcript_segments[-6:]).strip()
+        speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
@@ -711,7 +724,7 @@ class LiveLectureSession:
             }
             for s in self.latest_steps
         ]
-        speech = " ".join(self.transcript_segments[-6:]).strip()
+        speech = self._current_round_speech()
         turns_by_id: dict[str, dict[str, Any]] = {}
         order: list[str] = []
         status = "needs_explanation"
@@ -886,6 +899,13 @@ class LiveLectureSession:
                 "turnId": turn_id,
                 "delta": text,
             })
+            self._tts_role_by_turn[turn_id] = role
+            self._maybe_dispatch_tts_sentence(
+                turn_id=turn_id,
+                delta=text,
+                send=send,
+            )
+        self._flush_tts_remainder(turn_id=turn_id, send=send)
         await self._safe_send(send, {
             "type": EVT_AGENT_TURN_DONE,
             "sessionId": self.session_id,
@@ -920,7 +940,7 @@ class LiveLectureSession:
             }
             for s in self.latest_steps
         ]
-        speech = " ".join(self.transcript_segments[-6:]).strip()
+        speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
@@ -993,23 +1013,36 @@ class LiveLectureSession:
         sentence: str,
         send: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> None:
-        sentence = sentence.strip()
+        from app.services.tts_text import plain_text_for_tts
+
+        sentence = plain_text_for_tts(sentence.strip())
         if not sentence:
             return
         seq = self._tts_seq_by_turn.get(turn_id, 0)
         self._tts_seq_by_turn[turn_id] = seq + 1
         role = self._tts_role_by_turn.get(turn_id, "teacher")
-        # 立刻派一个 background task 跑流式 TTS；不 await（要保证主协程
-        # 继续接收下一段 LLM delta）。失败只发 warning，不影响主流程。
-        asyncio.create_task(
-            self._stream_tts_for_sentence(
+
+        async def _run() -> None:
+            await self._stream_tts_for_sentence(
                 send=send,
                 turn_id=turn_id,
                 seq=seq,
                 role=role,
                 sentence=sentence,
             )
-        )
+
+        prev = self._tts_tail_by_turn.get(turn_id)
+
+        async def _chained() -> None:
+            if prev is not None and not prev.done():
+                try:
+                    await prev
+                except Exception:  # noqa: BLE001
+                    pass
+            await _run()
+
+        task = asyncio.create_task(_chained())
+        self._tts_tail_by_turn[turn_id] = task
 
     async def _stream_tts_for_sentence(
         self,
@@ -1069,6 +1102,7 @@ class LiveLectureSession:
                 "type": EVT_AGENT_TTS_CHUNK,
                 "sessionId": self.session_id,
                 "turnId": turn_id,
+                "role": role,
                 "seq": seq,
                 "chunkIndex": chunk_index,
                 "audioBase64": base64.b64encode(item).decode("ascii"),
@@ -1080,7 +1114,7 @@ class LiveLectureSession:
             })
 
     def _append_student_history_snapshot(self) -> None:
-        speech = " ".join(self.transcript_segments[-6:]).strip()
+        speech = self._current_round_speech()
         steps_summary_bits: list[str] = []
         for s in self.latest_steps:
             descr_parts: list[str] = []

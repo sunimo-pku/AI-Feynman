@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../data/lecture_models.dart';
+import '../utils/tts_text.dart';
 
 /// P2：没听懂理由的依次 TTS 播放（文字提交路径 + 可复用于 live）。
 class PeerReasonPlaybackService extends ChangeNotifier {
@@ -136,12 +137,14 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     required int token,
   }) async {
     if (text.trim().isEmpty) return false;
+    final spoken = plainTextForTts(text);
+    if (spoken.isEmpty) return false;
     try {
       final resp = await _client
           .post(
             ApiConfig.uri('/tts'),
             headers: const {'Content-Type': 'application/json; charset=utf-8'},
-            body: utf8.encode(jsonEncode({'text': text, 'role': role})),
+            body: utf8.encode(jsonEncode({'text': spoken, 'role': role})),
           )
           .timeout(const Duration(seconds: 12));
       if (token != _token) return false;

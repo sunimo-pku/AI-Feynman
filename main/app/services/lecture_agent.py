@@ -26,7 +26,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from app.config import Config
 from app.services.kimi import DEEPSEEK_THINKING_DISABLED, deepseek_client
@@ -156,22 +156,21 @@ _SYSTEM_PROMPT = """你是「初中数学费曼学习小组剧本导演」。
     - 这一步是不是等价变形？有没有除以 0、开平方正负、取交集/并集、约分条件？
     - 公式/定理适用条件是否满足？对应关系、定义域、样本口径是否一致？
     - 计算有没有漏负号、括号、单位、近似精度、分类讨论？
-12. 引用学生原话时**用引号**简短照搬，让学生明确感到「AI 真的在听我讲」。
-13. 如果「学生口述」和所有 step 文字都为空，也必须根据【题面】和【当前小节】
-    选择本题所属领域的核心概念追问。
+12. 引用【学生口述】原话时**用引号**简短照搬；引用白板步骤时用「你写的」，
+    **禁止**把步骤文字说成「你说」。
 
 【反幻觉 · 硬约束】
-H1. 你看到的「学生口述」(`student_speech_text`) 来自语音转写，可能很短甚至几个字。
-    **绝对禁止**编造学生没说过的话作为他的口述、绝对禁止「学生说『XXX』」这种
-    引号内容，除非引号里的词原样出现在 `student_speech_text` 里。
-H2. 如果 `student_speech_text` 整段非空字符 < 5（例如学生只说了「嗯」「这个」
+H1. 「学生口述」(`student_speech_text`) 仅来自麦克风转写，与白板步骤无关。
+    **绝对禁止**把步骤 plainText / LaTeX 或 OCR 结果说成「学生说『XXX』」。
+H2. **绝对禁止**编造未出现在【学生口述】里的引号内容。
+H3. 如果 `student_speech_text` 整段非空字符 < 5（例如学生只说了「嗯」「这个」
     「然后」），**第一条** Agent 发言**必须**是开放邀请语，例如「你能再讲一句
     自己的思路吗？」或「这一步你是怎么想的？」 —— **绝对不要**基于题面替学生
     推导一遍他还没讲的内容。
-H3. 你只能基于 step 上**真实存在**的 `latex` / `plainText` 做追问；不要替学生
+H4. 你只能基于 step 上**真实存在**的 `latex` / `plainText` 做追问；不要替学生
     脑补他还没写下来的下一步。如果 step 内容为空、口述也短，老老实实让学生
     继续讲。
-H4. 题面里没有明文出现的数值、符号、公式，**绝对不要**写进追问里假装是学生
+H5. 题面里没有明文出现的数值、符号、公式，**绝对不要**写进追问里假装是学生
     给的条件。换句话说：宁可让 AI 显得"问得简单"，也不要让 AI 显得"懂的
     比学生多 + 编"。学生最讨厌"AI 在替我做题"。
 
@@ -276,6 +275,7 @@ def _build_user_prompt(
     allowed_step_ids: list[str],
     round_index: int,
     history: list[dict[str, Any]],
+    purpose: Literal["lecture", "peer_assessment", "teacher"] = "lecture",
 ) -> str:
     """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。
 
@@ -309,11 +309,16 @@ def _build_user_prompt(
         for s in steps
     )
     if speech:
-        lines.append(f'【学生口述（学生本人原话）】"{speech}"')
+        lines.append(f'【学生口述（仅麦克风语音转写，不含白板文字）】"{speech}"')
     else:
-        lines.append("【学生口述】（学生没有补充口述文字）")
+        lines.append("【学生口述】（本轮学生没有有效语音转写；不要假装学生说过什么）")
     lines.append("")
-    lines.append("【学生手写步骤 + 学生本人写的步骤说明】按提交顺序，每行一条：")
+    lines.append(
+        "【学生白板步骤】下列 plainText / LaTeX 来自手写板旁文字或 OCR 识别，"
+        "**不是**语音口述；描述时用「你写的」「白板上」等，禁止用「你说」除非"
+        "引用上方【学生口述】区块的原话："
+    )
+    lines.append("按提交顺序，每行一条：")
     if not steps:
         lines.append("- （学生未写任何步骤）")
     else:
@@ -324,9 +329,9 @@ def _build_user_prompt(
             strokes = s.get("strokeCount") or s.get("stroke_count") or 0
             descr_bits: list[str] = []
             if plain:
-                descr_bits.append(f'学生自述="{plain}"')
+                descr_bits.append(f'步骤说明="{plain}"')
             if latex:
-                descr_bits.append(f"学生写的 LaTeX=`{latex}`")
+                descr_bits.append(f"步骤 LaTeX=`{latex}`")
             if not plain and not latex:
                 descr_bits.append("（学生未补充文字说明）")
             descr_bits.append(f"笔画数={strokes}")
@@ -353,7 +358,7 @@ def _build_user_prompt(
             )
             tag = "学生" if role == "student" else f"AI:{role}"
             lines.append(f'- [{tag} · {display}] "{text}"{highlight_part}')
-        if last_followup is not None:
+        if last_followup is not None and purpose == "lecture":
             lines.append("")
             lines.append(
                 f'重要：上一轮同伴（{last_followup["display_name"]}，role={last_followup["role"]}）'
@@ -364,12 +369,26 @@ def _build_user_prompt(
         lines.append("【上一轮追问与回答历史】（本题首轮，没有历史）")
 
     lines.append("")
-    if speech or has_step_text:
+    if purpose == "peer_assessment":
         lines.append(
-            "重要：学生已经给出口述或步骤说明，你必须**优先**抓住学生的原话来追问。"
-            "至少有一条发言要明显引用学生"
-            "说过的关键短语（用中文引号简短照搬），并质疑其中可能藏的前提条件 / "
-            "化简规则 / 计算符号问题。"
+            "【评估任务】只判断**本轮**学生是否讲清楚，输出听懂 / 没听懂及理由。"
+            "没听懂时指出具体疑点；可以引用白板步骤，但："
+            "① 只有【学生口述】区块里的词句才能用「你说『…』」；"
+            "② 步骤内容只能说「你写的」「白板上」；"
+            "③ 【历史】里上一轮学生发言不要当成「本轮刚说的」；"
+            "④ OCR 识别可能有误，勿把识别结果当成学生亲口说过。"
+        )
+    elif purpose == "teacher":
+        lines.append(
+            "【提示任务】学生主动请求提示。可引用白板步骤或口述中的真实内容，"
+            "但只有【学生口述】里的词句才能用「你说」；步骤用「你写的」描述。"
+            "禁止编造学生没说过的话。"
+        )
+    elif speech or has_step_text:
+        lines.append(
+            "重要：学生已经给出口述或步骤说明，你必须**优先**围绕这些内容追问。"
+            "若引用【学生口述】里的词句，用中文引号简短照搬；"
+            "若引用步骤说明，用「你写的」而不是「你说」。"
         )
     else:
         lines.append(
@@ -377,7 +396,12 @@ def _build_user_prompt(
             "再追问该领域最关键的定义、"
             "公式适用条件、等价变形依据、图形关系、函数关系或统计口径。"
         )
-    lines.append("请只输出一个 JSON 对象，符合上面的输出格式。")
+    if purpose == "lecture":
+        lines.append("请只输出一个 JSON 对象，符合上面的输出格式。")
+    elif purpose == "peer_assessment":
+        lines.append("请只输出评估 JSON（understood / reason / highlightStepIds）。")
+    else:
+        lines.append("请只输出提示 JSON（text / highlightStepIds）。")
 
     return "\n".join(lines)
 

@@ -242,6 +242,7 @@ class _LecturePageState extends State<LecturePage> {
   late final StreamSubscription _liveEventsSub;
   late final StreamSubscription _liveErrorsSub;
   late final StreamSubscription _liveConnSub;
+  late final StreamSubscription _liveTtsPlaybackSub;
   late final StreamSubscription _audioChunksSub;
   late final StreamSubscription _audioPausesSub;
   late final StreamSubscription _audioVoiceSub;
@@ -309,6 +310,7 @@ class _LecturePageState extends State<LecturePage> {
     _liveEventsSub = _liveService.events.listen(_onLiveEvent);
     _liveErrorsSub = _liveService.errors.listen(_onLiveServiceError);
     _liveConnSub = _liveService.connectionState.listen(_onLiveConnection);
+    _liveTtsPlaybackSub = _liveService.ttsPlayback.listen(_onLiveTtsPlayback);
     _audioChunksSub = _audioService.chunks.listen(_onAudioChunk);
     _audioPausesSub = _audioService.pauses.listen(_onAudioPause);
     _audioVoiceSub = _audioService.voiceActivity.listen(_onAudioVoice);
@@ -372,6 +374,7 @@ class _LecturePageState extends State<LecturePage> {
     unawaited(_liveEventsSub.cancel());
     unawaited(_liveErrorsSub.cancel());
     unawaited(_liveConnSub.cancel());
+    unawaited(_liveTtsPlaybackSub.cancel());
     unawaited(_audioChunksSub.cancel());
     unawaited(_audioPausesSub.cancel());
     unawaited(_audioVoiceSub.cancel());
@@ -383,6 +386,19 @@ class _LecturePageState extends State<LecturePage> {
 
   void _onReasonPlaybackChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onLiveTtsPlayback(TtsPlaybackInfo info) {
+    if (!mounted || !info.playing || info.role.isEmpty) return;
+    setState(() {
+      _expandedPeerBubble = parseAgentRole(info.role);
+    });
+  }
+
+  AgentRole? get _liveTtsSpeakingRole {
+    final info = _liveService.currentTtsPlayback;
+    if (!info.playing || info.role.isEmpty) return null;
+    return parseAgentRole(info.role);
   }
 
   /// 监听手写板变化：
@@ -657,6 +673,7 @@ class _LecturePageState extends State<LecturePage> {
     LectureHistoryItem? committedStudent,
     bool omitTeacherTurn = false,
   }) {
+    _speechController.clear();
     _peerAssessments = assessments;
     _lastResponseStatus = status;
 
@@ -1021,6 +1038,9 @@ class _LecturePageState extends State<LecturePage> {
       setState(() => _hintLoading = true);
       // 必须先同步 ink_snapshot，否则后端 latest_steps 为空会直接 no_steps_yet。
       await _pushInkSnapshotNow();
+      if (!mounted) return;
+      await _liveService.clearPendingTts();
+      await _reasonPlayback.stop();
       if (!mounted) return;
       _liveService.sendRequestHint();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1568,6 +1588,7 @@ class _LecturePageState extends State<LecturePage> {
         break;
       case LiveServerEventType.peerAssessments:
         _cancelThinkingWatchdog();
+        unawaited(_liveService.clearPendingTts());
         final peerPayload = event.payload as LivePeerAssessmentsPayload;
         setState(() {
           _applyPeerAssessmentRound(
@@ -2028,8 +2049,10 @@ class _LecturePageState extends State<LecturePage> {
                     physics: const BouncingScrollPhysics(),
                     child: LecturePeerRail(
                       assessments: _peerAssessments,
-                      playingRole: _reasonPlayback.playingRole,
-                      activeSpeakingRole: _activeSpeakingRole,
+                      playingRole:
+                          _reasonPlayback.playingRole ?? _liveTtsSpeakingRole,
+                      activeSpeakingRole:
+                          _activeSpeakingRole ?? _liveTtsSpeakingRole,
                       teacherHasMessage: _teacherHasMessage,
                       expandedRole: _expandedPeerBubble,
                       messageForRole: _peerInlineMessage,

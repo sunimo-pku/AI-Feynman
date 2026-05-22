@@ -9,6 +9,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 
 import '../config/api_config.dart';
 import '../data/live_lecture_events.dart';
+import '../utils/tts_text.dart';
 import 'auth_service.dart';
 import 'ocr_service.dart';
 
@@ -106,12 +107,17 @@ class LiveLectureService {
   final _connectionController = StreamController<LiveConnectionState>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final _ttsStateController = StreamController<TtsState>.broadcast();
+  final _ttsPlaybackController = StreamController<TtsPlaybackInfo>.broadcast();
+
+  TtsPlaybackInfo _ttsPlayback = TtsPlaybackInfo.idle;
 
   Stream<LiveServerEvent> get events => _eventsController.stream;
   Stream<LiveConnectionState> get connectionState =>
       _connectionController.stream;
   Stream<String> get errors => _errorsController.stream;
   Stream<TtsState> get ttsState => _ttsStateController.stream;
+  Stream<TtsPlaybackInfo> get ttsPlayback => _ttsPlaybackController.stream;
+  TtsPlaybackInfo get currentTtsPlayback => _ttsPlayback;
 
   bool get isConnected => _isConnected;
   String get sessionId => _sessionId;
@@ -370,6 +376,18 @@ class LiveLectureService {
     _markDisconnected();
   }
 
+  /// 清空待播 TTS 队列并停止当前播放（新一轮评估 / 提示前调用）。
+  Future<void> clearPendingTts() async {
+    await stopTts();
+  }
+
+  void _emitTtsPlayback(TtsPlaybackInfo info) {
+    _ttsPlayback = info;
+    if (!_ttsPlaybackController.isClosed) {
+      _ttsPlaybackController.add(info);
+    }
+  }
+
   /// 把后端流式 TTS 推过来的一段 mp3 入队 + 触发消费。
   void _onTtsChunk(LiveAgentTtsChunkPayload p) {
     if (_disposed) return;
@@ -384,9 +402,18 @@ class LiveLectureService {
     _streamedTtsTurnIds.add(p.turnId);
     _ttsQueue.add(_TtsQueueItem(
       turnId: p.turnId,
+      role: p.role,
       seq: p.seq,
+      chunkIndex: p.chunkIndex,
       bytes: bytes,
     ));
+    _ttsQueue.sort((a, b) {
+      final turnCmp = a.turnId.compareTo(b.turnId);
+      if (turnCmp != 0) return turnCmp;
+      final seqCmp = a.seq.compareTo(b.seq);
+      if (seqCmp != 0) return seqCmp;
+      return a.chunkIndex.compareTo(b.chunkIndex);
+    });
     unawaited(_consumeTtsQueue());
   }
 
@@ -414,6 +441,13 @@ class LiveLectureService {
         if (!_ttsStateController.isClosed) {
           _ttsStateController.add(TtsState.playing);
         }
+        _emitTtsPlayback(
+          TtsPlaybackInfo(
+            turnId: item.turnId,
+            role: item.role,
+            playing: true,
+          ),
+        );
         try {
           await _audioPlayer.play(
             BytesSource(item.bytes, mimeType: 'audio/mpeg'),
@@ -428,6 +462,9 @@ class LiveLectureService {
       _ttsQueueBusy = false;
       if (_ttsQueue.isEmpty && !_ttsStateController.isClosed) {
         _ttsStateController.add(TtsState.idle);
+      }
+      if (_ttsQueue.isEmpty) {
+        _emitTtsPlayback(TtsPlaybackInfo.idle);
       } else if (_ttsQueue.isNotEmpty) {
         // 队列在 finally 期间又来了新 item，重新驱动。
         unawaited(_consumeTtsQueue());
@@ -438,6 +475,7 @@ class LiveLectureService {
   void _clearTtsQueue() {
     _ttsQueue.clear();
     _streamedTtsTurnIds.clear();
+    _emitTtsPlayback(TtsPlaybackInfo.idle);
   }
 
   /// 调用现有 `POST /tts`，把 [text] 合成 mp3 → 播放。
@@ -453,13 +491,15 @@ class LiveLectureService {
   ///   * 任意失败都只走 [errors] / [ttsState]，不抛。
   Future<void> requestTts(String text, {String role = ''}) async {
     if (_disposed || text.trim().isEmpty) return;
+    final spoken = plainTextForTts(text);
+    if (spoken.isEmpty) return;
     try {
       final uri = ApiConfig.uri('/tts');
       final resp = await _httpClient
           .post(
             uri,
             headers: const {'Content-Type': 'application/json; charset=utf-8'},
-            body: utf8.encode(jsonEncode({'text': text, 'role': role})),
+            body: utf8.encode(jsonEncode({'text': spoken, 'role': role})),
           )
           .timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) {
@@ -492,13 +532,18 @@ class LiveLectureService {
         await _audioPlayer.setVolume(1.0);
       } catch (_) {}
       if (myToken != _currentTtsToken) return; // 中途被新一轮覆盖
+      _emitTtsPlayback(
+        TtsPlaybackInfo(turnId: '', role: role, playing: true),
+      );
       _ttsStateController.add(TtsState.playing);
       await _audioPlayer.play(BytesSource(bytes, mimeType: 'audio/mpeg'));
       // 监听播放完成：audioplayers 的 onPlayerComplete 是 Stream
       _audioPlayer.onPlayerComplete.first.then((_) {
+        if (myToken != _currentTtsToken) return;
         if (!_ttsStateController.isClosed) {
           _ttsStateController.add(TtsState.idle);
         }
+        _emitTtsPlayback(TtsPlaybackInfo.idle);
       });
     } catch (e) {
       _emitError('TTS 异常：$e');
@@ -573,6 +618,9 @@ class LiveLectureService {
     } catch (_) {}
     try {
       await _audioPlayer.dispose();
+    } catch (_) {}
+    try {
+      _ttsPlaybackController.close();
     } catch (_) {}
     try {
       _httpClient.close();
@@ -663,13 +711,31 @@ enum LiveConnectionState { disconnected, connected }
 
 enum TtsState { idle, playing }
 
+class TtsPlaybackInfo {
+  const TtsPlaybackInfo({
+    required this.turnId,
+    required this.role,
+    required this.playing,
+  });
+
+  static const idle = TtsPlaybackInfo(turnId: '', role: '', playing: false);
+
+  final String turnId;
+  final String role;
+  final bool playing;
+}
+
 class _TtsQueueItem {
   const _TtsQueueItem({
     required this.turnId,
+    required this.role,
     required this.seq,
+    required this.chunkIndex,
     required this.bytes,
   });
   final String turnId;
+  final String role;
   final int seq;
+  final int chunkIndex;
   final Uint8List bytes;
 }
