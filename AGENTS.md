@@ -807,6 +807,10 @@ git push origin main
   才能进家长端。
 - **学生首页勿单页堆叠全册目录**：课程应走底部「课程」Tab → 点册别 →
   `CurriculumBookPage` 二级页；今日 Tab 只保留推荐小节与快捷入口。
+- **OpenAI SDK 禁止模块级用空 `api_key` 建 client**：GitHub Actions 无
+  `.env` 时 `OpenAI(api_key="")` 会在 **pytest 收集阶段**就抛
+  `Missing credentials`。`kimi.py` 对未配置 key 用 `ci-placeholder-key`
+  占位完成 import，真正发请求前用 `deepseek_api_key_configured()` 判断。
 - **全屏讲题页勿在 `awaiting` 态开放「下一题」**：第十二轮 UI 重构时曾在
   `_LectureStatus.awaiting` 加 `skip_next` 圆钮，学生可在同伴未听懂时跳题，
   破坏讲题闭环。正解：「下一题」仅 `finished` 且 `_lastResponseStatus ==
