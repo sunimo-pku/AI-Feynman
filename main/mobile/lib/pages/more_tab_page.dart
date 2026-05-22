@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/study_layout.dart';
 import 'daily_challenge_page.dart';
 import 'student_assignments_page.dart';
 import 'v2_pages.dart';
@@ -11,45 +12,6 @@ class MoreTabPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tools = <_MoreTool>[
-      _MoreTool(
-        '我的作业',
-        '查看家长布置与截止',
-        Icons.assignment_outlined,
-        () => const StudentAssignmentsPage(),
-      ),
-      _MoreTool(
-        '每日挑战',
-        '错题分步选择 + 白板讲解',
-        Icons.where_to_vote_outlined,
-        () => const DailyChallengePage(),
-      ),
-      _MoreTool(
-        '晶石商城',
-        '兑换实物文具（占位奖品）',
-        Icons.diamond_outlined,
-        () => const ShopPage(),
-      ),
-      _MoreTool(
-        '学习榜单',
-        '班级 / 章节周榜',
-        Icons.emoji_events_outlined,
-        () => const LeaderboardPage(),
-      ),
-      _MoreTool(
-        '拍照识题',
-        '识别后跳转对应章节',
-        Icons.document_scanner_outlined,
-        () => const PhotoQuestionPage(),
-      ),
-      _MoreTool(
-        '我的成长',
-        '编辑年级与展示资料',
-        Icons.person_outline,
-        () => const StudentProfileEditPage(),
-      ),
-    ];
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.pageEdge,
@@ -66,90 +28,84 @@ class MoreTabPage extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '挑战、奖励与辅助功能在此；年级仅在「我的」→ 编辑资料中修改。',
+          '挑战、奖励与辅助功能；年级仅在「我的」→ 编辑资料中修改。',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppPalette.textSecondary,
+            height: 1.4,
           ),
         ),
         const SizedBox(height: AppSpacing.moduleGap),
-        ...tools.map(
-          (t) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _MoreToolTile(tool: t),
-          ),
+        StudyToolGrid(
+          cells: [
+            StudyToolCell(
+              label: '我的作业',
+              subtitle: '家长布置',
+              icon: Icons.assignment_outlined,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const StudentAssignmentsPage(),
+                    ),
+                  ),
+            ),
+            StudyToolCell(
+              label: '每日挑战',
+              subtitle: '分步找错',
+              icon: Icons.where_to_vote_outlined,
+              color: AppPalette.primaryAccent,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const DailyChallengePage(),
+                    ),
+                  ),
+            ),
+            StudyToolCell(
+              label: '晶石商城',
+              subtitle: '实物文具',
+              icon: Icons.diamond_outlined,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ShopPage()),
+                  ),
+            ),
+            StudyToolCell(
+              label: '学习榜单',
+              subtitle: '校/区/市榜',
+              icon: Icons.emoji_events_outlined,
+              color: AppPalette.primaryAccent,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const LeaderboardPage(),
+                    ),
+                  ),
+            ),
+            StudyToolCell(
+              label: '拍照识题',
+              subtitle: '相册识题',
+              icon: Icons.document_scanner_outlined,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PhotoQuestionPage(),
+                    ),
+                  ),
+            ),
+            StudyToolCell(
+              label: '我的成长',
+              subtitle: '年级资料',
+              icon: Icons.person_outline,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const StudentProfileEditPage(),
+                    ),
+                  ),
+            ),
+          ],
         ),
       ],
-    );
-  }
-}
-
-class _MoreTool {
-  const _MoreTool(this.title, this.subtitle, this.icon, this.builder);
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Widget Function() builder;
-}
-
-class _MoreToolTile extends StatelessWidget {
-  const _MoreToolTile({required this.tool});
-
-  final _MoreTool tool;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppPalette.surface,
-      borderRadius: AppRadius.cardR,
-      child: InkWell(
-        borderRadius: AppRadius.cardR,
-        onTap:
-            () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => tool.builder())),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: AppRadius.cardR,
-            border: Border.all(color: AppPalette.outlineSoft),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppPalette.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(tool.icon, color: AppPalette.primary),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tool.title,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      tool.subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppPalette.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: AppPalette.textSecondary),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

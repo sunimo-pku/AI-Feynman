@@ -446,36 +446,10 @@ class _SuggestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StudyPanel(
+    return StudyInlineBanner(
+      message: text.isEmpty ? '继续保持每日讲题节奏。' : text,
       tone: StudyPanelTone.accent,
-      padding: const EdgeInsets.all(18),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.lightbulb_outline, color: AppPalette.primaryAccent),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '老师建议下一步',
-                  style: TextStyle(
-                    color: AppPalette.primaryAccent,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  text.isEmpty ? '继续保持每日讲题节奏。' : text,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      icon: Icons.lightbulb_outline,
     );
   }
 }

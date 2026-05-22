@@ -108,64 +108,61 @@ class HomeDashboardTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.moduleGap),
-        Text('快捷入口', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 10),
-        _QuickEntryGrid(
-          entries: [
-            _QuickEntry(
-              '每日挑战',
-              Icons.where_to_vote_outlined,
-              AppPalette.primaryAccent,
-              () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DailyChallengePage()),
-              ),
+        const StudySectionTitle(title: '快捷入口'),
+        StudyToolGrid(
+          cells: [
+            StudyToolCell(
+              label: '每日挑战',
+              subtitle: '分步找错',
+              icon: Icons.where_to_vote_outlined,
+              color: AppPalette.primaryAccent,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const DailyChallengePage(),
+                    ),
+                  ),
             ),
-            _QuickEntry(
-              '我的作业',
-              Icons.assignment_outlined,
-              AppPalette.primary,
-              () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const StudentAssignmentsPage(),
-                ),
-              ),
+            StudyToolCell(
+              label: '我的作业',
+              subtitle: '家长布置',
+              icon: Icons.assignment_outlined,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const StudentAssignmentsPage(),
+                    ),
+                  ),
             ),
-            _QuickEntry(
-              '晶石奖励',
-              Icons.diamond_outlined,
-              AppPalette.primary,
-              () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ShopPage()),
-              ),
+            StudyToolCell(
+              label: '晶石商城',
+              subtitle: '实物文具',
+              icon: Icons.diamond_outlined,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ShopPage()),
+                  ),
             ),
-            _QuickEntry(
-              '学习榜单',
-              Icons.emoji_events_outlined,
-              AppPalette.primaryAccent,
-              () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const LeaderboardPage()),
-              ),
+            StudyToolCell(
+              label: '学习榜单',
+              subtitle: '冲榜',
+              icon: Icons.emoji_events_outlined,
+              color: AppPalette.primaryAccent,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const LeaderboardPage(),
+                    ),
+                  ),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.moduleGap),
-        StudyPanel(
-          tone: StudyPanelTone.quiet,
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              const Icon(Icons.tips_and_updates_outlined, color: AppPalette.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '完整章节目录在「课程」；要换年级请去「我的」→ 编辑资料。',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppPalette.textSecondary,
-                    height: 1.45,
-                  ),
-                ),
-              ),
-            ],
+        Text(
+          '完整章节目录在「课程」；换年级请去「我的」→ 编辑资料。',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppPalette.textSecondary,
+            height: 1.45,
           ),
         ),
       ],
@@ -250,90 +247,6 @@ class _CompactGreeting extends StatelessWidget {
   }
 }
 
-class _QuickEntryGrid extends StatelessWidget {
-  const _QuickEntryGrid({required this.entries});
-
-  final List<_QuickEntry> entries;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = (constraints.maxWidth - 10) / 2;
-        return Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children:
-              entries
-                  .map(
-                    (e) => SizedBox(
-                      width: width,
-                      child: _QuickEntryTile(entry: e),
-                    ),
-                  )
-                  .toList(),
-        );
-      },
-    );
-  }
-}
-
-class _QuickEntry {
-  const _QuickEntry(this.label, this.icon, this.color, this.onTap);
-  final String label;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-}
-
-class _QuickEntryTile extends StatelessWidget {
-  const _QuickEntryTile({required this.entry});
-
-  final _QuickEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppPalette.surface,
-      borderRadius: AppRadius.cardR,
-      child: InkWell(
-        borderRadius: AppRadius.cardR,
-        onTap: entry.onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: AppRadius.cardR,
-            border: Border.all(color: AppPalette.outlineSoft),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: entry.color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(entry.icon, color: entry.color, size: 22),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  entry.label,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Icon(Icons.chevron_right, size: 20, color: entry.color),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _PendingAssignmentsBanner extends StatelessWidget {
   const _PendingAssignmentsBanner({required this.count, required this.onTap});
 
@@ -343,37 +256,26 @@ class _PendingAssignmentsBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppPalette.primary.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(16),
+      color: AppPalette.primary.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppPalette.primary.withValues(alpha: 0.2)),
-          ),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              const Icon(Icons.assignment, color: AppPalette.primary),
-              const SizedBox(width: 12),
+              const Icon(Icons.assignment_outlined, size: 20, color: AppPalette.primary),
+              const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '家长布置了 $count 项作业',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    Text(
-                      '点这里查看截止时间与题面',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                child: Text(
+                  '家长布置了 $count 项作业',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-              const Icon(Icons.chevron_right, color: AppPalette.primary),
+              const Icon(Icons.chevron_right, size: 18, color: AppPalette.primary),
             ],
           ),
         ),

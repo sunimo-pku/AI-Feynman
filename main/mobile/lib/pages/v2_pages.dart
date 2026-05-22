@@ -71,11 +71,40 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
               ),
               const SizedBox(height: 12),
             ],
-            _InfoCard(
-              title: p.studentName,
-              subtitle:
-                  '总战力 $total · ${p.equippedTitle.isEmpty ? '数学练习生' : p.equippedTitle} · 晶石 ${p.crystalBalance}',
-              icon: Icons.bolt_outlined,
+            StudyPanel(
+              tone: StudyPanelTone.primary,
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  StudyDenseTile(
+                    title: p.studentName,
+                    subtitle:
+                        p.equippedTitle.isEmpty
+                            ? '数学练习生'
+                            : p.equippedTitle,
+                    icon: Icons.bolt_outlined,
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      StudyStatPill(
+                        label: '总战力',
+                        value: '$total',
+                        icon: Icons.trending_up,
+                      ),
+                      StudyStatPill(
+                        label: '晶石',
+                        value: '${p.crystalBalance}',
+                        icon: Icons.diamond_outlined,
+                        accent: AppPalette.primaryAccent,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -91,10 +120,23 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
               label: const Text('编辑展示名 / 年级'),
             ),
             const SizedBox(height: 12),
+            const StudySectionTitle(title: '章节战力'),
             if (p.sections.isEmpty)
-              const _EmptyCard('完成一轮讲题或今日悬赏后，这里会出现章节战力。')
+              const StudyEmptyHint('完成一轮讲题或今日悬赏后，这里会出现章节战力。')
             else
-              ...p.sections.map((s) => _PowerRow(section: s)),
+              StudyGroupedPanel(
+                children:
+                    p.sections
+                        .map(
+                          (s) => StudyDenseTile(
+                            title: s.sectionId,
+                            subtitle: '${s.rankTier} · ${s.powerScore} 战力',
+                            icon: Icons.insights_outlined,
+                            dense: true,
+                          ),
+                        )
+                        .toList(),
+              ),
           ],
         );
       },
@@ -168,17 +210,41 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
               }
               final entries = snapshot.data!;
               if (entries.isEmpty) {
-                return const _EmptyCard('本周还没有同地区战力记录，先完成一题冲榜。');
+                return const StudyEmptyHint('本周还没有同地区战力记录，先完成一题冲榜。');
               }
-              return Column(
+              return StudyGroupedPanel(
                 children:
                     entries
                         .map(
-                          (e) => _InfoCard(
-                            title: '#${e.rank} ${e.studentName}',
-                            subtitle:
-                                '${e.powerScore} 战力 · ${e.rankTier}\n${e.titleLabel}',
+                          (e) => StudyDenseTile(
+                            dense: true,
+                            title: e.studentName,
+                            subtitle: e.titleLabel,
                             icon: Icons.emoji_events_outlined,
+                            accent:
+                                e.rank <= 3
+                                    ? AppPalette.primaryAccent
+                                    : AppPalette.primary,
+                            trailing: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '#${e.rank}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelLarge
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: AppPalette.primary,
+                                      ),
+                                ),
+                                Text(
+                                  '${e.powerScore}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
                           ),
                         )
                         .toList(),
@@ -252,14 +318,16 @@ class _BountyPageState extends State<BountyPage> {
             );
           }
           final items = snapshot.data!;
-          if (items.isEmpty) return const _EmptyCard('今天暂时没有悬赏题。');
+          if (items.isEmpty) {
+            return const Center(child: StudyEmptyHint('今天暂时没有悬赏题。'));
+          }
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.pageEdge),
             children: [
               if (_message.isNotEmpty)
-                _InfoCard(
-                  title: '提交结果',
-                  subtitle: _message,
+                StudyInlineBanner(
+                  message: _message,
+                  tone: StudyPanelTone.accent,
                   icon: Icons.check_circle_outline,
                 ),
               ...items.map(
@@ -342,68 +410,106 @@ class _ShopPageState extends State<ShopPage> {
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.pageEdge),
             children: [
-              _InfoCard(
-                title: '晶石余额',
-                subtitle: '${catalog.balance} 颗 · 仅可兑换实物文具（占位奖品）',
-                icon: Icons.diamond_outlined,
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  StudyStatPill(
+                    label: '晶石余额',
+                    value: '${catalog.balance} 颗',
+                    icon: Icons.diamond_outlined,
+                  ),
+                  StudyStatPill(
+                    label: '兑换说明',
+                    value: '实物占位',
+                    icon: Icons.inventory_2_outlined,
+                    accent: AppPalette.textSecondary,
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                '收货信息',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+              const SizedBox(height: 14),
+              const StudySectionTitle(
+                title: '收货信息',
+                subtitle: '兑换前请填写，姓名与电话必填',
+              ),
+              StudyPanel(
+                tone: StudyPanelTone.quiet,
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+                child: Column(
+                  children: [
+                    _TextField(controller: _name, label: '收货人'),
+                    _TextField(controller: _phone, label: '电话'),
+                    _TextField(
+                      controller: _address,
+                      label: '地址（选填）',
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              _TextField(controller: _name, label: '收货人'),
-              _TextField(controller: _phone, label: '电话'),
-              _TextField(controller: _address, label: '地址（省市区 + 详细地址）'),
-              const SizedBox(height: 16),
-              Text(
-                '文具兑换',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 14),
+              const StudySectionTitle(title: '文具兑换'),
               if (stationery.isEmpty)
-                const _EmptyCard('暂无文具商品，稍后再来看看。')
+                const StudyEmptyHint('暂无文具商品，稍后再来看看。')
               else
-                ...stationery.map(
-                  (item) =>
-                      _ShopItemCard(item: item, onRedeem: () => _redeem(item)),
+                StudyGroupedPanel(
+                  children:
+                      stationery
+                          .map(
+                            (item) => _shopDenseTile(
+                              context,
+                              item,
+                              () => _redeem(item),
+                            ),
+                          )
+                          .toList(),
                 ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+              const StudySectionTitle(title: '我的订单'),
               FutureBuilder<Map<String, dynamic>>(
                 future: _service.fetchOrders(),
                 builder: (context, orders) {
                   final raw = orders.data?['orders'];
                   final rows = raw is List ? raw : const [];
-                  return _InfoCard(
-                    title: '我的兑换订单',
-                    subtitle:
-                        rows.isEmpty
-                            ? '暂无订单'
-                            : rows
-                                .map((e) => '${e['skuId']} · ${e['status']}')
-                                .join('\n'),
-                    icon: Icons.local_shipping_outlined,
+                  if (rows.isEmpty) {
+                    return const StudyEmptyHint('暂无兑换订单');
+                  }
+                  return StudyGroupedPanel(
+                    children:
+                        rows
+                            .map(
+                              (e) => StudyDenseTile(
+                                dense: true,
+                                title: '${e['skuId']}',
+                                subtitle: '${e['status']}',
+                                icon: Icons.local_shipping_outlined,
+                              ),
+                            )
+                            .toList(),
                   );
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+              const StudySectionTitle(title: '最近流水'),
               FutureBuilder<Map<String, dynamic>>(
                 future: _service.fetchLedger(),
                 builder: (context, ledger) {
                   final raw = ledger.data?['ledger'];
                   final rows = raw is List ? raw.take(5).toList() : const [];
-                  if (rows.isEmpty) return const _EmptyCard('暂无晶石流水。');
-                  return _InfoCard(
-                    title: '最近流水',
-                    subtitle: rows
-                        .map((e) => '${e['amount']} · ${e['reason']}')
-                        .join('\n'),
-                    icon: Icons.receipt_long_outlined,
+                  if (rows.isEmpty) {
+                    return const StudyEmptyHint('暂无晶石流水');
+                  }
+                  return StudyGroupedPanel(
+                    children:
+                        rows
+                            .map(
+                              (e) => StudyDenseTile(
+                                dense: true,
+                                title: '${e['reason']}',
+                                subtitle: '${e['amount']}',
+                                icon: Icons.receipt_long_outlined,
+                              ),
+                            )
+                            .toList(),
                   );
                 },
               ),
@@ -478,18 +584,30 @@ class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
             label: const Text('从相册选择题目图片'),
           ),
           if (_error != null)
-            _InfoCard(
-              title: '识别失败',
-              subtitle: _error!,
+            StudyInlineBanner(
+              message: _error!,
+              tone: StudyPanelTone.danger,
               icon: Icons.error_outline,
             ),
           if (r != null) ...[
             const SizedBox(height: 12),
-            _InfoCard(
-              title: '推荐章节 ${r['sectionId']}',
-              subtitle:
-                  '置信度 ${r['confidence']} · ${r['source']}\n${r['questionPrompt']}',
-              icon: Icons.document_scanner_outlined,
+            StudyPanel(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  StudyDenseTile(
+                    title: '推荐章节 ${r['sectionId']}',
+                    subtitle: '置信度 ${r['confidence']} · ${r['source']}',
+                    icon: Icons.document_scanner_outlined,
+                  ),
+                  const SizedBox(height: 8),
+                  FormulaText(
+                    r['questionPrompt'] as String? ?? '',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             FilledButton(onPressed: _startLecture, child: const Text('进入讲题')),
@@ -604,6 +722,45 @@ class _StudentProfileEditPageState extends State<StudentProfileEditPage> {
   }
 }
 
+StudyDenseTile _shopDenseTile(
+  BuildContext context,
+  ShopItem item,
+  VoidCallback onRedeem,
+) {
+  final desc =
+      item.description.trim().isEmpty
+          ? '占位文具'
+          : item.description.trim();
+  return StudyDenseTile(
+    title: item.name,
+    subtitle: desc,
+    icon: Icons.inventory_2_outlined,
+    trailing: Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${item.crystalCost}',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: AppPalette.primaryAccent,
+          ),
+        ),
+        const SizedBox(height: 4),
+        FilledButton.tonal(
+          onPressed: onRedeem,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(64, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text('兑换'),
+        ),
+      ],
+    ),
+  );
+}
+
 class _ScaffoldShell extends StatelessWidget {
   const _ScaffoldShell({
     required this.title,
@@ -642,77 +799,6 @@ Widget _loadingOrError(AsyncSnapshot snapshot, VoidCallback retry) {
     );
   }
   return const Center(child: CircularProgressIndicator());
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
-  final String title;
-  final String subtitle;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return StudyPanel(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppPalette.primary.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: AppPalette.primary, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 4),
-                FormulaText(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyCard extends StatelessWidget {
-  const _EmptyCard(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return _InfoCard(title: '暂无数据', subtitle: text, icon: Icons.inbox_outlined);
-  }
-}
-
-class _PowerRow extends StatelessWidget {
-  const _PowerRow({required this.section});
-  final PowerSection section;
-
-  @override
-  Widget build(BuildContext context) {
-    return _InfoCard(
-      title: section.sectionId,
-      subtitle: '${section.rankTier} · ${section.powerScore} 战力',
-      icon: Icons.trending_up,
-    );
-  }
 }
 
 class _BountyCard extends StatelessWidget {
@@ -759,25 +845,6 @@ class _BountyCard extends StatelessWidget {
   }
 }
 
-class _ShopItemCard extends StatelessWidget {
-  const _ShopItemCard({required this.item, required this.onRedeem});
-  final ShopItem item;
-  final VoidCallback onRedeem;
-
-  @override
-  Widget build(BuildContext context) {
-    final desc =
-        item.description.trim().isEmpty
-            ? '占位文具 · 提交后订单状态为 pending'
-            : item.description.trim();
-    return _InfoCard(
-      title: item.name,
-      subtitle: '${item.crystalCost} 晶石\n$desc',
-      icon: Icons.inventory_2_outlined,
-    ).withButton(onRedeem, label: '兑换');
-  }
-}
-
 class _TextField extends StatelessWidget {
   const _TextField({required this.controller, required this.label});
   final TextEditingController controller;
@@ -795,18 +862,3 @@ class _TextField extends StatelessWidget {
   }
 }
 
-extension on Widget {
-  Widget withButton(VoidCallback onPressed, {String label = '兑换'}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        this,
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton(onPressed: onPressed, child: Text(label)),
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
-}

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/curriculum_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/curriculum_catalog.dart';
+import '../widgets/study_layout.dart';
 import 'curriculum_book_page.dart';
 
 /// 学生端「课程」Tab：仅展示账号年级下的上下册（年级只在「我的」修改）。
@@ -83,33 +84,35 @@ class CurriculumTabPage extends StatelessWidget {
             ),
           )
         else
-          ...books.map(
-            (book) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.itemGap),
-              child: _BookListTile(
-                book: book,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder:
-                          (_) => CurriculumBookPage(
-                            book: book,
-                            onSectionTap: onSectionTap,
-                            onSectionReview: onSectionReview,
-                          ),
-                    ),
-                  );
-                },
-              ),
-            ),
+          StudyGroupedPanel(
+            children:
+                books
+                    .map(
+                      (book) => _BookDenseTile(
+                        book: book,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => CurriculumBookPage(
+                                    book: book,
+                                    onSectionTap: onSectionTap,
+                                    onSectionReview: onSectionReview,
+                                  ),
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                    .toList(),
           ),
       ],
     );
   }
 }
 
-class _BookListTile extends StatelessWidget {
-  const _BookListTile({required this.book, required this.onTap});
+class _BookDenseTile extends StatelessWidget {
+  const _BookDenseTile({required this.book, required this.onTap});
 
   final CurriculumBook book;
   final VoidCallback onTap;
@@ -123,67 +126,13 @@ class _BookListTile extends StatelessWidget {
     );
     final hasPractice = practicable > 0;
 
-    return Material(
-      color: AppPalette.surface,
-      borderRadius: AppRadius.cardR,
-      child: InkWell(
-        borderRadius: AppRadius.cardR,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          decoration: BoxDecoration(
-            borderRadius: AppRadius.cardR,
-            border: Border.all(
-              color:
-                  hasPractice
-                      ? AppPalette.primary.withValues(alpha: 0.25)
-                      : AppPalette.outline,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppPalette.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  hasPractice ? Icons.menu_book : Icons.lock_outline,
-                  color: hasPractice ? AppPalette.primary : AppPalette.comingSoon,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      book.label,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${book.chapters.length} 章 · $totalSections 节 · $practicable 节可练',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color:
-                            hasPractice
-                                ? AppPalette.primaryAccent
-                                : AppPalette.comingSoon,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: AppPalette.textSecondary),
-            ],
-          ),
-        ),
-      ),
+    return StudyDenseTile(
+      onTap: onTap,
+      title: book.label,
+      subtitle: '${book.chapters.length} 章 · $totalSections 节 · $practicable 节可练',
+      icon: hasPractice ? Icons.menu_book_outlined : Icons.lock_outline,
+      accent: hasPractice ? AppPalette.primary : AppPalette.comingSoon,
+      trailing: const Icon(Icons.chevron_right, size: 20, color: AppPalette.textSecondary),
     );
   }
 }

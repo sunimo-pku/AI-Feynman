@@ -163,13 +163,10 @@ class _AssignmentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final overdue = item.status == 'overdue';
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: overdue ? AppPalette.error.withValues(alpha: 0.4) : AppPalette.outlineSoft),
-      ),
+    return StudyPanel(
+      tone: overdue ? StudyPanelTone.danger : StudyPanelTone.surface,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      margin: const EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
