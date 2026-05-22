@@ -38,9 +38,9 @@ def test_non_radical_empty_input_prompt_is_generic() -> None:
         round_index=1,
         history=[],
     )
-    assert "判断本题所属领域" in prompt
+    assert "像**同学**一样邀请" in prompt
     assert "二次根式" not in prompt
-    assert "函数关系" in prompt
+    assert "教师术语" in prompt
 
 
 def test_lecture_agent_requires_deepseek_key(monkeypatch) -> None:

@@ -744,6 +744,9 @@ git push origin main
   「写出已知 / 列出关键步骤」等框架标签按 step 顺序塞进 `latex/plainText`，
   同伴 LLM 会误报「白板上只写了…」。现 `/ocr/ink` 无真实 HWR 时一律返回空
   识别；框架标签仅留题库/metadata，不得进入【学生白板步骤】。
+- **同伴 Prompt 忌「导师腔」**：小明/大雄/班长若写「前提未说明」「等价变形」
+  会像批作业不像小组讨论。人设与 System Prompt 统一在
+  `app/services/peer_personas.py`；评估温度约 0.45，要求口语、一次只问 1 点。
 
 ### 第十二轮 · V2 产品闭环与 App 接线
 

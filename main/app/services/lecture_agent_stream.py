@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _STREAM_SYSTEM_SUFFIX = """
 请以 NDJSON 形式逐行输出事件；每行只能是一个 JSON 对象，不要 Markdown。
 每轮**只能有 1 条**同伴发言（禁止 teacher / 李老师）；禁止同轮多角色。
+发言必须是**初中生小组讨论口语**，禁止批作业腔。
 每行一个对象：
 {"type":"turn_start","turnId":"turn_1","role":"xiaoming","displayName":"小明","highlightStepIds":["step_1"]}
 {"type":"delta","turnId":"turn_1","delta":"..."}

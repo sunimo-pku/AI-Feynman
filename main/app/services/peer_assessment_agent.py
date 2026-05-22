@@ -22,11 +22,16 @@ from app.services.lecture_agent import (
     _sanitize_history,
     _strip_markdown_fence,
 )
+from app.services.peer_personas import (
+    default_assessment_reason,
+    build_peer_assessment_system_prompt,
+    PEER_ASSESSMENT_USER_SUFFIX,
+)
 
 logger = logging.getLogger(__name__)
 
 _ASSESSMENT_MODEL = Config.DEEPSEEK_MODEL
-_ASSESSMENT_TEMPERATURE = 0.3
+_ASSESSMENT_TEMPERATURE = 0.45
 _ASSESSMENT_EXTRA_BODY: dict[str, Any] = DEEPSEEK_THINKING_DISABLED
 _LLM_TIMEOUT_SECONDS = 6.0
 _MAX_REASON_LEN = 220
@@ -36,45 +41,9 @@ _SPEECH_QUOTE_RE = re.compile(
     r"(?:你说|你刚才说|你刚刚说)[「『\"']([^」』\"']{2,})[」』\"']"
 )
 
-_ROLE_FOCUS: dict[str, str] = {
-    "xiaoming": (
-        "你是小明，基础不太牢的同学。你只从「定义、前提条件、这一步为什么成立」"
-        "判断听没听懂。"
-    ),
-    "daxiong": (
-        "你是大雄，容易粗心的同学。你只从「计算细节、化简、符号、漏写条件」"
-        "判断听没听懂。"
-    ),
-    "monitor": (
-        "你是班长，善于归纳。你只从「方法是否说清、能否概括成一句话规则、"
-        "易错点是否点到」判断听没听懂。"
-    ),
-}
-
 
 def _system_prompt_for_role(role: str) -> str:
-    focus = _ROLE_FOCUS.get(role, "你是听课同伴。")
-    display = _DEFAULT_DISPLAY_NAME.get(role, role)
-    return f"""{focus}
-你正在听一位初中学生做费曼讲题。**只输出你自己的听懂状态**，不要替其他同伴发言。
-
-【判断规则】
-1. 若学生把与你视角相关的关键点讲清楚了 → `"understood": true`，`reason` 用一句话说明听懂了什么（≤60 字）。
-2. 若还有缺口 → `"understood": false`，`reason` 说明**你没听懂的具体点**（≤180 字，可 LaTeX）。
-3. 不要直接公布完整答案；没听懂时像同学一样指出疑点。
-4. `highlightStepIds` 只能引用白名单 stepId。
-5. **口述 vs 白板**：只有【学生口述】区块里的词句才能用「你说『…』」；白板步骤 / OCR 只能说「你写的」「白板上」。
-6. **禁止**把历史里上一轮学生的话当成「本轮刚说的」；**禁止**编造任何未出现在上下文的引号内容。
-7. **仅有笔画、无 LaTeX/说明时**：禁止猜测白板上具体写了什么；**禁止**把「写出已知」「列出关键步骤」等解题框架标签说成学生写的。
-
-只输出一个 JSON 对象：
-{{
-  "understood": true | false,
-  "reason": "……",
-  "highlightStepIds": ["step_x"]
-}}
-你的 displayName 固定为「{display}」，role 固定为「{role}」。
-"""
+    return build_peer_assessment_system_prompt(role)
 
 
 def _step_evidence_corpus(steps: list[dict[str, Any]]) -> str:
@@ -133,7 +102,7 @@ def _parse_assessment(
     understood = bool(payload.get("understood"))
     reason = str(payload.get("reason") or "").strip()
     if not reason:
-        reason = "这一步我听懂了。" if understood else "我还需要你再讲清楚一点。"
+        reason = default_assessment_reason(role=role, understood=understood)
     reason = _sanitize_reason_quotes(
         reason,
         student_speech_text=student_speech_text,
@@ -189,7 +158,7 @@ def _assess_one_peer(
     )
     user_prompt = (
         f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
-        "请根据下面上下文，输出**你自己**是否听懂了学生的讲解。\n\n"
+        f"{PEER_ASSESSMENT_USER_SUFFIX}\n\n"
         f"{context}\n\n"
         "请只输出一个 JSON 对象。"
     )
