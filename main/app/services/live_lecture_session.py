@@ -68,6 +68,8 @@ EVT_AGENT_TURN_DELTA = "agent_turn_delta"
 EVT_AGENT_TURN_DONE = "agent_turn_done"
 EVT_ROUND_DONE = "round_done"
 EVT_PEER_ASSESSMENTS = "peer_assessments"
+# 单名同伴评估完成即推送（早于整包 peer_assessments），便于 UI 先更新头像环 + TTS。
+EVT_PEER_ASSESSMENT_ITEM = "peer_assessment_item"
 EVT_WARNING = "warning"
 EVT_ERROR = "error"
 # 第十二轮第三轮（流式 TTS）：LLM 流式 delta 累积一句完整中文（句号 / 问号 / 感叹号）
@@ -395,10 +397,17 @@ class LiveLectureSession:
                 "sessionId": self.session_id,
             })
             return
+        pause_t0 = time.monotonic()
         await self._maybe_flush_asr(
             send=send,
             recognize_fn=recognize_fn,
             force=True,
+        )
+        asr_ms = (time.monotonic() - pause_t0) * 1000
+        logger.info(
+            "[live-session] pause asr_flush_ms=%.0f session=%s",
+            asr_ms,
+            self.session_id,
         )
         self.is_thinking = True
         self._interrupt_event.clear()
@@ -407,14 +416,25 @@ class LiveLectureSession:
             "sessionId": self.session_id,
         })
         thinking_start_ms = time.monotonic() * 1000
+        phase_t0 = time.monotonic()
 
         try:
-            result = await self._invoke_peer_assessments(peer_assessment_fn)
+            result = await self._invoke_peer_assessments_streaming(
+                peer_assessment_fn=peer_assessment_fn,
+                send=send,
+            )
         except Exception as e:  # noqa: BLE001
             logger.exception("[live-session] peer_assessment 失败：%s", e)
             await self._send_error(send, f"peer_assessment_failed:{e}")
             self.is_thinking = False
             return
+
+        peer_ms = (time.monotonic() - phase_t0) * 1000
+        logger.info(
+            "[live-session] pause pipeline peer_ms=%.0f session=%s",
+            peer_ms,
+            self.session_id,
+        )
 
         assessments = list(result.get("assessments") or [])
         all_understood = bool(result.get("all_understood"))
@@ -422,7 +442,9 @@ class LiveLectureSession:
         mastery_delta = int(result.get("mastery_delta") or 0)
 
         teacher_summary: dict[str, Any] | None = None
+        teacher_ms = 0.0
         if all_understood and teacher_summary_fn is not None:
+            teacher_t0 = time.monotonic()
             try:
                 teacher_summary = await self._invoke_teacher_summary(
                     teacher_summary_fn,
@@ -433,6 +455,7 @@ class LiveLectureSession:
                 await self._send_error(send, f"teacher_summary_failed:{e}")
                 self.is_thinking = False
                 return
+            teacher_ms = (time.monotonic() - teacher_t0) * 1000
 
         elapsed_ms = time.monotonic() * 1000 - thinking_start_ms
         if elapsed_ms < _MIN_THINKING_VISIBLE_MS:
@@ -445,12 +468,19 @@ class LiveLectureSession:
             "allUnderstood": all_understood,
             "status": status,
             "masteryDelta": mastery_delta,
+            "reasonsStreamed": True,
             "teacherSummary": (
                 _teacher_summary_to_wire(teacher_summary)
                 if teacher_summary
                 else None
             ),
         })
+        logger.info(
+            "[live-session] pause done peer_ms=%.0f teacher_ms=%.0f total_ms=%.0f",
+            peer_ms,
+            teacher_ms,
+            (time.monotonic() * 1000 - thinking_start_ms),
+        )
 
         if teacher_summary and not self._interrupt_event.is_set():
             await self._stream_single_turn_to_client(teacher_summary, send=send)
@@ -541,6 +571,93 @@ class LiveLectureSession:
             "sessionId": self.session_id,
             "text": text,
         })
+
+    async def _invoke_peer_assessments_streaming(
+        self,
+        *,
+        peer_assessment_fn: Callable[..., dict[str, Any]],
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> dict[str, Any]:
+        """三人并行评估；每名同伴完成即推送 item + 流式 TTS，不等到最慢的一个。"""
+        del peer_assessment_fn  # live 主路径直连 assess_one_peer；submit 仍用 bulk API。
+        from app.services.peer_assessment_agent import _PEER_ROLES, assess_one_peer
+
+        steps_payload = [
+            {
+                "stepId": s.step_id,
+                "latex": s.latex,
+                "plainText": s.plain_text,
+                "strokeCount": s.stroke_count,
+            }
+            for s in self.latest_steps
+        ]
+        speech = self._current_round_speech()
+        allowed_step_ids = [s.step_id for s in self.latest_steps if s.step_id]
+        loop = asyncio.get_event_loop()
+        round_index = max(1, self.round_index + 1)
+        history = list(self.history)
+
+        async def _run_one(role: str) -> dict[str, Any]:
+            return await loop.run_in_executor(
+                None,
+                lambda r=role: assess_one_peer(
+                    role=r,
+                    section_id=self.section_id,
+                    question_id=self.question_id,
+                    question_prompt=self.question_prompt,
+                    student_speech_text=speech,
+                    steps=steps_payload,
+                    allowed_step_ids=allowed_step_ids,
+                    round_index=round_index,
+                    history=history,
+                ),
+            )
+
+        tasks = {
+            asyncio.create_task(_run_one(role)): role for role in _PEER_ROLES
+        }
+        by_role: dict[str, dict[str, Any]] = {}
+        for finished in asyncio.as_completed(tasks.keys()):
+            if self._interrupt_event.is_set():
+                break
+            item = await finished
+            role = str(item.get("role") or "")
+            by_role[role] = item
+            await self._safe_send(send, {
+                "type": EVT_PEER_ASSESSMENT_ITEM,
+                "sessionId": self.session_id,
+                "assessment": _assessment_to_wire(item),
+            })
+            reason = str(item.get("reason") or "").strip()
+            if reason:
+                turn_id = f"reason_{role}"
+                await self._stream_single_turn_to_client(
+                    {
+                        "turn_id": turn_id,
+                        "role": role,
+                        "display_name": str(item.get("display_name") or ""),
+                        "highlight_step_ids": list(
+                            item.get("highlight_step_ids") or []
+                        ),
+                        "text": reason,
+                    },
+                    send=send,
+                )
+
+        assessments = [by_role[r] for r in _PEER_ROLES if r in by_role]
+        if len(assessments) != len(_PEER_ROLES):
+            raise RuntimeError("peer assessments incomplete")
+
+        all_understood = all(a.get("understood") for a in assessments)
+        status = "completed" if all_understood else "needs_explanation"
+        mastery_delta = 1 if all_understood else 0
+        return {
+            "status": status,
+            "mastery_delta": mastery_delta,
+            "all_understood": all_understood,
+            "assessments": assessments,
+            "source": "llm",
+        }
 
     async def _invoke_peer_assessments(
         self,

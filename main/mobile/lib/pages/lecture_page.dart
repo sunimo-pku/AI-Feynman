@@ -672,6 +672,7 @@ class _LecturePageState extends State<LecturePage> {
     AgentTurn? teacherSummary,
     LectureHistoryItem? committedStudent,
     bool omitTeacherTurn = false,
+    bool reasonsStreamed = false,
   }) {
     _speechController.clear();
     _peerAssessments = assessments;
@@ -707,13 +708,18 @@ class _LecturePageState extends State<LecturePage> {
       unawaited(_reasonPlayback.stop());
       _reasonPlayback.clearQueue();
     } else {
-      for (final a in assessments.where((x) => !x.understood)) {
-        _turns.add(
-          a.toReasonTurn(turnId: 'reason_${agentRoleWire(a.role)}'),
-        );
+      if (!reasonsStreamed) {
+        for (final a in assessments.where((x) => !x.understood)) {
+          _turns.add(
+            a.toReasonTurn(turnId: 'reason_${agentRoleWire(a.role)}'),
+          );
+        }
       }
       _status = _LectureStatus.awaiting;
       _reasonPlayback.setQueue(assessments);
+      if (!reasonsStreamed) {
+        unawaited(_reasonPlayback.playAll());
+      }
     }
 
     if (committedStudent != null && committedStudent.role == 'student') {
@@ -1610,6 +1616,23 @@ class _LecturePageState extends State<LecturePage> {
         // 第十二轮第三轮：流式 TTS 段已经在 LiveLectureService 内部按队列播放，
         // page 这里不需要任何动作；仅做 case 完整以让 dart_lints 通过。
         break;
+      case LiveServerEventType.peerAssessmentItem:
+        _cancelThinkingWatchdog();
+        final itemPayload = event.payload as LivePeerAssessmentItemPayload;
+        setState(() {
+          _peerAssessments = _mergePeerAssessment(
+            _peerAssessments,
+            itemPayload.assessment,
+          );
+          final a = itemPayload.assessment;
+          if (!a.understood && _expandedPeerBubble == null) {
+            _expandedPeerBubble = a.role;
+          }
+          if (_liveStatus == _LiveStatus.thinking) {
+            _liveStatus = _LiveStatus.aiSpeaking;
+          }
+        });
+        break;
       case LiveServerEventType.peerAssessments:
         _cancelThinkingWatchdog();
         unawaited(_liveService.clearPendingTts());
@@ -1625,6 +1648,7 @@ class _LecturePageState extends State<LecturePage> {
             omitTeacherTurn:
                 peerPayload.allUnderstood &&
                 peerPayload.teacherSummary != null,
+            reasonsStreamed: peerPayload.reasonsStreamed,
           );
           _liveStatus = _LiveStatus.idle;
         });
@@ -1762,6 +1786,20 @@ class _LecturePageState extends State<LecturePage> {
 
   void _scrollToBottomSoon() {
     // 全屏白板布局不再展示对话 ListView；保留调用点供后续轻量 toast 等扩展。
+  }
+
+  List<PeerAssessment> _mergePeerAssessment(
+    List<PeerAssessment> current,
+    PeerAssessment incoming,
+  ) {
+    final next = [...current];
+    final idx = next.indexWhere((a) => a.role == incoming.role);
+    if (idx >= 0) {
+      next[idx] = incoming;
+    } else {
+      next.add(incoming);
+    }
+    return next;
   }
 
   PeerAssessment? _assessmentFor(AgentRole role) {

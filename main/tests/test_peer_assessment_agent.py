@@ -37,7 +37,7 @@ def test_generate_peer_assessments_parallel(monkeypatch) -> None:
         "key",
     )
     monkeypatch.setattr(
-        "app.services.peer_assessment_agent._assess_one_peer",
+        "app.services.peer_assessment_agent.assess_one_peer",
         fake_assess_one,
     )
     result = peer_assessment_agent.generate_peer_assessments(
@@ -70,7 +70,7 @@ def test_all_understood_sets_completed(monkeypatch) -> None:
         "key",
     )
     monkeypatch.setattr(
-        "app.services.peer_assessment_agent._assess_one_peer",
+        "app.services.peer_assessment_agent.assess_one_peer",
         fake_assess_one,
     )
     result = peer_assessment_agent.generate_peer_assessments(

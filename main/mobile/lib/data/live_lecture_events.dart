@@ -41,6 +41,7 @@ enum LiveServerEventType {
   agentTurnDelta,
   agentTurnDone,
   agentTtsChunk,
+  peerAssessmentItem,
   peerAssessments,
   roundDone,
   warning,
@@ -64,6 +65,8 @@ LiveServerEventType parseLiveServerEventType(String raw) {
       return LiveServerEventType.agentTurnDone;
     case 'agent_tts_chunk':
       return LiveServerEventType.agentTtsChunk;
+    case 'peer_assessment_item':
+      return LiveServerEventType.peerAssessmentItem;
     case 'peer_assessments':
       return LiveServerEventType.peerAssessments;
     case 'round_done':
@@ -159,6 +162,12 @@ class LiveRoundDonePayload extends LiveServerPayload {
   final bool allUnderstood;
 }
 
+class LivePeerAssessmentItemPayload extends LiveServerPayload {
+  const LivePeerAssessmentItemPayload({required this.assessment});
+
+  final PeerAssessment assessment;
+}
+
 class LivePeerAssessmentsPayload extends LiveServerPayload {
   const LivePeerAssessmentsPayload({
     required this.assessments,
@@ -166,6 +175,7 @@ class LivePeerAssessmentsPayload extends LiveServerPayload {
     required this.status,
     required this.masteryDelta,
     this.teacherSummary,
+    this.reasonsStreamed = false,
   });
 
   final List<PeerAssessment> assessments;
@@ -173,6 +183,7 @@ class LivePeerAssessmentsPayload extends LiveServerPayload {
   final String status;
   final int masteryDelta;
   final AgentTurn? teacherSummary;
+  final bool reasonsStreamed;
 }
 
 class LiveWarningPayload extends LiveServerPayload {
@@ -250,6 +261,12 @@ class LiveServerEvent {
           audioBase64: (json['audioBase64'] as String?) ?? '',
           format: (json['format'] as String?) ?? 'mp3',
         );
+      case LiveServerEventType.peerAssessmentItem:
+        return LivePeerAssessmentItemPayload(
+          assessment: PeerAssessment.fromJson(
+            (json['assessment'] as Map<String, dynamic>?) ?? const {},
+          ),
+        );
       case LiveServerEventType.peerAssessments:
         AgentTurn? summary;
         final summaryJson = json['teacherSummary'];
@@ -265,6 +282,7 @@ class LiveServerEvent {
           status: (json['status'] as String?) ?? 'needs_explanation',
           masteryDelta: (json['masteryDelta'] as num?)?.toInt() ?? 0,
           teacherSummary: summary,
+          reasonsStreamed: json['reasonsStreamed'] == true,
         );
       case LiveServerEventType.roundDone:
         final delta = json['masteryDelta'];

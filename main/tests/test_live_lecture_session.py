@@ -32,6 +32,35 @@ def _disable_stream_asr_for_session_tests(monkeypatch) -> None:
     monkeypatch.setattr("app.services.volc_asr_stream.Config.VOLC_ASR_STREAM_RESOURCE_ID", "")
 
 
+def _assessment_dict_from_bulk(role: str, bulk: dict[str, Any]) -> dict[str, Any]:
+    for item in bulk.get("assessments") or []:
+        if item.get("role") == role:
+            return item
+    raise KeyError(role)
+
+
+@pytest.fixture(autouse=True)
+def _mock_tts_stream_for_live_tests(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.volc_tts.synthesize_stream",
+        lambda _text, _speaker: iter([]),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _patch_live_assess_one_peer(monkeypatch) -> None:
+    def _fake(*, role: str, **kwargs: Any) -> dict[str, Any]:
+        return _assessment_dict_from_bulk(
+            role,
+            _fake_peer_assessment_not_all_understood(),
+        )
+
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.assess_one_peer",
+        _fake,
+    )
+
+
 def _fake_recognize(audio_b64: str, fmt: str) -> dict:
     return {"text": "我先把根号十二化成二根号三"}
 
@@ -306,7 +335,19 @@ async def test_session_end_terminates_loop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_all_understood_emits_completed_round_done_and_summary() -> None:
+async def test_all_understood_emits_completed_round_done_and_summary(
+    monkeypatch,
+) -> None:
+    def _fake_all(*, role: str, **kwargs: Any) -> dict[str, Any]:
+        return _assessment_dict_from_bulk(
+            role,
+            _fake_peer_assessment_all_understood(),
+        )
+
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.assess_one_peer",
+        _fake_all,
+    )
     session = LiveLectureSession()
     sent: list[dict[str, Any]] = []
 

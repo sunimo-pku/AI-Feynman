@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -33,8 +34,9 @@ logger = logging.getLogger(__name__)
 _ASSESSMENT_MODEL = Config.DEEPSEEK_MODEL
 _ASSESSMENT_TEMPERATURE = 0.45
 _ASSESSMENT_EXTRA_BODY: dict[str, Any] = DEEPSEEK_THINKING_DISABLED
-_LLM_TIMEOUT_SECONDS = 6.0
+_LLM_TIMEOUT_SECONDS = 5.0
 _MAX_REASON_LEN = 220
+_PEER_HISTORY_KEEP = 3
 
 # 「你说『…』」类表述：引号内必须出现在本轮 student_speech_text 里。
 _SPEECH_QUOTE_RE = re.compile(
@@ -133,6 +135,32 @@ def _parse_assessment(
     }
 
 
+def assess_one_peer(
+    *,
+    role: str,
+    section_id: str,
+    question_id: str,
+    question_prompt: str,
+    student_speech_text: str,
+    steps: list[dict[str, Any]],
+    allowed_step_ids: list[str],
+    round_index: int,
+    history: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """单次 LLM 评估一名同伴（供 live session 并行 + 增量推送）。"""
+    return _assess_one_peer(
+        role=role,
+        section_id=section_id,
+        question_id=question_id,
+        question_prompt=question_prompt,
+        student_speech_text=student_speech_text,
+        steps=steps,
+        allowed_step_ids=allowed_step_ids,
+        round_index=round_index,
+        history=history,
+    )
+
+
 def _assess_one_peer(
     *,
     role: str,
@@ -145,6 +173,9 @@ def _assess_one_peer(
     round_index: int,
     history: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    cleaned_history = _sanitize_history(history)
+    if len(cleaned_history) > _PEER_HISTORY_KEEP:
+        cleaned_history = cleaned_history[-_PEER_HISTORY_KEEP:]
     context = _build_user_prompt(
         section_id=section_id,
         question_id=question_id,
@@ -153,7 +184,7 @@ def _assess_one_peer(
         steps=steps,
         allowed_step_ids=allowed_step_ids,
         round_index=round_index,
-        history=history,
+        history=cleaned_history,
         purpose="peer_assessment",
     )
     user_prompt = (
@@ -166,12 +197,13 @@ def _assess_one_peer(
         {"role": "system", "content": _system_prompt_for_role(role)},
         {"role": "user", "content": user_prompt},
     ]
+    t0 = time.monotonic()
     try:
         resp = deepseek_client.with_options(max_retries=0).chat.completions.create(
             model=_ASSESSMENT_MODEL,
             messages=messages,
             temperature=_ASSESSMENT_TEMPERATURE,
-            max_tokens=500,
+            max_tokens=280,
             response_format={"type": "json_object"},
             timeout=_LLM_TIMEOUT_SECONDS,
             extra_body=_ASSESSMENT_EXTRA_BODY,
@@ -181,13 +213,20 @@ def _assess_one_peer(
         logger.exception("[peer-assessment] %s LLM failed: %s", role, e)
         raise LectureAgentError(f"{role} assessment LLM failed: {e}") from e
 
-    return _parse_assessment(
+    parsed = _parse_assessment(
         raw,
         role=role,
         allowed_step_ids=allowed_step_ids,
         student_speech_text=student_speech_text,
         steps=steps,
     )
+    logger.info(
+        "[peer-assessment] %s ms=%.0f understood=%s",
+        role,
+        (time.monotonic() - t0) * 1000,
+        parsed.get("understood"),
+    )
+    return parsed
 
 
 def generate_peer_assessments(
@@ -226,7 +265,7 @@ def generate_peer_assessments(
     by_role: dict[str, dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=3) as pool:
         futures = {
-            pool.submit(_assess_one_peer, role=role, **common_kwargs): role
+            pool.submit(assess_one_peer, role=role, **common_kwargs): role
             for role in _PEER_ROLES
         }
         for fut in as_completed(futures):

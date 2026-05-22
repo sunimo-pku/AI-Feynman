@@ -747,6 +747,10 @@ git push origin main
 - **同伴 Prompt 忌「导师腔」**：小明/大雄/班长若写「前提未说明」「等价变形」
   会像批作业不像小组讨论。人设与 System Prompt 统一在
   `app/services/peer_personas.py`；评估温度约 0.45，要求口语、一次只问 1 点。
+- **同伴慢的典型瓶颈**：`pause_detected` 后顺序为 ASR flush → 三人 LLM
+  （并行，等最慢的一个，原 UI 也等整包才显示）→ 可选李老师收束（串行 +6s）。
+  现 live 路径改为 `peer_assessment_item` 增量推送 + 后端流式 TTS 自动朗读；
+  日志关键字 `pause asr_flush_ms` / `pause pipeline peer_ms` / `peer-assessment {role} ms`。
 
 ### 第十二轮 · V2 产品闭环与 App 接线
 
