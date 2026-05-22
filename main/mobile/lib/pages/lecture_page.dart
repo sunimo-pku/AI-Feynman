@@ -217,6 +217,11 @@ class _LecturePageState extends State<LecturePage> {
   Timer? _stuckHintTimer;
   Timer? _wrapUpTimer;
 
+  /// WS 断线后延迟展示「用文字提交」纸飞机，避免 NAT 抖动时图标闪一下又被误认成「下一题」。
+  Timer? _disconnectFallbackTimer;
+  bool _disconnectFallbackVisible = false;
+  static const Duration _disconnectFallbackDelay = Duration(milliseconds: 800);
+
   /// thinking 状态的「看门狗」：发出 pause_detected 后启动，超时仍未收到
   /// [agentTurnStart] / [roundDone] / [error] / [warning] 事件就主动把状态
   /// 切回 listening + 显示友好提示，避免 UI 永远卡在「AI 正在想问题」。
@@ -371,6 +376,7 @@ class _LecturePageState extends State<LecturePage> {
     _stuckHintTimer?.cancel();
     _wrapUpTimer?.cancel();
     _thinkingWatchdogTimer?.cancel();
+    _disconnectFallbackTimer?.cancel();
     unawaited(_liveEventsSub.cancel());
     unawaited(_liveErrorsSub.cancel());
     unawaited(_liveConnSub.cancel());
@@ -1178,8 +1184,7 @@ class _LecturePageState extends State<LecturePage> {
   ///
   /// 提交失败 / 错误重试时**不**走这里，仍保留输入（见 `_sendRequest` 错误分支）。
   void _onContinue() {
-    if (_status != _LectureStatus.finished ||
-        _lastResponseStatus != 'completed') {
+    if (!_canShowCompletionOrbs) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -1256,6 +1261,7 @@ class _LecturePageState extends State<LecturePage> {
       }
       _scheduleInkSnapshot(immediate: true);
       setState(() {
+        _clearFinishedUiIfContinuing();
         _liveStatus = _LiveStatus.listening;
       });
       return;
@@ -1307,8 +1313,16 @@ class _LecturePageState extends State<LecturePage> {
     // 点「讲题结束」时新 session 的 latest_steps 还是空、撞 no_steps_yet。
     _scheduleInkSnapshot(immediate: true);
     setState(() {
+      _clearFinishedUiIfContinuing();
       _liveStatus = _LiveStatus.listening;
     });
+  }
+
+  /// 三名同伴都听懂后若学生没点「下一题 / 再讲一遍」又开口讲，收束态应立刻撤销。
+  void _clearFinishedUiIfContinuing() {
+    if (_status != _LectureStatus.finished) return;
+    _status = _LectureStatus.awaiting;
+    _lastResponseStatus = 'needs_explanation';
   }
 
   bool get _isLiveRecording =>
@@ -1348,6 +1362,7 @@ class _LecturePageState extends State<LecturePage> {
     _liveService.sendPauseDetected(silenceMs: 0);
     _armThinkingWatchdog();
     setState(() {
+      _clearFinishedUiIfContinuing();
       _round += 1;
       _turns.add(
         AgentTurn(
@@ -1715,13 +1730,20 @@ class _LecturePageState extends State<LecturePage> {
         // 重新清零；如果学生白板上有内容，必须立刻同步过去，否则学生
         // 点「讲题结束」会撞 no_steps_yet。同步推 snapshot 是幂等的：
         // 如果白板空，`_pushInkSnapshotNow` 会自然 early-return。
+        _disconnectFallbackTimer?.cancel();
+        _disconnectFallbackTimer = null;
+        if (_disconnectFallbackVisible) {
+          setState(() => _disconnectFallbackVisible = false);
+        }
         _scheduleInkSnapshot(immediate: true);
         break;
       case LiveConnectionState.disconnected:
         _cancelThinkingWatchdog();
+        _scheduleDisconnectFallbackOrb();
         setState(() {
           _liveStatus = _LiveStatus.disconnected;
           _activeStreamingTurnId = '';
+          _disconnectFallbackVisible = false;
         });
         unawaited(_audioService.stop());
         unawaited(_liveService.stopTts());
@@ -2049,11 +2071,46 @@ class _LecturePageState extends State<LecturePage> {
     );
   }
 
-  bool get _showFallbackOrbs =>
-      _kShowLegacyTextInputByDefault ||
-      _liveStatus == _LiveStatus.disconnected ||
-      _liveStatus == _LiveStatus.permissionDenied ||
-      _liveStatus == _LiveStatus.failed;
+  void _scheduleDisconnectFallbackOrb() {
+    _disconnectFallbackTimer?.cancel();
+    _disconnectFallbackTimer = Timer(_disconnectFallbackDelay, () {
+      if (!mounted) return;
+      if (_liveStatus != _LiveStatus.disconnected) return;
+      setState(() => _disconnectFallbackVisible = true);
+    });
+  }
+
+  /// 「下一题 / 再讲一遍 / 查看小结」仅在本题真正收束且不在录音/思考中展示。
+  bool get _canShowCompletionOrbs {
+    if (_status != _LectureStatus.finished) return false;
+    if (_lastResponseStatus != 'completed') return false;
+    if (_peerAssessments.length < 3) return false;
+    if (!_peerAssessments.every((a) => a.understood)) return false;
+    switch (_liveStatus) {
+      case _LiveStatus.connecting:
+      case _LiveStatus.listening:
+      case _LiveStatus.paused:
+      case _LiveStatus.thinking:
+      case _LiveStatus.aiSpeaking:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  bool get _showFallbackOrbs {
+    if (_kShowLegacyTextInputByDefault) return true;
+    if (_liveStatus == _LiveStatus.permissionDenied ||
+        _liveStatus == _LiveStatus.failed) {
+      return true;
+    }
+    // 同伴评估 / HTTP 提交进行中：短连抖动不露出纸飞机（Icons.send_outlined）。
+    if (_status == _LectureStatus.submitting ||
+        _liveStatus == _LiveStatus.thinking) {
+      return false;
+    }
+    return _liveStatus == _LiveStatus.disconnected && _disconnectFallbackVisible;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2389,8 +2446,7 @@ class _LecturePageState extends State<LecturePage> {
       );
     }
 
-    if (_status == _LectureStatus.finished &&
-        _lastResponseStatus == 'completed') {
+    if (_canShowCompletionOrbs) {
       orbs.addAll([
         LectureOrbButton(
           icon: Icons.history,

@@ -836,8 +836,12 @@ git push origin main
   占位完成 import，真正发请求前用 `deepseek_api_key_configured()` 判断。
 - **全屏讲题页勿在 `awaiting` 态开放「下一题」**：第十二轮 UI 重构时曾在
   `_LectureStatus.awaiting` 加 `skip_next` 圆钮，学生可在同伴未听懂时跳题，
-  破坏讲题闭环。正解：「下一题」仅 `finished` 且 `_lastResponseStatus ==
-  'completed'` 时出现；`_onContinue` 内再做同条件校验并 SnackBar 拦截。
+  破坏讲题闭环。正解：「下一题」走 `_canShowCompletionOrbs`（`finished` +
+  `completed` + 三名同伴 `understood` + 非录音/思考中）；`_onContinue` 同条件
+  校验并 SnackBar 拦截。
+- **WS 短断线勿立刻露 `Icons.send_outlined`**：`_showFallbackOrbs` 在
+  `disconnected` 时要 **800ms 防抖**，且 `thinking` / `submitting` 中禁止
+  露出纸飞机——否则 NAT 抖动时左下角会闪一下被误认成「下一题」。
 
 ---
 
