@@ -362,6 +362,7 @@ git push origin main
   把它收紧到 1，但 history 仍是空 —— 然后 fallback 文案是「第二轮老师收束」,
   学生第一次提交就被收束，超荒诞。正解：路由层直接 `ge=1` 返 422，让前端
   立刻看到自己传错了；后端 service 自己再 `max(1, ...)` 做兜底。两道防线。
+- **每次 push 前本地跑 CI 两道关**：`cd main && JWT_SECRET_KEY=ci-jwt-secret-key-for-tests-only python -m pytest tests --tb=short`；`cd main/mobile && dart analyze --fatal-warnings lib test && flutter test`。GitHub Actions 与 `.github/workflows/ci.yml` 同口径；`dart analyze` 有 warning 会 exit 2，main 推送失败会触发邮件。
 - **dart analyze 比 flutter analyze 快**：`flutter analyze` 在 root 用户 +
   容器化 flutter SDK 下首次启动经常卡 5+ 分钟（要预热 dart vm + 解析整个
   pubspec 依赖图），还会撞 `/opt/flutter/bin/cache/lockfile` 全局锁。

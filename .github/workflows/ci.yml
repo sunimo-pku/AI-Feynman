@@ -49,7 +49,8 @@ jobs:
 
       - name: Analyze Dart code
         working-directory: main/mobile
-        run: dart analyze lib test
+        # 与本地一致：warning 视为失败，避免 unused_* 等问题漏到 main 再发邮件
+        run: dart analyze --fatal-warnings lib test
 
       - name: Run Flutter tests
         working-directory: main/mobile

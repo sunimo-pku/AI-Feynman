@@ -762,23 +762,14 @@ StudyDenseTile _shopDenseTile(
 }
 
 class _ScaffoldShell extends StatelessWidget {
-  const _ScaffoldShell({
-    required this.title,
-    required this.child,
-    this.actions,
-  });
+  const _ScaffoldShell({required this.title, required this.child});
+
   final String title;
   final Widget child;
-  final List<Widget>? actions;
 
   @override
   Widget build(BuildContext context) {
-    return StudyShell(
-      title: title,
-      actions: actions,
-      maxWidth: 980,
-      child: child,
-    );
+    return StudyShell(title: title, maxWidth: 980, child: child);
   }
 }
 
