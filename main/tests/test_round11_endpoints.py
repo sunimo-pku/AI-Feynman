@@ -228,3 +228,23 @@ def test_bounty_today_only_current_grade(client: TestClient) -> None:
         section_id = item["sectionId"]
         assert section_id.startswith("pep-g8-"), section_id
         assert not section_id.startswith("pep-g7-"), section_id
+
+
+def test_bounty_today_only_ninth_grade(client: TestClient) -> None:
+    token = _register_and_login(client, f"b9{uuid.uuid4().hex[:8]}")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assert client.patch(
+        "/learning/profile",
+        headers=headers,
+        json={"grade": "九年级"},
+    ).status_code == 200
+
+    today = client.get("/bounty/today", headers=headers)
+    assert today.status_code == 200, today.text
+    challenges = today.json()["challenges"]
+    assert len(challenges) == 3
+    for item in challenges:
+        section_id = item["sectionId"]
+        assert section_id.startswith("pep-g9-"), section_id
+        assert not section_id.startswith("pep-g8-"), section_id

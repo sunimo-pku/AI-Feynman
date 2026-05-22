@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "updatedAt": "2026-05-22",
+  "updatedAt": "2026-05-23",
   "challenges": [
     {
       "challengeId": "bounty-radical-domain-a",
@@ -187,6 +187,69 @@
       "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
       "rubricKeywords": ["k", "-2", "小于0", "减小", "随x增大而减小"],
       "tags": ["一次函数", "增减性"],
+      "difficulty": 3,
+      "rewardCrystals": 18,
+      "rewardPower": 30
+    },
+    {
+      "challengeId": "bounty-quadratic-square-root-a",
+      "track": "review",
+      "sectionId": "pep-g9-up-s21-2",
+      "questionId": "q-g9-quadratic-bounty-001",
+      "sectionLabel": "21.2 解一元二次方程",
+      "prompt": "小明解 $(x-2)^2=9$：两边开平方得 $x-2=9$，所以 $x=11$。请逐步判断哪一步有错，并在白板上讲清并说明。",
+      "wrongStep": "$x-2=9$",
+      "wrongSolution": [
+        "题目：解方程 $(x-2)^2=9$。",
+        "小明：两边开平方得 $x-2=9$。",
+        "所以 $x=11$。"
+      ],
+      "errorStepId": "step-2",
+      "errorBox": {"x": 86, "y": 134, "width": 430, "height": 64},
+      "rubricKeywords": ["±", "正负", "开平方", "x-2=3", "x-2=-3", "x=5", "x=-1", "两个根"],
+      "tags": ["一元二次方程", "开平方法"],
+      "difficulty": 1,
+      "rewardCrystals": 12,
+      "rewardPower": 20
+    },
+    {
+      "challengeId": "bounty-parabola-opening-a",
+      "track": "weak",
+      "sectionId": "pep-g9-up-s22-1",
+      "questionId": "q-g9-parabola-bounty-001",
+      "sectionLabel": "22.1 二次函数的图象和性质",
+      "prompt": "大雄说：抛物线 $y=x^2$ 的开口向下。请逐步判断哪一步有错，并在白板上讲清并说明。",
+      "wrongStep": "开口向下",
+      "wrongSolution": [
+        "题目：判断抛物线 $y=x^2$ 的开口方向。",
+        "大雄：二次项系数 $a=1>0$。",
+        "所以抛物线 $y=x^2$ 开口向下。"
+      ],
+      "errorStepId": "step-3",
+      "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
+      "rubricKeywords": ["a>0", "开口向上", "向上", "系数为正", "a=1"],
+      "tags": ["二次函数", "开口方向"],
+      "difficulty": 2,
+      "rewardCrystals": 15,
+      "rewardPower": 24
+    },
+    {
+      "challengeId": "bounty-similar-triangle-a",
+      "track": "advanced",
+      "sectionId": "pep-g9-down-s27-2",
+      "questionId": "q-g9-similar-bounty-001",
+      "sectionLabel": "27.2 相似三角形",
+      "prompt": "班长说：两个相似三角形的对应边之比等于它们的面积之比。请逐步判断哪一步有错，并在白板上讲清并说明。",
+      "wrongStep": "对应边之比等于它们的面积之比",
+      "wrongSolution": [
+        "题目：相似三角形对应边之比与面积之比的关系。",
+        "班长：相似比是 $2:3$。",
+        "所以对应边之比等于面积之比，也是 $2:3$。"
+      ],
+      "errorStepId": "step-3",
+      "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
+      "rubricKeywords": ["面积比", "平方", "4:9", "相似比的平方", "2:3", "边比"],
+      "tags": ["相似三角形", "面积比"],
       "difficulty": 3,
       "rewardCrystals": 18,
       "rewardPower": 30
