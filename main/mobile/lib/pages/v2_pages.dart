@@ -423,6 +423,8 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   String get _chapterTitle =>
       _chapterLabels[_chapterId] ?? _chapterId;
 
+  bool get _canSwitchChapter => _rankedChapters.length > 1;
+
   @override
   Widget build(BuildContext context) {
     const labels = {
@@ -452,7 +454,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            '本章：$_chapterTitle',
+            '排名章节：$_chapterTitle',
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
               color: AppPalette.primary,
@@ -460,13 +462,15 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            '按大章分别排名；默认展示你战力最高的一章（各小节战力求和）。',
+            _canSwitchChapter
+                ? '排行榜按大章分别计算。默认展示你战力最高的一章，也可以在下方切换到其它已有战力的章节。'
+                : '排行榜按大章分别计算。当前展示你已有战力的章节；各小节战力会汇总到对应大章。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: AppPalette.textSecondary,
               height: 1.4,
             ),
           ),
-          if (_rankedChapters.length > 1) ...[
+          if (_canSwitchChapter) ...[
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -502,10 +506,11 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
                 }
                 final entries = snapshot.data!;
                 if (entries.isEmpty) {
-                  return StudyEmptyHint(
-                    '「$_chapterTitle」在${labels[_scope] ?? _scope}还没有记录。'
-                    '完成该章讲题或每日挑战后会出现你的名次；若已有战力仍为空，请点上方切换章节。',
-                  );
+                  final hint =
+                      _canSwitchChapter
+                          ? '「$_chapterTitle」在${labels[_scope] ?? _scope}还没有记录。可以切换到其它章节查看，或完成该章讲题 / 每日挑战后再刷新。'
+                          : '「$_chapterTitle」在${labels[_scope] ?? _scope}还没有记录。完成该章节的讲题或每日挑战后，会在这里出现你的名次。';
+                  return StudyEmptyHint(hint);
                 }
                 return StudyGroupedPanel(
                   children:
