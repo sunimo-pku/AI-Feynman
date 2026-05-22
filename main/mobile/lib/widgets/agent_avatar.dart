@@ -98,7 +98,7 @@ class _AvatarFallback extends StatelessWidget {
     final accent = AgentAvatar.accentFor(role);
     final icon = switch (role) {
       AgentRole.teacher => Icons.school_outlined,
-      AgentRole.classLeader || AgentRole.monitor => Icons.verified_outlined,
+      AgentRole.classLeader || AgentRole.monitor => Icons.face_4_outlined,
       AgentRole.xiaoming => Icons.face_outlined,
       AgentRole.daxiong => Icons.face_3_outlined,
       AgentRole.system => Icons.info_outline,

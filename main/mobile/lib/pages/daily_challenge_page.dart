@@ -36,6 +36,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   int _selectedIndex = 0;
   bool _submitting = false;
   bool _listening = false;
+  CanvasDrawMode _canvasDrawMode = CanvasDrawMode.pen;
   final List<Uint8List> _pcmBuffer = <Uint8List>[];
 
   @override
@@ -308,7 +309,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 6, 16, 4),
                     child: Text(
-                      '白板：写出正确做法，语音讲清为什么错',
+                      '点「开始讲错因」后用电容笔书写；双指可平移白板',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppPalette.textSecondary,
@@ -321,6 +322,10 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                       controller: _canvas,
                       edgeToEdge: true,
                       backgroundColor: AppPalette.surface,
+                      drawingEnabled: _canDrawOnCanvas,
+                      stylusOnly: true,
+                      drawMode: _canvasDrawMode,
+                      twoFingerPanEnabled: true,
                     ),
                   ),
                 ],
@@ -374,6 +379,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
               onTap: () => setState(() {
                 _selectedIndex = i;
                 _canvas.clear();
+                _canvasDrawMode = CanvasDrawMode.pen;
               }),
               child: Container(
                 width: 36,
@@ -439,8 +445,11 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
     );
   }
 
+  bool get _canDrawOnCanvas => _listening && !_submitting;
+
   Widget _buildOrbToolbar(BountyChallenge challenge, BountySubmitResult? result) {
     final canSubmit = _allStepsAnswered(challenge);
+    final canvasToolsEnabled = _canDrawOnCanvas;
     final orbs = <Widget>[
       if (!_listening)
         LectureOrbButton(
@@ -469,14 +478,34 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                 : () => unawaited(_stopVoiceAndSubmit(challenge)),
       ),
       LectureOrbButton(
+        icon: Icons.edit_outlined,
+        tooltip: '画笔',
+        filled: _canvasDrawMode == CanvasDrawMode.pen,
+        onPressed:
+            canvasToolsEnabled
+                ? () => setState(() => _canvasDrawMode = CanvasDrawMode.pen)
+                : null,
+      ),
+      LectureOrbButton(
+        icon: Icons.auto_fix_off_outlined,
+        tooltip: '橡皮擦',
+        filled: _canvasDrawMode == CanvasDrawMode.eraser,
+        onPressed:
+            canvasToolsEnabled
+                ? () => setState(() => _canvasDrawMode = CanvasDrawMode.eraser)
+                : null,
+      ),
+      LectureOrbButton(
         icon: Icons.undo,
         tooltip: '撤销',
-        onPressed: _canvas.canUndo ? _canvas.undo : null,
+        onPressed:
+            _canvas.canUndo && canvasToolsEnabled ? _canvas.undo : null,
       ),
       LectureOrbButton(
         icon: Icons.cleaning_services_outlined,
         tooltip: '清空白板',
-        onPressed: _canvas.isEmpty ? null : _canvas.clear,
+        onPressed:
+            _canvas.isEmpty || !canvasToolsEnabled ? null : _canvas.clear,
       ),
     ];
     if (result != null) {
