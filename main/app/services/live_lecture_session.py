@@ -468,7 +468,6 @@ class LiveLectureSession:
             "allUnderstood": all_understood,
             "status": status,
             "masteryDelta": mastery_delta,
-            "reasonsStreamed": True,
             "teacherSummary": (
                 _teacher_summary_to_wire(teacher_summary)
                 if teacher_summary
@@ -578,7 +577,7 @@ class LiveLectureSession:
         peer_assessment_fn: Callable[..., dict[str, Any]],
         send: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> dict[str, Any]:
-        """三人并行评估；每名同伴完成即推送 item + 流式 TTS，不等到最慢的一个。"""
+        """三人并行评估；每名同伴完成即推送 item，不等到最慢的一个。"""
         del peer_assessment_fn  # live 主路径直连 assess_one_peer；submit 仍用 bulk API。
         from app.services.peer_assessment_agent import _PEER_ROLES, assess_one_peer
 
@@ -628,21 +627,6 @@ class LiveLectureSession:
                 "sessionId": self.session_id,
                 "assessment": _assessment_to_wire(item),
             })
-            reason = str(item.get("reason") or "").strip()
-            if reason:
-                turn_id = f"reason_{role}"
-                await self._stream_single_turn_to_client(
-                    {
-                        "turn_id": turn_id,
-                        "role": role,
-                        "display_name": str(item.get("display_name") or ""),
-                        "highlight_step_ids": list(
-                            item.get("highlight_step_ids") or []
-                        ),
-                        "text": reason,
-                    },
-                    send=send,
-                )
 
         assessments = [by_role[r] for r in _PEER_ROLES if r in by_role]
         if len(assessments) != len(_PEER_ROLES):

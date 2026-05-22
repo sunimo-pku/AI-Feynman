@@ -672,7 +672,6 @@ class _LecturePageState extends State<LecturePage> {
     AgentTurn? teacherSummary,
     LectureHistoryItem? committedStudent,
     bool omitTeacherTurn = false,
-    bool reasonsStreamed = false,
   }) {
     _speechController.clear();
     _peerAssessments = assessments;
@@ -708,18 +707,13 @@ class _LecturePageState extends State<LecturePage> {
       unawaited(_reasonPlayback.stop());
       _reasonPlayback.clearQueue();
     } else {
-      if (!reasonsStreamed) {
-        for (final a in assessments.where((x) => !x.understood)) {
-          _turns.add(
-            a.toReasonTurn(turnId: 'reason_${agentRoleWire(a.role)}'),
-          );
-        }
+      for (final a in assessments.where((x) => !x.understood)) {
+        _turns.add(
+          a.toReasonTurn(turnId: 'reason_${agentRoleWire(a.role)}'),
+        );
       }
       _status = _LectureStatus.awaiting;
       _reasonPlayback.setQueue(assessments);
-      if (!reasonsStreamed) {
-        unawaited(_reasonPlayback.playAll());
-      }
     }
 
     if (committedStudent != null && committedStudent.role == 'student') {
@@ -1624,13 +1618,6 @@ class _LecturePageState extends State<LecturePage> {
             _peerAssessments,
             itemPayload.assessment,
           );
-          final a = itemPayload.assessment;
-          if (!a.understood && _expandedPeerBubble == null) {
-            _expandedPeerBubble = a.role;
-          }
-          if (_liveStatus == _LiveStatus.thinking) {
-            _liveStatus = _LiveStatus.aiSpeaking;
-          }
         });
         break;
       case LiveServerEventType.peerAssessments:
@@ -1648,7 +1635,6 @@ class _LecturePageState extends State<LecturePage> {
             omitTeacherTurn:
                 peerPayload.allUnderstood &&
                 peerPayload.teacherSummary != null,
-            reasonsStreamed: peerPayload.reasonsStreamed,
           );
           _liveStatus = _LiveStatus.idle;
         });
@@ -1857,7 +1843,6 @@ class _LecturePageState extends State<LecturePage> {
       return PeerInlineMessage(
         text: assessment.reason,
         highlightStepIds: assessment.highlightStepIds,
-        showPlay: true,
       );
     }
     final turn = _latestTurnFor(role);
@@ -1877,13 +1862,17 @@ class _LecturePageState extends State<LecturePage> {
       );
       return;
     }
+    final collapsing = _expandedPeerBubble == role;
     setState(() {
-      if (_expandedPeerBubble == role) {
-        _expandedPeerBubble = null;
-      } else {
-        _expandedPeerBubble = role;
-      }
+      _expandedPeerBubble = collapsing ? null : role;
     });
+    if (collapsing) {
+      unawaited(_reasonPlayback.stop());
+      return;
+    }
+    unawaited(_liveService.clearPendingTts());
+    unawaited(_liveService.stopTts());
+    unawaited(_reasonPlayback.playPeer(role));
   }
 
   void _showQuestionSheet() {

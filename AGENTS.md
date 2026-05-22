@@ -749,8 +749,9 @@ git push origin main
   `app/services/peer_personas.py`；评估温度约 0.45，要求口语、一次只问 1 点。
 - **同伴慢的典型瓶颈**：`pause_detected` 后顺序为 ASR flush → 三人 LLM
   （并行，等最慢的一个，原 UI 也等整包才显示）→ 可选李老师收束（串行 +6s）。
-  现 live 路径改为 `peer_assessment_item` 增量推送 + 后端流式 TTS 自动朗读；
+  live 路径 `peer_assessment_item` 仅增量更新头像环；**TTS 只在学生展开该同伴气泡时播**（单人）。
   日志关键字 `pause asr_flush_ms` / `pause pipeline peer_ms` / `peer-assessment {role} ms`。
+  **禁止**在 LLM system/user prompt 里写 API 路径、流式接口等工程注释。
 
 ### 第十二轮 · V2 产品闭环与 App 接线
 
