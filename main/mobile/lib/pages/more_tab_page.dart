@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/study_layout.dart';
-import 'daily_challenge_page.dart';
-import 'student_assignments_page.dart';
+import 'privacy_notice_page.dart';
 import 'v2_pages.dart';
 
-/// 学生端「更多」Tab：学习工具与扩展功能。
+/// 学生端「工具」Tab：学习辅助与系统功能。
+///
+/// 设计原则：
+///   * 不重复首页已出现的高频入口（每日挑战、作业、商城、榜单）。
+///   * 只放「低频但必要」或「首页放不下」的辅助功能。
 class MoreTabPage extends StatelessWidget {
   const MoreTabPage({super.key});
 
@@ -21,12 +24,12 @@ class MoreTabPage extends StatelessWidget {
       ),
       children: [
         Text(
-          '学习工具',
+          '工具箱',
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 4),
         Text(
-          '挑战、奖励与辅助功能',
+          '拍照识题、个人资料与隐私设置',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppPalette.textSecondary,
             height: 1.4,
@@ -36,52 +39,8 @@ class MoreTabPage extends StatelessWidget {
         StudyToolGrid(
           cells: [
             StudyToolCell(
-              label: '我的作业',
-              subtitle: '家长布置',
-              icon: Icons.assignment_outlined,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const StudentAssignmentsPage(),
-                    ),
-                  ),
-            ),
-            StudyToolCell(
-              label: '每日挑战',
-              subtitle: '分步找错',
-              icon: Icons.where_to_vote_outlined,
-              color: AppPalette.primaryAccent,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const DailyChallengePage(),
-                    ),
-                  ),
-            ),
-            StudyToolCell(
-              label: '晶石商城',
-              subtitle: '实物文具',
-              icon: Icons.diamond_outlined,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ShopPage()),
-                  ),
-            ),
-            StudyToolCell(
-              label: '学习榜单',
-              subtitle: '校/区/市榜',
-              icon: Icons.emoji_events_outlined,
-              color: AppPalette.primaryAccent,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const LeaderboardPage(),
-                    ),
-                  ),
-            ),
-            StudyToolCell(
               label: '拍照识题',
-              subtitle: '相册识题',
+              subtitle: '相册或拍照识题',
               icon: Icons.document_scanner_outlined,
               onTap:
                   () => Navigator.of(context).push(
@@ -91,13 +50,24 @@ class MoreTabPage extends StatelessWidget {
                   ),
             ),
             StudyToolCell(
-              label: '我的成长',
-              subtitle: '年级资料',
+              label: '我的资料',
+              subtitle: '年级与昵称',
               icon: Icons.person_outline,
               onTap:
                   () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const StudentProfileEditPage(),
+                    ),
+                  ),
+            ),
+            StudyToolCell(
+              label: '隐私说明',
+              subtitle: '数据与权限',
+              icon: Icons.privacy_tip_outlined,
+              onTap:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PrivacyNoticePage(),
                     ),
                   ),
             ),

@@ -1,25 +1,30 @@
 import 'package:flutter/material.dart';
 
+import '../data/review_models.dart';
 import '../data/round12_models.dart';
 import '../services/auth_service.dart';
+import '../services/review_repository.dart';
 import '../services/round12_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/formula_text.dart';
 import '../widgets/study_layout.dart';
 import 'daily_challenge_page.dart';
 import 'v2_pages.dart';
 
-/// 学生端「今日」Tab：问候 + 每日挑战主卡片 + 快捷入口。
+/// 学生端「今日」Tab：问候 + 每日挑战主卡片 + 最近回顾 + 快捷入口。
 class HomeDashboardTab extends StatefulWidget {
   const HomeDashboardTab({
     super.key,
     required this.pendingAssignments,
     required this.onAssignmentsTap,
     required this.onOpenCurriculum,
+    required this.onOpenReview,
   });
 
   final int pendingAssignments;
   final VoidCallback onAssignmentsTap;
   final VoidCallback onOpenCurriculum;
+  final void Function(String sectionId) onOpenReview;
 
   @override
   State<HomeDashboardTab> createState() => _HomeDashboardTabState();
@@ -76,138 +81,285 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
     final streak = bounty?.streakDays ?? 0;
     final todayDone = total > 0 && done >= total;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.pageEdge,
-        12,
-        AppSpacing.pageEdge,
-        24,
-      ),
-      children: [
-        const _CompactGreeting(),
-        if (widget.pendingAssignments > 0) ...[
-          const SizedBox(height: 10),
-          _PendingAssignmentsBanner(
-            count: widget.pendingAssignments,
-            onTap: widget.onAssignmentsTap,
+    return AnimatedBuilder(
+      animation: ReviewRepository.instance,
+      builder: (context, _) {
+        final recentRecords = ReviewRepository.instance.allRecords;
+        final hasRecent = recentRecords.isNotEmpty;
+        final firstRecent = hasRecent ? recentRecords.first : null;
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.pageEdge,
+            12,
+            AppSpacing.pageEdge,
+            24,
           ),
-        ],
-        const SizedBox(height: 14),
-        StudyPanel(
-          tone: StudyPanelTone.accent,
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          children: [
+            const _CompactGreeting(),
+            if (widget.pendingAssignments > 0) ...[
+              const SizedBox(height: 10),
+              _PendingAssignmentsBanner(
+                count: widget.pendingAssignments,
+                onTap: widget.onAssignmentsTap,
+              ),
+            ],
+            const SizedBox(height: 14),
+            StudyPanel(
+              tone: StudyPanelTone.accent,
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppPalette.primaryAccent.withValues(alpha: 0.14),
+                          borderRadius: AppRadius.buttonR,
+                        ),
+                        child: const Icon(
+                          Icons.edit_outlined,
+                          color: AppPalette.primaryAccent,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '每日挑战',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              streak > 0
+                                  ? '帮同学找错 · 已连续打卡 $streak 天'
+                                  : '帮同学找错 · 完成今日挑战开始打卡',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: AppPalette.textSecondary,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      StudySoftTag(
+                        text:
+                            _loadingBounty
+                                ? '加载今日进度…'
+                                : '今日 $done / $total 题',
+                        accent: AppPalette.primary,
+                      ),
+                      if (!_loadingBounty && todayDone)
+                        const StudySoftTag(
+                          text: '今日已打卡',
+                          accent: AppPalette.primaryAccent,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton(
+                    onPressed: _loadingBounty ? null : _openDailyChallenge,
+                    child: Text(todayDone ? '再练一遍' : '开始挑战'),
+                  ),
+                ],
+              ),
+            ),
+            if (hasRecent && firstRecent != null) ...[
+              const SizedBox(height: 16),
+              const StudySectionTitle(title: '最近回顾'),
+              const SizedBox(height: 10),
+              _RecentReviewCard(
+                record: firstRecent,
+                onTap: () => widget.onOpenReview(firstRecent.sectionId),
+              ),
+            ],
+            const SizedBox(height: 16),
+            const StudySectionTitle(title: '快捷入口'),
+            StudyToolGrid(
+              cells: [
+                StudyToolCell(
+                  label: '选课讲题',
+                  subtitle: '按章节开练',
+                  icon: Icons.menu_book_outlined,
+                  color: AppPalette.primary,
+                  onTap: widget.onOpenCurriculum,
+                ),
+                StudyToolCell(
+                  label: '我的作业',
+                  subtitle: '家长布置的',
+                  icon: Icons.description_outlined,
+                  onTap: widget.onAssignmentsTap,
+                ),
+                StudyToolCell(
+                  label: '晶石商城',
+                  subtitle: '兑换文具',
+                  icon: Icons.card_giftcard_outlined,
+                  onTap:
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ShopPage()),
+                      ),
+                ),
+                StudyToolCell(
+                  label: '学习榜单',
+                  subtitle: '看看排名',
+                  icon: Icons.emoji_events_outlined,
+                  color: AppPalette.primaryAccent,
+                  onTap:
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const LeaderboardPage(),
+                        ),
+                      ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 首页「最近回顾」紧凑卡片。
+///
+/// 只展示最核心的信息：题面、难度标签、完成时间，
+/// 点击直达该小节的 [ReviewPage]。
+class _RecentReviewCard extends StatelessWidget {
+  const _RecentReviewCard({required this.record, required this.onTap});
+
+  final LectureReviewRecord record;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: AppPalette.surface,
+      borderRadius: AppRadius.cardR,
+      elevation: 0,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.cardR,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.cardR,
+            boxShadow: AppShadows.paper,
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppPalette.primaryAccent.withValues(alpha: 0.14),
-                      borderRadius: AppRadius.buttonR,
-                    ),
-                    child: const Icon(
-                      Icons.edit_outlined,
-                      color: AppPalette.primaryAccent,
-                    ),
+                  const Icon(
+                    Icons.history_edu_outlined,
+                    size: 18,
+                    color: AppPalette.primary,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '每日挑战',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          streak > 0
-                              ? '帮同学找错 · 已连续打卡 $streak 天'
-                              : '帮同学找错 · 完成今日挑战开始打卡',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppPalette.textSecondary,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      _formatCompletedAt(record.completedAt),
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: AppPalette.textSecondary,
+                      ),
                     ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: AppPalette.primary.withValues(alpha: 0.7),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
+              FormulaText(
+                record.questionPrompt,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  height: 1.45,
+                ),
+                formulaStyle: theme.textTheme.bodyLarge?.copyWith(
+                  color: AppPalette.primary,
+                  fontWeight: FontWeight.w700,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 8),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
-                  StudySoftTag(
-                    text:
-                        _loadingBounty
-                            ? '加载今日进度…'
-                            : '今日 $done / $total 题',
-                    accent: AppPalette.primary,
+                  if (record.tags.isNotEmpty)
+                    _ReviewMetaChip(label: record.tags.first),
+                  _ReviewMetaChip(
+                    label: '${record.agentHighlights.length} 条追问',
                   ),
-                  if (!_loadingBounty && todayDone)
-                    const StudySoftTag(
-                      text: '今日已打卡',
-                      accent: AppPalette.primaryAccent,
-                    ),
                 ],
-              ),
-              const SizedBox(height: 14),
-              FilledButton(
-                onPressed: _loadingBounty ? null : _openDailyChallenge,
-                child: Text(todayDone ? '再练一遍' : '开始挑战'),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        const StudySectionTitle(title: '快捷入口'),
-        StudyToolGrid(
-          cells: [
-            StudyToolCell(
-              label: '选课讲题',
-              subtitle: '按章节开练',
-              icon: Icons.menu_book_outlined,
-              color: AppPalette.primary,
-              onTap: widget.onOpenCurriculum,
-            ),
-            StudyToolCell(
-              label: '我的作业',
-              subtitle: '家长布置的',
-              icon: Icons.description_outlined,
-              onTap: widget.onAssignmentsTap,
-            ),
-            StudyToolCell(
-              label: '晶石商城',
-              subtitle: '兑换文具',
-              icon: Icons.card_giftcard_outlined,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ShopPage()),
-                  ),
-            ),
-            StudyToolCell(
-              label: '学习榜单',
-              subtitle: '看看排名',
-              icon: Icons.emoji_events_outlined,
-              color: AppPalette.primaryAccent,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const LeaderboardPage(),
-                    ),
-                  ),
-            ),
-          ],
+      ),
+    );
+  }
+
+  String _formatCompletedAt(DateTime when) {
+    final now = DateTime.now();
+    final diff = now.difference(when);
+    if (diff.inMinutes < 1) return '刚刚完成';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
+    final sameDay =
+        now.year == when.year && now.month == when.month && now.day == when.day;
+    String two(int n) => n.toString().padLeft(2, '0');
+    if (sameDay) return '今天 ${two(when.hour)}:${two(when.minute)}';
+    if (now.year == when.year) {
+      return '${two(when.month)}-${two(when.day)} ${two(when.hour)}:${two(when.minute)}';
+    }
+    return '${when.year}-${two(when.month)}-${two(when.day)}';
+  }
+}
+
+class _ReviewMetaChip extends StatelessWidget {
+  const _ReviewMetaChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    const color = AppPalette.primaryAccent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: const BorderRadius.all(Radius.circular(AppRadius.chip)),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
         ),
-      ],
+      ),
     );
   }
 }

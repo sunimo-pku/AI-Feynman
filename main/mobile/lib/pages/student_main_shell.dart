@@ -18,7 +18,7 @@ import 'curriculum_tab_page.dart';
 import 'home_dashboard_tab.dart';
 import 'lecture_page.dart';
 import 'more_tab_page.dart';
-import 'privacy_notice_page.dart';
+// import 'privacy_notice_page.dart';
 import 'review_page.dart';
 import 'student_assignments_page.dart';
 import 'v2_pages.dart';
@@ -43,7 +43,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
   int _tabIndex = 0;
   int _pendingAssignments = 0;
 
-  static const _tabTitles = ['今日', '课程', '更多', '我的'];
+  static const _tabTitles = ['今日', '课程', '工具', '我的'];
 
   @override
   void initState() {
@@ -125,6 +125,28 @@ class _StudentMainShellState extends State<StudentMainShell> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _onOpenReviewBySectionId(String sectionId) async {
+    final curriculum = await _curriculumFuture;
+    CurriculumSection? target;
+    outer:
+    for (final book in curriculum.books) {
+      for (final chapter in book.chapters) {
+        for (final section in chapter.sections) {
+          if (section.id == sectionId) {
+            target = section;
+            break outer;
+          }
+        }
+      }
+    }
+    if (target == null) return;
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ReviewPage(section: target!)),
+    );
+    if (mounted) setState(() {});
+  }
+
   Future<void> _onLogout() async {
     await AuthService.instance.logout();
   }
@@ -160,14 +182,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
               );
             },
           ),
-          IconButton(
-            tooltip: '隐私说明',
-            onPressed:
-                () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PrivacyNoticePage()),
-                ),
-            icon: const Icon(Icons.privacy_tip_outlined),
-          ),
+          // 隐私说明已下沉到「工具」Tab，AppBar 保持简洁。
         ],
       ),
       body: AnimatedBuilder(
@@ -204,6 +219,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
                       await _loadPendingAssignments();
                     },
                     onOpenCurriculum: () => setState(() => _tabIndex = 1),
+                    onOpenReview: _onOpenReviewBySectionId,
                   ),
                   CurriculumTabPage(
                     studentGradeLabel: gradeLabel,
@@ -253,7 +269,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
               asset: 'assets/icons/tab_more.svg',
               selected: true,
             ),
-            label: '更多',
+            label: '工具',
           ),
           NavigationDestination(
             icon: StudyTabIcon(asset: 'assets/icons/tab_profile.svg'),
