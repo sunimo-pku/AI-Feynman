@@ -735,6 +735,9 @@ git push origin main
   气泡 timeline」可播放；MP4 合成失败时必须保留过程回放入口。
 - **排行榜周结算要幂等**：`LeaderboardSnapshot` 以
   `(scope, section_id, week_id, student_id)` 唯一；脚本或启动补偿重复跑不能插重复名次。
+- **排行榜按章节查询，禁止写死 16.3**：`/leaderboard?sectionId=` 必须与
+  `SectionPower` 里该学生有战力的小节一致；Flutter 进榜页应先读
+  `/gamification/me` 取战力最高的小节，**不要**默认只查 `pep-g8-down-s16-3`。
 - **晶石流水必须先校验余额再扣减**：`CrystalWallet.balance + amount < 0` 要返回 400；
   禁止出现负余额，也禁止任何充值/打赏入口。
 - **商业 OCR/HWR 失败不能编造公式**：`/ocr/ink mode=hwr` 没 key 或供应商失败时，
