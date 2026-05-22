@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 import '../data/parent_models.dart';
 import '../data/round12_models.dart';
 import '../services/auth_service.dart';
-import '../services/learning_sync_service.dart';
 import '../services/parent_service.dart';
 import '../services/replay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/study_layout.dart';
-import 'auth_page.dart';
 import 'replay_page.dart';
 
 const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
@@ -31,7 +29,10 @@ const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级
 ///
 /// 风格遵循 `MOBILE_STYLE.md`：温和、可信、面向家长，不上电竞配色。
 class ParentDashboardPage extends StatefulWidget {
-  const ParentDashboardPage({super.key});
+  const ParentDashboardPage({super.key, this.embedded = false});
+
+  /// 家长账号登录后作为 App 根页面展示，退出登录不切 Navigator.pop。
+  final bool embedded;
 
   @override
   State<ParentDashboardPage> createState() => _ParentDashboardPageState();
@@ -44,9 +45,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   bool _loading = true;
   String? _error;
   ParentDashboardPayload? _payload;
-  List<ParentChild> _children = const <ParentChild>[];
   List<ReplaySummary> _replays = const <ReplaySummary>[];
-  int? _activeStudentId;
 
   @override
   void initState() {
@@ -57,17 +56,15 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   Future<void> _bootstrap() async {
     await AuthService.instance.load();
     if (!mounted) return;
-    if (!AuthService.instance.isLoggedIn) {
-      final ok = await Navigator.of(
-        context,
-      ).push<bool>(MaterialPageRoute(builder: (_) => const AuthPage()));
-      if (!mounted) return;
-      if (ok != true || !AuthService.instance.isLoggedIn) {
+    if (!AuthService.instance.isLoggedIn || !AuthService.instance.isParent) {
+      if (widget.embedded) {
+        await AuthService.instance.logout();
+      } else {
         Navigator.of(context).pop();
-        return;
       }
+      return;
     }
-    await _refresh(forceSync: true);
+    await _refresh(forceSync: false);
   }
 
   Future<void> _refresh({bool forceSync = false}) async {
@@ -76,22 +73,13 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
       _error = null;
     });
     if (forceSync) {
-      // 同步失败不致命：dashboard 仍然能展示服务端已存的数据。
-      await LearningSyncService.instance.syncNow();
+      // 家长端不同步本地进度；刷新仅重拉服务端数据。
     }
     try {
-      final children = await _parentService.fetchChildren();
-      _activeStudentId ??=
-          children.isNotEmpty ? children.first.studentId : null;
-      final payload = await _parentService.fetchDashboard(
-        studentId: _activeStudentId,
-      );
-      final replays = await _replayService.fetchParentReplays(
-        studentId: _activeStudentId,
-      );
+      final payload = await _parentService.fetchDashboard();
+      final replays = await _replayService.fetchParentReplays();
       if (!mounted) return;
       setState(() {
-        _children = children;
         _payload = payload;
         _replays = replays;
         _loading = false;
@@ -142,14 +130,13 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               (innerCtx) => PopupMenuButton<String>(
                 onSelected: (key) async {
                   if (key == 'logout') {
-                    final navigator = Navigator.of(innerCtx);
                     await AuthService.instance.logout();
                     if (!mounted) return;
-                    navigator.pop();
+                    if (!widget.embedded) {
+                      Navigator.of(innerCtx).pop();
+                    }
                   } else if (key == 'edit_profile') {
                     await _editProfile(innerCtx);
-                  } else if (key == 'bind_child') {
-                    await _bindChild(innerCtx);
                   }
                 },
                 itemBuilder:
@@ -158,7 +145,6 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                         value: 'edit_profile',
                         child: Text('编辑孩子资料'),
                       ),
-                      PopupMenuItem(value: 'bind_child', child: Text('绑定孩子')),
                       PopupMenuItem(value: 'logout', child: Text('退出登录')),
                     ],
               ),
@@ -230,49 +216,6 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     await _refresh();
   }
 
-  Future<void> _bindChild(BuildContext context) async {
-    final username = TextEditingController();
-    final nickname = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('绑定孩子账号'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: username,
-                  decoration: const InputDecoration(labelText: '孩子用户名'),
-                ),
-                TextField(
-                  controller: nickname,
-                  decoration: const InputDecoration(labelText: '备注昵称'),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('绑定'),
-              ),
-            ],
-          ),
-    );
-    if (ok == true && username.text.trim().isNotEmpty) {
-      await _parentService.bindChild(
-        username: username.text.trim(),
-        nickname: nickname.text.trim(),
-      );
-      if (!mounted) return;
-      await _refresh();
-    }
-  }
-
   Widget _buildBody(BuildContext context) {
     if (_loading && _payload == null) {
       return const Center(child: CircularProgressIndicator());
@@ -290,17 +233,6 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         padding: const EdgeInsets.all(AppSpacing.pageEdge),
         children: [
           _StudentHeaderCard(payload: p),
-          if (_children.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.moduleGap),
-            _ChildSwitcher(
-              children: _children,
-              activeStudentId: _activeStudentId,
-              onSelected: (id) {
-                setState(() => _activeStudentId = id);
-                _refresh();
-              },
-            ),
-          ],
           const SizedBox(height: AppSpacing.moduleGap),
           _DashboardPair(
             left: _SuggestionCard(text: p.suggestedNextAction),
@@ -321,10 +253,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
               sections: p.strongSections,
               emptyText: '还没有牢牢掌握的章节，多讲几轮就会出现这里。',
             ),
-            right: _ReplayListCard(
-              replays: _replays,
-              studentId: _activeStudentId,
-            ),
+            right: _ReplayListCard(replays: _replays),
           ),
           const SizedBox(height: AppSpacing.moduleGap),
           _RecentReviewsCard(reviews: p.recentReviews),
@@ -390,39 +319,6 @@ class _DashboardPair extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _ChildSwitcher extends StatelessWidget {
-  const _ChildSwitcher({
-    required this.children,
-    required this.activeStudentId,
-    required this.onSelected,
-  });
-
-  final List<ParentChild> children;
-  final int? activeStudentId;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return StudyPanel(
-      padding: const EdgeInsets.all(14),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children:
-            children
-                .map(
-                  (c) => ChoiceChip(
-                    label: Text(c.nickname),
-                    selected: activeStudentId == c.studentId,
-                    onSelected: (_) => onSelected(c.studentId),
-                  ),
-                )
-                .toList(),
-      ),
     );
   }
 }
@@ -503,9 +399,8 @@ class _StudentHeaderCard extends StatelessWidget {
 }
 
 class _ReplayListCard extends StatelessWidget {
-  const _ReplayListCard({required this.replays, required this.studentId});
+  const _ReplayListCard({required this.replays});
   final List<ReplaySummary> replays;
-  final int? studentId;
 
   @override
   Widget build(BuildContext context) {
@@ -534,10 +429,7 @@ class _ReplayListCard extends StatelessWidget {
                     () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder:
-                            (_) => ReplayPage(
-                              sessionId: r.sessionId,
-                              studentId: studentId,
-                            ),
+                            (_) => ReplayPage(sessionId: r.sessionId),
                       ),
                     ),
               ),

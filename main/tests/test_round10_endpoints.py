@@ -17,20 +17,53 @@ from datetime import datetime
 from fastapi.testclient import TestClient
 
 
-def _register_and_login(client: TestClient, username: str | None = None) -> str:
-    username = username or f"u{uuid.uuid4().hex[:10]}"
-    password = "secret-pass-12345"
+def _register_student(
+    client: TestClient, username: str | None = None, password: str = "secret-pass-12345"
+) -> tuple[str, str]:
+    username = username or f"stu{uuid.uuid4().hex[:10]}"
     resp = client.post(
         "/auth/register",
-        json={"username": username, "password": password},
+        json={"username": username, "password": password, "role": "student"},
     )
     assert resp.status_code == 200, resp.text
-    resp = client.post(
-        "/auth/login",
-        json={"username": username, "password": password},
-    )
-    assert resp.status_code == 200
+    return username, password
+
+
+def _login(client: TestClient, username: str, password: str, *, parent_password: str | None = None) -> str:
+    body: dict[str, str] = {"username": username, "password": password}
+    if parent_password:
+        body["parentPassword"] = parent_password
+    resp = client.post("/auth/login", json=body)
+    assert resp.status_code == 200, resp.text
     return resp.json()["token"]
+
+
+def _register_and_login(client: TestClient, username: str | None = None) -> str:
+    username, password = _register_student(client, username)
+    return _login(client, username, password)
+
+
+def _register_parent(
+    client: TestClient,
+    child_username: str,
+    username: str | None = None,
+    password: str = "secret-pass-12345",
+    parent_password: str = "parent-pass-12345",
+) -> tuple[str, str, str]:
+    username = username or f"par{uuid.uuid4().hex[:10]}"
+    resp = client.post(
+        "/auth/register",
+        json={
+            "username": username,
+            "password": password,
+            "role": "parent",
+            "parentPassword": parent_password,
+            "childUsername": child_username,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    token = _login(client, username, password, parent_password=parent_password)
+    return username, password, token
 
 
 # ------------------------------------------------------------------ #
@@ -190,9 +223,16 @@ def test_parent_dashboard_requires_auth(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_parent_dashboard_basic_fields(client: TestClient) -> None:
+def test_parent_dashboard_student_forbidden(client: TestClient) -> None:
     token = _register_and_login(client)
-    headers = {"Authorization": f"Bearer {token}"}
+    resp = client.get("/parent/dashboard", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 403
+
+
+def test_parent_dashboard_basic_fields(client: TestClient) -> None:
+    child_name, child_password = _register_student(client)
+    child_token = _login(client, child_name, child_password)
+    headers = {"Authorization": f"Bearer {child_token}"}
     # 先同步几条进度，让 dashboard 有内容
     client.post(
         "/learning/progress/sync",
@@ -217,7 +257,11 @@ def test_parent_dashboard_basic_fields(client: TestClient) -> None:
             "reviews": [],
         },
     )
-    resp = client.get("/parent/dashboard", headers=headers)
+    _, _, parent_token = _register_parent(client, child_name)
+    resp = client.get(
+        "/parent/dashboard",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert "studentName" in body
@@ -235,8 +279,9 @@ def test_parent_dashboard_basic_fields(client: TestClient) -> None:
 
 
 def test_parent_poster_includes_week_stats(client: TestClient) -> None:
-    token = _register_and_login(client)
-    headers = {"Authorization": f"Bearer {token}"}
+    child_name, child_password = _register_student(client)
+    child_token = _login(client, child_name, child_password)
+    headers = {"Authorization": f"Bearer {child_token}"}
     client.post(
         "/learning/progress/sync",
         headers=headers,
@@ -266,7 +311,11 @@ def test_parent_poster_includes_week_stats(client: TestClient) -> None:
             ],
         },
     )
-    resp = client.get("/parent/poster", headers=headers)
+    _, _, parent_token = _register_parent(client, child_name)
+    resp = client.get(
+        "/parent/poster",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["weekCompletedRounds"] >= 1

@@ -20,7 +20,7 @@
 | B 流式 ASR 主路径 | PASS | PASS | stream/window fallback 均有日志；未配置外部 key 不阻塞 |
 | C HWR 画布出图 | PASS | PASS | step payload 带 `imageBase64`；无 key source 降级 |
 | D 回放录制+播放 | PASS | PASS | `ReplayService` 上报，`ReplayPage` 播放笔迹/气泡时间轴 |
-| E 家长回放+多孩子 | PASS | PASS | child switcher + bind child + replay list |
+| E 家长回放+独立账号 | PASS | PASS | 家长账号登录直达看板 + replay list；1 孩子 : 1 家长 |
 | F 战力中心 | PASS | PASS | `/gamification/me` 页面化 |
 | G 排行榜+周结算 | PASS | PASS | `scripts/settle_leaderboard.py` + App Tab |
 | H 今日悬赏 | PASS | PASS | 圈错 box + 纠错文字 + submit |
@@ -38,8 +38,8 @@
 | 条目 1～12 | PASS/FAIL | 备注 |
 |------------|-----------|------|
 | 1 首页 5 个 V2 入口 | PASS | `HomePage` V2 产品入口 |
-| 2 Live 讲题 → 家长回放 | PASS | 登录后上报；无数据有温和空态 |
-| 3 切换 2 个孩子 | PASS | `studentId` query/header 语义统一 |
+| 2 Live 讲题 → 家长回放 | PASS | 学生上传回放；家长账号看列表 |
+| 3 家长 1:1 绑定 | PASS | 注册时绑定；无多孩子切换 |
 | 4 排行榜 + 周结算 | PASS | snapshot 优先、实时回退 |
 | 5 今日悬赏拿晶石 | PASS | `/bounty/submit` 幂等仍沿用后端约束 |
 | 6 商城皮肤生效 | PASS | `pen-gold` 画笔肉眼可辨 |

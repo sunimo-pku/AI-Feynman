@@ -24,7 +24,6 @@ from app.db import (
     LeaderboardSnapshot,
     LearningProgress,
     LectureReplayRecord,
-    ParentStudentLink,
     PowerEvent,
     RedeemOrder,
     SectionPower,
@@ -33,9 +32,10 @@ from app.db import (
     dump_json,
     ensure_student_profile,
     get_db,
+    linked_child_profile,
     load_json,
 )
-from app.middleware.auth import require_user
+from app.middleware.auth import require_parent_user, require_student_user, require_user, user_role
 from app.services import knowledge_index
 from app.services.qwen_vision import recognize_question_image
 
@@ -95,11 +95,6 @@ class ReplayRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class BindStudentRequest(BaseModel):
-    username: str
-    nickname: str = ""
-
-
 def _tier(score: int) -> str:
     for threshold, name in _TIERS:
         if score >= threshold:
@@ -146,32 +141,16 @@ def _power_payload(row: SectionPower) -> dict[str, Any]:
     }
 
 
-def _active_student_profile(
-    db: Session,
-    user: User,
-    *,
-    student_id: int | None,
-    header_student_id: str | None,
-) -> StudentProfile:
-    own = ensure_student_profile(db, user)
-    raw = student_id
-    if raw is None and header_student_id:
-        try:
-            raw = int(header_student_id)
-        except ValueError:
-            raw = None
-    if raw is None or raw == own.id:
-        return own
-    link = db.query(ParentStudentLink).filter(
-        ParentStudentLink.parent_user_id == user.id,
-        ParentStudentLink.student_profile_id == raw,
-    ).first()
-    if link is None:
-        raise HTTPException(status_code=403, detail="Student is not bound to this parent.")
-    profile = db.query(StudentProfile).filter(StudentProfile.id == raw).first()
-    if profile is None:
-        raise HTTPException(status_code=404, detail="Student profile not found.")
-    return profile
+def _replay_subject_profile(db: Session, user: User) -> StudentProfile:
+    if user_role(user) == "parent":
+        profile = linked_child_profile(db, user)
+        if profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No child linked to this parent account.",
+            )
+        return profile
+    return ensure_student_profile(db, user)
 
 
 def _adjust_power(
@@ -378,7 +357,7 @@ def _bounty_public(challenge: dict[str, Any], attempt: BountyAttempt | None) -> 
 
 
 @router.get("/gamification/me")
-async def gamification_me(user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def gamification_me(user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     powers = db.query(SectionPower).filter(SectionPower.student_id == profile.id).all()
     wallet = _wallet(db, profile)
@@ -391,7 +370,7 @@ async def gamification_me(user: User = Depends(require_user), db: Session = Depe
 
 
 @router.post("/gamification/power/adjust")
-async def adjust_power(req: PowerAdjustRequest, user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def adjust_power(req: PowerAdjustRequest, user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     target = req.mastery_score * 10 + req.completed_rounds * 5 + req.bounty_wins * 15
     current = db.query(SectionPower).filter(
@@ -409,7 +388,7 @@ async def adjust_power(req: PowerAdjustRequest, user: User = Depends(require_use
 async def leaderboard(
     section_id: str = Query("pep-g8-down-s16-3", alias="sectionId"),
     scope: Literal["school", "district", "city", "province"] = "school",
-    user: User = Depends(require_user),
+    user: User = Depends(require_student_user),
     db: Session = Depends(get_db),
 ):
     profile = ensure_student_profile(db, user)
@@ -466,14 +445,14 @@ async def leaderboard(
 
 
 @router.get("/leaderboard/my-titles")
-async def my_titles(user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def my_titles(user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     title = getattr(profile, "equipped_title", "") or "数学练习生"
     return {"equippedTitle": title, "titles": [title]}
 
 
 @router.get("/bounty/today")
-async def bounty_today(user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def bounty_today(user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     date_key = _today_key()
     challenges = _select_today_bounties(db, profile, date_key=date_key)
@@ -496,7 +475,7 @@ async def bounty_today(user: User = Depends(require_user), db: Session = Depends
 
 
 @router.post("/bounty/submit")
-async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     date_key = _today_key()
     todays = _select_today_bounties(db, profile, date_key=date_key)
@@ -571,7 +550,7 @@ async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_u
 
 
 @router.get("/bounty/history")
-async def bounty_history(user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def bounty_history(user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     rows = db.query(BountyAttempt).filter(
         BountyAttempt.student_id == profile.id,
@@ -596,14 +575,14 @@ async def bounty_history(user: User = Depends(require_user), db: Session = Depen
 
 
 @router.get("/shop/catalog")
-async def shop_catalog(user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def shop_catalog(user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     wallet = _wallet(db, profile)
     return {"balance": wallet.balance, "items": _SHOP_ITEMS, "geekSkus": _GEEK_SKUS}
 
 
 @router.post("/shop/redeem")
-async def shop_redeem(req: RedeemRequest, user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def shop_redeem(req: RedeemRequest, user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     sku = next((x for x in [*_SHOP_ITEMS, *_GEEK_SKUS] if x["skuId"] == req.sku_id), None)
     if sku is None:
@@ -625,14 +604,14 @@ async def shop_redeem(req: RedeemRequest, user: User = Depends(require_user), db
 
 
 @router.get("/shop/orders")
-async def shop_orders(user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def shop_orders(user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     rows = db.query(RedeemOrder).filter(RedeemOrder.student_id == profile.id).order_by(RedeemOrder.created_at.desc()).all()
     return {"orders": [{"orderId": r.order_id, "skuId": r.sku_id, "status": r.status, "crystalCost": r.crystal_cost, "createdAt": r.created_at} for r in rows]}
 
 
 @router.get("/shop/ledger")
-async def shop_ledger(user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def shop_ledger(user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     wallet = _wallet(db, profile)
     rows = db.query(CrystalLedger).filter(CrystalLedger.student_id == profile.id).order_by(CrystalLedger.created_at.desc()).limit(30).all()
@@ -652,7 +631,7 @@ async def shop_ledger(user: User = Depends(require_user), db: Session = Depends(
 
 
 @router.post("/replays")
-async def create_replay(req: ReplayRequest, user: User = Depends(require_user), db: Session = Depends(get_db)):
+async def create_replay(req: ReplayRequest, user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
     row = db.query(LectureReplayRecord).filter(LectureReplayRecord.session_id == req.session_id).first()
     if row is None:
@@ -669,12 +648,10 @@ async def create_replay(req: ReplayRequest, user: User = Depends(require_user), 
 
 @router.get("/parent/replays")
 async def parent_replays(
-    user: User = Depends(require_user),
+    user: User = Depends(require_parent_user),
     db: Session = Depends(get_db),
-    student_id: int | None = Query(None, alias="studentId"),
-    x_student_id: str | None = Header(None, alias="X-Student-Id"),
 ):
-    profile = _active_student_profile(db, user, student_id=student_id, header_student_id=x_student_id)
+    profile = _replay_subject_profile(db, user)
     rows = db.query(LectureReplayRecord).filter(LectureReplayRecord.student_id == profile.id).order_by(LectureReplayRecord.created_at.desc()).limit(20).all()
     return {"replays": [_replay_payload(r, include_timeline=False) for r in rows]}
 
@@ -684,10 +661,8 @@ async def get_replay(
     session_id: str,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
-    student_id: int | None = Query(None, alias="studentId"),
-    x_student_id: str | None = Header(None, alias="X-Student-Id"),
 ):
-    profile = _active_student_profile(db, user, student_id=student_id, header_student_id=x_student_id)
+    profile = _replay_subject_profile(db, user)
     row = db.query(LectureReplayRecord).filter(
         LectureReplayRecord.student_id == profile.id,
         LectureReplayRecord.session_id == session_id,
@@ -698,7 +673,7 @@ async def get_replay(
 
 
 @router.post("/questions/upload-image")
-async def upload_question_image(file: UploadFile = File(...), user: User = Depends(require_user)):
+async def upload_question_image(file: UploadFile = File(...), user: User = Depends(require_student_user)):
     data = await file.read()
     preview = base64.b64encode(data[:24]).decode("ascii")
     image_base64 = base64.b64encode(data).decode("ascii") if data else ""
@@ -738,38 +713,6 @@ async def knowledge_search(payload: dict[str, Any]):
     top_k = int(payload.get("topK") or payload.get("top_k") or 3)
     hits = knowledge_index.search(query, section_id=section_id, top_k=top_k)
     return {"hits": hits, "source": "local_json_keyword"}
-
-
-@router.get("/parent/children")
-async def parent_children(user: User = Depends(require_user), db: Session = Depends(get_db)):
-    links = db.query(ParentStudentLink).filter(ParentStudentLink.parent_user_id == user.id).all()
-    if not links:
-        profile = ensure_student_profile(db, user)
-        return {"children": [{"studentId": profile.id, "nickname": profile.display_name or user.username, "active": True}]}
-    children = []
-    for link in links:
-        profile = db.query(StudentProfile).filter(StudentProfile.id == link.student_profile_id).first()
-        if profile:
-            children.append({"studentId": profile.id, "nickname": link.nickname or profile.display_name, "active": False})
-    return {"children": children}
-
-
-@router.post("/parent/children/bind")
-async def bind_child(req: BindStudentRequest, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    child_user = db.query(User).filter(User.username == req.username).first()
-    if child_user is None:
-        raise HTTPException(status_code=404, detail="Student username not found.")
-    profile = ensure_student_profile(db, child_user)
-    link = db.query(ParentStudentLink).filter(
-        ParentStudentLink.parent_user_id == user.id,
-        ParentStudentLink.student_profile_id == profile.id,
-    ).first()
-    if link is None:
-        link = ParentStudentLink(parent_user_id=user.id, student_profile_id=profile.id)
-        db.add(link)
-    link.nickname = req.nickname or profile.display_name or child_user.username
-    db.commit()
-    return {"studentId": profile.id, "nickname": link.nickname}
 
 
 def _replay_payload(row: LectureReplayRecord, *, include_timeline: bool) -> dict[str, Any]:

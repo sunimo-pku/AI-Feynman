@@ -44,7 +44,7 @@ class PrivacyNoticePage extends StatelessWidget {
           ),
           const _Card(
             title: '如何清理本地数据',
-            body: '退出登录会切换到 guest 数据桶，不删除原账号离线数据。需要彻底清除时，可在系统设置中清除 App 数据。',
+            body: '退出登录后需重新登录才能继续使用。本地练习数据仍保留在当前账号下；需要彻底清除时，可在系统设置中清除 App 数据。',
           ),
           const SizedBox(height: 18),
           FilledButton(

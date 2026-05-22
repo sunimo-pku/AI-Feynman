@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../data/parent_models.dart';
-import '../data/round12_models.dart';
 import 'auth_service.dart';
 
 /// 家长端 HTTP 客户端封装（第十轮）。
@@ -31,50 +30,11 @@ class ParentService {
     return ParentPosterPayload.fromJson(body);
   }
 
-  Future<List<ParentChild>> fetchChildren() async {
-    final body = await _get('/parent/children');
-    final raw = body['children'];
-    return raw is List
-        ? raw
-            .whereType<Map<String, dynamic>>()
-            .map(ParentChild.fromJson)
-            .toList(growable: false)
-        : const <ParentChild>[];
-  }
-
-  Future<ParentChild> bindChild({
-    required String username,
-    required String nickname,
-  }) async {
-    final uri = ApiConfig.uri('/parent/children/bind');
-    final resp = await _client
-        .post(
-          uri,
-          headers: AuthService.instance.authHeaders(),
-          body: utf8.encode(jsonEncode({
-            'username': username,
-            'nickname': nickname,
-          })),
-        )
-        .timeout(_timeout);
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw ParentApiException(
-        userMessage: '绑定孩子失败（HTTP ${resp.statusCode}）。',
-        statusCode: resp.statusCode,
-      );
-    }
-    final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
-    if (decoded is! Map<String, dynamic>) {
-      throw const ParentApiException(userMessage: '绑定孩子返回格式不符合契约。');
-    }
-    return ParentChild.fromJson({...decoded, 'active': false});
-  }
-
   Future<void> updateProfile({
     required String displayName,
     required String grade,
   }) async {
-    final uri = ApiConfig.uri('/learning/profile');
+    final uri = ApiConfig.uri('/parent/profile');
     final resp = await _client
         .patch(
           uri,

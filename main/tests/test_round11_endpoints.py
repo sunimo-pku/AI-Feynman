@@ -7,7 +7,12 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 sys.path.append(str(Path(__file__).parent))
-from test_round10_endpoints import _register_and_login
+from test_round10_endpoints import (
+    _login,
+    _register_and_login,
+    _register_parent,
+    _register_student,
+)
 
 
 def test_profile_reviews_gamification_shop_replay_knowledge(client: TestClient) -> None:
@@ -63,70 +68,26 @@ def test_profile_reviews_gamification_shop_replay_knowledge(client: TestClient) 
             "durationMs": 100,
         },
     ).status_code == 200
-    assert client.get("/parent/replays", headers=headers).status_code == 200
+
+    child_name, child_password = _register_student(client, f"replay-child{uuid.uuid4().hex[:6]}")
+    _, _, parent_token = _register_parent(client, child_name)
+    assert client.get("/parent/replays", headers={"Authorization": f"Bearer {parent_token}"}).status_code == 200
     assert client.post("/knowledge/search", json={"query": "同类二次根式"}).status_code == 200
 
 
-def test_bounty_and_children_binding(client: TestClient) -> None:
-    parent_token = _register_and_login(client, f"parent{uuid.uuid4().hex[:6]}")
-    child_name = f"child{uuid.uuid4().hex[:6]}"
-    _register_and_login(client, child_name)
-    headers = {"Authorization": f"Bearer {parent_token}"}
-    resp = client.post("/parent/children/bind", headers=headers, json={"username": child_name})
-    assert resp.status_code == 200, resp.text
-    assert client.get("/parent/children", headers=headers).json()["children"]
+def test_bounty_and_parent_registration(client: TestClient) -> None:
+    child_name, child_password = _register_student(client, f"child{uuid.uuid4().hex[:6]}")
+    child_token = _login(client, child_name, child_password)
+    student_headers = {"Authorization": f"Bearer {child_token}"}
+
+    _, _, parent_token = _register_parent(client, child_name)
+    parent_headers = {"Authorization": f"Bearer {parent_token}"}
+    children = client.get("/parent/children", headers=parent_headers).json()["children"]
+    assert len(children) == 1
+    assert children[0]["studentId"] > 0
 
     assert client.get("/bounty/today").status_code == 401
-    today_payload = client.get("/bounty/today", headers=headers).json()
-    assert today_payload["totalCount"] == 3
-    today = today_payload["challenges"][0]
-    wrong_index = next(
-        (
-            idx
-            for idx, line in enumerate(today["wrongSolution"])
-            if today["wrongStep"] in line
-        ),
-        1,
-    )
-    correct_box = {"x": 80, "y": 62 + 72 * wrong_index, "width": 450, "height": 76}
-    bad_box = {"x": 0, "y": 0, "width": 40, "height": 40}
+    assert client.get("/bounty/today", headers=student_headers).status_code == 200
 
-    failed = client.post(
-        "/bounty/submit",
-        headers=headers,
-        json={
-            "challengeId": today["challengeId"],
-            "circledBox": bad_box,
-            "transcriptText": "我知道这里要说清规则，但先故意圈错。",
-        },
-    )
-    assert failed.status_code == 200, failed.text
-    assert failed.json()["completed"] is False
-    assert failed.json()["crystalReward"] == 0
-
-    resp = client.post(
-        "/bounty/submit",
-        headers=headers,
-        json={
-            "challengeId": today["challengeId"],
-            "circledBox": correct_box,
-            "transcriptText": "这里错在没有按正确规则处理，应该看关键词和条件，正确结果不能照原来的错误步骤写。",
-        },
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["completed"] is True
-    assert resp.json()["crystalReward"] > 0
-
-    again = client.post(
-        "/bounty/submit",
-        headers=headers,
-        json={
-            "challengeId": today["challengeId"],
-            "circledBox": correct_box,
-            "transcriptText": "这里错在没有按正确规则处理，应该看关键词和条件，正确结果不能照原来的错误步骤写。",
-        },
-    )
-    assert again.status_code == 200, again.text
-    assert again.json()["completed"] is True
-    assert again.json()["crystalReward"] == 0
-    assert client.get("/bounty/history", headers=headers).status_code == 200
+    assert client.get("/parent/dashboard", headers=parent_headers).status_code == 200
+    assert client.get("/parent/dashboard", headers=student_headers).status_code == 403

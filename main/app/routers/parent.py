@@ -1,16 +1,15 @@
-"""家长端 API（第十轮）。
+"""家长端 API（第十轮 + 账号模型修订）。
 
-V1 不做复杂的多孩子家庭权限模型：登录用户**即**学生主体；家长端就是
-另一个客户端入口，请求同一个账号的数据。这层简单的语义把家长端「最小
-可用」做完，避免被 OAuth / RBAC 拖延。
+一名家长账号对应一名孩子（注册时绑定）。家长登录需账号密码 + 家长密码。
+学生账号无法访问家长端接口。
 
 提供：
 
-- `GET /parent/dashboard`：学生总体掌握度、弱项 sections、最近讲题、本周建议。
+- `GET /parent/dashboard`：绑定孩子的掌握度、弱项、最近讲题、教师建议。
 - `GET /parent/reviews`：最近回顾摘要，按 section 过滤。
 - `GET /parent/poster`：「总结海报」用的结构化数据。
-
-字段一律 camelCase 出，与 Flutter `ParentDashboardPayload` 对齐。
+- `PATCH /parent/profile`：编辑绑定孩子的展示名与年级。
+- `GET /parent/children`：返回唯一绑定的孩子（兼容旧客户端）。
 """
 
 from __future__ import annotations
@@ -19,9 +18,8 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -32,11 +30,11 @@ from app.db import (
     ParentStudentLink,
     StudentProfile,
     User,
-    ensure_student_profile,
     get_db,
+    linked_child_profile,
     load_json,
 )
-from app.middleware.auth import require_user
+from app.middleware.auth import require_parent_user
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +137,13 @@ class DashboardOut(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ParentProfilePatch(BaseModel):
+    display_name: str | None = Field(None, alias="displayName")
+    grade: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
 class PosterOut(BaseModel):
     student_name: str = Field(..., serialization_alias="studentName")
     grade: str
@@ -185,45 +190,13 @@ def _review_to_card(row: LectureReview) -> ReviewCardOut:
     )
 
 
-def _active_student_profile(
-    db: Session,
-    user: User,
-    *,
-    student_id: int | None,
-    header_student_id: str | None,
-) -> StudentProfile:
-    """Resolve the child shown in parent APIs.
-
-    Default remains the logged-in user's own profile for old clients. When a
-    parent passes `studentId` or `X-Student-Id`, the id must either be their own
-    profile or one of the bound children.
-    """
-
-    own = ensure_student_profile(db, user)
-    raw = student_id
-    if raw is None and header_student_id:
-        try:
-            raw = int(header_student_id)
-        except ValueError:
-            raw = None
-    if raw is None or raw == own.id:
-        return own
-    link = (
-        db.query(ParentStudentLink)
-        .filter(
-            ParentStudentLink.parent_user_id == user.id,
-            ParentStudentLink.student_profile_id == raw,
-        )
-        .first()
-    )
-    if link is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Student is not bound to this parent.",
-        )
-    profile = db.query(StudentProfile).filter(StudentProfile.id == raw).first()
+def _require_linked_child(db: Session, user: User) -> StudentProfile:
+    profile = linked_child_profile(db, user)
     if profile is None:
-        raise HTTPException(status_code=404, detail="Student profile not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No child linked to this parent account.",
+        )
     return profile
 
 
@@ -273,6 +246,50 @@ def _build_suggested_action(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/children")
+async def parent_children(
+    user: User = Depends(require_parent_user),
+    db: Session = Depends(get_db),
+):
+    profile = linked_child_profile(db, user)
+    if profile is None:
+        return {"children": []}
+    link = (
+        db.query(ParentStudentLink)
+        .filter(ParentStudentLink.parent_user_id == user.id)
+        .first()
+    )
+    nickname = link.nickname if link else profile.display_name
+    return {
+        "children": [
+            {
+                "studentId": profile.id,
+                "nickname": nickname or profile.display_name,
+                "active": True,
+            }
+        ]
+    }
+
+
+@router.patch("/profile")
+async def patch_child_profile(
+    req: ParentProfilePatch,
+    user: User = Depends(require_parent_user),
+    db: Session = Depends(get_db),
+):
+    profile = _require_linked_child(db, user)
+    if req.display_name is not None:
+        profile.display_name = req.display_name.strip() or profile.display_name
+    if req.grade is not None:
+        profile.grade = req.grade.strip() or profile.grade
+    db.commit()
+    db.refresh(profile)
+    return {
+        "displayName": profile.display_name,
+        "grade": profile.grade,
+    }
+
+
 @router.get(
     "/dashboard",
     response_model=DashboardOut,
@@ -280,17 +297,10 @@ def _build_suggested_action(
     summary="家长 dashboard：弱项 / 最近讲题 / 教师建议",
 )
 async def parent_dashboard(
-    user: User = Depends(require_user),
+    user: User = Depends(require_parent_user),
     db: Session = Depends(get_db),
-    student_id: int | None = Query(None, alias="studentId"),
-    x_student_id: str | None = Header(None, alias="X-Student-Id"),
 ) -> DashboardOut:
-    profile = _active_student_profile(
-        db,
-        user,
-        student_id=student_id,
-        header_student_id=x_student_id,
-    )
+    profile = _require_linked_child(db, user)
     progress_rows = (
         db.query(LearningProgress)
         .filter(LearningProgress.student_id == profile.id)
@@ -351,19 +361,12 @@ async def parent_dashboard(
     response_model_by_alias=True,
 )
 async def parent_reviews(
-    user: User = Depends(require_user),
+    user: User = Depends(require_parent_user),
     db: Session = Depends(get_db),
     section_id: str | None = Query(None, alias="sectionId", max_length=64),
-    student_id: int | None = Query(None, alias="studentId"),
-    x_student_id: str | None = Header(None, alias="X-Student-Id"),
     limit: int = Query(20, ge=1, le=50),
 ) -> list[ReviewCardOut]:
-    profile = _active_student_profile(
-        db,
-        user,
-        student_id=student_id,
-        header_student_id=x_student_id,
-    )
+    profile = _require_linked_child(db, user)
     q = db.query(LectureReview).filter(LectureReview.student_id == profile.id)
     if section_id:
         q = q.filter(LectureReview.section_id == section_id)
@@ -378,17 +381,10 @@ async def parent_reviews(
     summary="家长端总结海报：本周完成轮数 / 最强 / 最弱 / 教师建议",
 )
 async def parent_poster(
-    user: User = Depends(require_user),
+    user: User = Depends(require_parent_user),
     db: Session = Depends(get_db),
-    student_id: int | None = Query(None, alias="studentId"),
-    x_student_id: str | None = Header(None, alias="X-Student-Id"),
 ) -> PosterOut:
-    profile = _active_student_profile(
-        db,
-        user,
-        student_id=student_id,
-        header_student_id=x_student_id,
-    )
+    profile = _require_linked_child(db, user)
     progress_rows = (
         db.query(LearningProgress)
         .filter(LearningProgress.student_id == profile.id)

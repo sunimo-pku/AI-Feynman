@@ -11,16 +11,10 @@ import '../config/api_config.dart';
 import 'progress_repository.dart';
 import 'review_repository.dart';
 
-/// 第十轮：登录/注册 + token 持久化。
+/// 登录/注册 + token 持久化。
 ///
-/// 设计取舍：
-///   * 单例 [instance] + `ChangeNotifier`：登录状态会被多页订阅（讲题页、
-///     家长端、首页 AppBar），用 provider/riverpod 太重，单例足够。
-///   * token 落 `shared_preferences`，与 progress / review 仓库同口径。
-///   * 任何阶段失败都**不**抛 `Exception`：登录注册按钮上回显 [AuthFailure]
-///     的中文 message，避免把 SocketException 直接抛到 build 阶段。
-///   * 「未登录」是一等公民：[currentToken] 为空字符串时仍允许进入学生端
-///     讲题闭环，与第九轮 demo 链路完全兼容；只有家长端 / 同步接口需要登录。
+/// V2 账号模型：学生与家长均为独立账号，必须登录后使用 App（无游客）。
+/// 家长账号登录时需额外提供「家长密码」；注册时需绑定已存在的学生用户名。
 class AuthService extends ChangeNotifier {
   AuthService._({http.Client? client}) : _client = client ?? http.Client();
 
@@ -28,11 +22,13 @@ class AuthService extends ChangeNotifier {
 
   static const String _tokenKey = 'ai_feynman.auth.token.v1';
   static const String _usernameKey = 'ai_feynman.auth.username.v1';
+  static const String _roleKey = 'ai_feynman.auth.role.v1';
 
   final http.Client _client;
 
   String _token = '';
   String _username = '';
+  String _role = 'student';
   bool _loaded = false;
   Future<void>? _pendingLoad;
 
@@ -46,13 +42,18 @@ class AuthService extends ChangeNotifier {
 
   String get currentToken => _token;
   String get currentUsername => _username;
+  String get currentRole => _role;
   bool get isLoggedIn => _token.isNotEmpty;
+  bool get isStudent => isLoggedIn && _role == 'student';
+  bool get isParent => isLoggedIn && _role == 'parent';
   bool get isLoaded => _loaded;
+
   String get storageNamespace {
     final name = _username.trim();
-    return name.isEmpty
-        ? 'guest'
-        : name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    if (name.isEmpty) {
+      throw StateError('storageNamespace requires a logged-in user');
+    }
+    return name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
   }
 
   Future<void> load() async {
@@ -72,6 +73,7 @@ class AuthService extends ChangeNotifier {
       final prefs = await _obtainPrefs();
       _token = prefs.getString(_tokenKey) ?? '';
       _username = prefs.getString(_usernameKey) ?? '';
+      _role = prefs.getString(_roleKey) ?? 'student';
     } catch (e, st) {
       developer.log(
         'AuthService load failed; treating as logged out',
@@ -81,31 +83,69 @@ class AuthService extends ChangeNotifier {
       );
       _token = '';
       _username = '';
+      _role = 'student';
     } finally {
       _loaded = true;
       _pendingLoad = null;
-      await ProgressRepository.instance.switchUser(storageNamespace);
-      await ReviewRepository.instance.switchUser(storageNamespace);
+      if (isLoggedIn) {
+        await ProgressRepository.instance.switchUser(storageNamespace);
+        await ReviewRepository.instance.switchUser(storageNamespace);
+      }
       notifyListeners();
     }
+  }
+
+  Future<AuthResult> registerStudent({
+    required String username,
+    required String password,
+    String? grade,
+  }) {
+    return register(
+      username: username,
+      password: password,
+      role: 'student',
+      grade: grade,
+    );
+  }
+
+  Future<AuthResult> registerParent({
+    required String username,
+    required String password,
+    required String parentPassword,
+    required String childUsername,
+  }) {
+    return register(
+      username: username,
+      password: password,
+      role: 'parent',
+      parentPassword: parentPassword,
+      childUsername: childUsername,
+    );
   }
 
   Future<AuthResult> register({
     required String username,
     required String password,
+    required String role,
     String? grade,
+    String? parentPassword,
+    String? childUsername,
   }) async {
-    final outcome = await _post(
-      '/auth/register',
-      body: {
-        'username': username,
-        'password': password,
-        if (grade != null) 'grade': grade,
-      },
-    );
+    final body = <String, dynamic>{
+      'username': username,
+      'password': password,
+      'role': role,
+      if (grade != null) 'grade': grade,
+      if (parentPassword != null) 'parentPassword': parentPassword,
+      if (childUsername != null) 'childUsername': childUsername,
+    };
+    final outcome = await _post('/auth/register', body: body);
     if (outcome is _ApiSuccess) {
-      // 注册成功后自动登录，避免学生输入两次。
-      return login(username: username, password: password);
+      return login(
+        username: username,
+        password: password,
+        parentPassword: role == 'parent' ? parentPassword : null,
+      );
     }
     final failure = outcome as _ApiFailure;
     return AuthResult.failure(failure.message);
@@ -114,31 +154,41 @@ class AuthService extends ChangeNotifier {
   Future<AuthResult> login({
     required String username,
     required String password,
+    String? parentPassword,
   }) async {
-    final outcome = await _post(
-      '/auth/login',
-      body: {'username': username, 'password': password},
-    );
+    final body = <String, dynamic>{
+      'username': username,
+      'password': password,
+      if (parentPassword != null && parentPassword.isNotEmpty)
+        'parentPassword': parentPassword,
+    };
+    final outcome = await _post('/auth/login', body: body);
     if (outcome is _ApiFailure) {
       return AuthResult.failure(outcome.message);
     }
     final success = outcome as _ApiSuccess;
-    final body = success.body;
-    final token = (body['token'] as String?) ?? '';
-    final userMap = body['user'];
+    final responseBody = success.body;
+    final token = (responseBody['token'] as String?) ?? '';
+    final userMap = responseBody['user'];
     final returnedName =
         userMap is Map<String, dynamic>
             ? (userMap['username'] as String? ?? username)
             : username;
+    final returnedRole =
+        userMap is Map<String, dynamic>
+            ? (userMap['role'] as String? ?? 'student')
+            : 'student';
     if (token.isEmpty) {
       return const AuthResult.failure('后端登录成功但没返回 token，请联系开发同学。');
     }
     _token = token;
     _username = returnedName;
+    _role = returnedRole;
     try {
       final prefs = await _obtainPrefs();
       await prefs.setString(_tokenKey, _token);
       await prefs.setString(_usernameKey, _username);
+      await prefs.setString(_roleKey, _role);
     } catch (e, st) {
       developer.log(
         'AuthService persist token failed',
@@ -150,21 +200,21 @@ class AuthService extends ChangeNotifier {
     await ProgressRepository.instance.switchUser(storageNamespace);
     await ReviewRepository.instance.switchUser(storageNamespace);
     notifyListeners();
-    return AuthResult.success(_username);
+    return AuthResult.success(_username, role: _role);
   }
 
   Future<void> logout() async {
     _token = '';
     _username = '';
+    _role = 'student';
     try {
       final prefs = await _obtainPrefs();
       await prefs.remove(_tokenKey);
       await prefs.remove(_usernameKey);
+      await prefs.remove(_roleKey);
     } catch (_) {
       /* swallow */
     }
-    await ProgressRepository.instance.switchUser(storageNamespace);
-    await ReviewRepository.instance.switchUser(storageNamespace);
     notifyListeners();
   }
 
@@ -216,14 +266,18 @@ class AuthService extends ChangeNotifier {
 
   static String _humanize(int status, String detail) {
     if (status == 400 && detail.isNotEmpty) return detail;
-    if (status == 401) return '账号或密码错误。';
+    if (status == 401) {
+      if (detail.contains('Parent password')) return '家长密码错误或未填写。';
+      return detail.isNotEmpty ? detail : '账号或密码错误。';
+    }
+    if (status == 403 && detail.isNotEmpty) return detail;
+    if (status == 404 && detail.isNotEmpty) return detail;
     if (status == 422) return '输入字段不完整或格式错误。';
     if (status == 429) return '请求太频繁，喘口气再试。';
     if (status >= 500) return '后端暂时不可用（HTTP $status），请稍后再试。';
     return detail.isNotEmpty ? detail : '请求失败（HTTP $status）。';
   }
 
-  /// 给学习同步、家长端等接口拼装 Authorization header。
   Map<String, String> authHeaders({Map<String, String>? base}) {
     final headers = <String, String>{
       'Content-Type': 'application/json; charset=utf-8',
@@ -237,11 +291,15 @@ class AuthService extends ChangeNotifier {
 }
 
 class AuthResult {
-  const AuthResult.success(this.username) : ok = true, message = '';
-  const AuthResult.failure(this.message) : ok = false, username = '';
+  const AuthResult.success(this.username, {this.role = 'student'})
+    : ok = true,
+      message = '';
+
+  const AuthResult.failure(this.message) : ok = false, username = '', role = 'student';
 
   final bool ok;
   final String username;
+  final String role;
   final String message;
 }
 

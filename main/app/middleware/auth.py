@@ -93,3 +93,29 @@ async def require_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def user_role(user: User) -> str:
+    return (getattr(user, "role", None) or "student").strip() or "student"
+
+
+async def require_parent_user(
+    user: User = Depends(require_user),
+) -> User:
+    if user_role(user) != "parent":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Parent account required.",
+        )
+    return user
+
+
+async def require_student_user(
+    user: User = Depends(require_user),
+) -> User:
+    if user_role(user) != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Student account required.",
+        )
+    return user

@@ -155,8 +155,8 @@ git push origin main
 | 本地掌握度沉淀 | ✅ | 第六轮：`SectionProgress` 落 `shared_preferences`，首页/讲题页徽标实时刷新 |
 | 全册题库与下一题轮换 | ✅ | 第十二轮：90 节 × 3 题（基础/巩固/挑战），讲题页显示题号 + 难度 chip + 知识标签 chip，「下一题」循环切题 |
 | 后端学习数据沉淀 | ✅ | 第十轮：`StudentProfile/LearningProgress/LectureReview/LectureSessionRecord` 四张表 + 轻量迁移；`/lecture/submit` 与 `/lecture/live` 可选 Bearer 自动落库 |
-| 家长端看板 + 总结海报 | ✅ | 第十轮：`/parent/dashboard` + `/parent/reviews` + `/parent/poster`；Flutter 家长端：总体掌握、弱项 / 已掌握章节、最近讲题、老师建议、可分享海报 |
-| 登录注册 + 本地同步 | ✅ | 第十轮：`/auth/register` + `/auth/login` JWT，Flutter `AuthService` + `LearningSyncService`（按 max/最新合并、串行化、UNIQUE client_id 去重）|
+| 家长端看板 + 总结海报 | ✅ | 第十轮：`/parent/dashboard` + `/parent/reviews` + `/parent/poster`；家长独立账号登录后直达看板：弱项 / 已掌握 / 最近讲题 / 老师建议 / 总结海报 |
+| 登录注册 + 本地同步 | ✅ | 学生与家长**独立账号**、**必须登录**（无游客）；家长额外需「家长密码」；注册时 1 孩子 : 1 家长绑定；`/auth/register` + `/auth/login` JWT；Flutter `AuthService` + `LearningSyncService` |
 | OCR / Ink Parser | ✅ | 第十轮：`/ocr/ink` 规则匹配（referenceSteps 优先 + 16.x fallback），Flutter `OcrService` 在 ink_snapshot 与 lecture submit 前预填 latex / plainText |
 | TTS 平滑淡出 | ✅ | 第十轮：第九轮硬截断改为 200ms × 25ms tick 的 setVolume 渐隐 + token 幂等防抖 |
 | 知识库增强 | ✅ | 八年级下册 · 第十六章 二次根式已有本地知识库；其它章节按同一追问链路运行，后续逐章补知识库 |
@@ -726,9 +726,10 @@ git push origin main
 - **LLM 流式 NDJSON 必须逐行校验**：DeepSeek 流式主路径输出
   `turn_start/delta/turn_done/round_meta`；任何一行解析失败或整流无有效事件，
   必须发送 WebSocket `error`，不能切 Mock/非流式替代路径。
-- **本地学习数据 key 必须带 namespace**：`guest`、`userA`、`userB` 分别写
+- **本地学习数据 key 必须带 namespace**：`userA`、`userB` 分别写
   `ai_feynman.section_progress.v1.<namespace>` 与
-  `ai_feynman.lecture_reviews.v1.<namespace>`；logout 只是切回 guest，不删旧账号桶。
+  `ai_feynman.lecture_reviews.v1.<namespace>`；**App 已禁止游客**，未登录不能进首页；
+  logout 后需重新登录，本地数据仍保留在该用户 namespace 下。
 - **回放时间轴不要等视频编码**：Round 11 验收底线是「音频片段 + 笔迹 timeline +
   气泡 timeline」可播放；MP4 合成失败时必须保留过程回放入口。
 - **排行榜周结算要幂等**：`LeaderboardSnapshot` 以
@@ -783,6 +784,26 @@ git push origin main
   `httpx.stream(...) + iter_lines()` 就能边收边 yield mp3 bytes，不用上
   WebSocket 协议。不要把 `synthesize` 改掉破坏现有 `/tts` 全量返回路径，
   新加 `synthesize_stream` 这个 generator 就够了。
+
+### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
+
+- **`User.role` 与 `parent_password_hash`**：学生 `role=student` 仅账号密码；
+  家长 `role=parent` 登录时需 **账号密码 + 家长密码** 两道校验。JWT payload 带
+  `role`，Flutter `AuthService.isParent / isStudent` 决定进 `ParentDashboardPage`
+  还是 `HomePage`。
+- **1 孩子 : 1 家长，注册时绑定**：先注册学生，再注册家长并填 `childUsername`；
+  后端写 `ParentStudentLink`，parent / child 各 UNIQUE。**已删除**
+  `POST /parent/children/bind` 与 App 内「绑定孩子」入口。
+- **接口权限分离**：`/parent/*` 仅 `require_parent_user`；`/learning/*` 与游戏化
+  接口仅 `require_student_user`。学生 token 调 `/parent/dashboard` 应 403，不能
+  再靠同一账号既讲题又看家长板。
+- **家长看板读绑定孩子**：`linked_child_profile()` 解析唯一孩子；
+  `PATCH /parent/profile` 改的是孩子 `StudentProfile`，不是家长 User。
+- **家长端不同步本地 progress**：家长 refresh 只拉服务端；孩子侧讲题完成后由
+  学生账号 `LearningSyncService.syncNow()` 上传，家长刷新 dashboard 即可见。
+- **旧 DB 迁移**：`users.role` / `users.parent_password_hash` 走
+  `_run_lightweight_migrations`；老账号默认 `role=student`，需单独注册家长账号
+  才能进家长端。
 
 ---
 
