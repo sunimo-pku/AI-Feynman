@@ -47,7 +47,7 @@
 │   │   └── pep-junior-math.json   # 人教版初中数学目录（6 册 · 29 章 · 90 节）
 │   ├── knowledge/                 # 第十六章本地知识库 chunks
 │   ├── questions/                 # 全册 90 节题库 JSON
-│   └── shop/                      # 工具局 SKU 数据
+│   └── shop/                      # 文具 SKU（stationery_skus.json）
 ├── scripts/
 │   ├── build_curriculum.py          # 重新生成课程目录 JSON
 │   ├── generate_section_questions.py # 生成全册 90 节题库并同步 Flutter asset
@@ -385,7 +385,7 @@ Flutter 侧同步完成：
 
 - 首页新增 5 个学习工具入口：每日挑战、晶石奖励、学习榜单、拍照识题、我的成长。
 - 每日挑战正式页：`DailyChallengePage` 将 `wrongSolution` 拆成逐步选择题（`stepQuizzes` / `stepAnswers`），下方全屏白板 + `/asr` 语音讲解提交；已取消红框圈选。
-- 新增/接线 Flutter 页面：`DailyChallengePage`、`ShopPage`、`GeekShopPage`、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
+- 新增/接线 Flutter 页面：`DailyChallengePage`、`ShopPage`（实物文具兑换）、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
 - 回放闭环：`ReplayService` 记录 live 讲题的音频片段、白板时间轴和气泡时间轴，**学生账号**登录后 `POST /replays`；**家长账号**在 dashboard「精彩回放」可点进 `ReplayPage`。
 - 家长账号模型：`User.role` 为 `student` | `parent`；家长注册时绑定唯一孩子用户名，登录需账号密码 + 家长密码；`/parent/*` 仅家长可访问，自动展示绑定孩子学习数据。
 - 数据化题库与知识库：`scripts/generate_section_questions.py` 生成 `data/questions/pep-junior-math-questions.json`（90 节 × 基础/巩固/挑战 3 题，共 270 题），几何/坐标/函数/统计类题附带 SVG 题图；`data/knowledge/pep-g8-down-ch16_chunks.json` 由 `knowledge_index` 注入讲题 prompt。
