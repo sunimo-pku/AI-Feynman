@@ -299,24 +299,14 @@ class LiveLectureSession:
             sample_rate = int(event.get("sampleRate") or self.asr_buffer.sample_rate)
         except (TypeError, ValueError):
             sample_rate = self.asr_buffer.sample_rate
-        if self.asr_buffer.stream_client.enabled:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self.asr_buffer.stream_client.accept_chunk(
-                    seq=seq,
-                    base64_data=base64_data,
-                    recognize_fallback=recognize_fn,
-                    force=False,
-                ),
-            )
-            if result is not None and not result.error:
-                await self._handle_asr_result(result.__dict__, send=send)
-                return
-            if result is not None and result.error:
-                await self._send_error(send, f"streaming_asr_failed:{result.error}")
-                return
-        await self._send_error(send, "streaming_asr_not_configured")
+        # V2 已改为学生手动点「讲题结束」后再追问。录音过程中不能在
+        # 每个 audio_chunk 上同步等待火山 ASR（约 200ms/片），否则 WS
+        # receive loop 会被压住，客户端持续发送音频时很容易断连。
+        self.asr_buffer.push(
+            seq=seq,
+            base64_data=base64_data,
+            sample_rate=sample_rate,
+        )
 
     async def _on_ink_snapshot(
         self,
@@ -422,18 +412,6 @@ class LiveLectureSession:
                 "sessionId": self.session_id,
             })
             return
-        has_speech = any(seg.strip() for seg in self.transcript_segments)
-        if not self.latest_steps and not has_speech:
-            await self._safe_send(send, {
-                "type": EVT_WARNING,
-                "sessionId": self.session_id,
-                "message": "no_steps_yet",
-            })
-            await self._safe_send(send, {
-                "type": EVT_LISTENING,
-                "sessionId": self.session_id,
-            })
-            return
         pause_t0 = time.monotonic()
         await self._maybe_flush_asr(
             send=send,
@@ -446,6 +424,18 @@ class LiveLectureSession:
             asr_ms,
             self.session_id,
         )
+        has_speech = any(seg.strip() for seg in self.transcript_segments)
+        if not self.latest_steps and not has_speech:
+            await self._safe_send(send, {
+                "type": EVT_WARNING,
+                "sessionId": self.session_id,
+                "message": "no_steps_yet",
+            })
+            await self._safe_send(send, {
+                "type": EVT_LISTENING,
+                "sessionId": self.session_id,
+            })
+            return
         self.is_thinking = True
         self._interrupt_event.clear()
         await self._safe_send(send, {
@@ -565,24 +555,18 @@ class LiveLectureSession:
         recognize_fn: Callable[[str, str], dict],
         force: bool = False,
     ) -> None:
-        if self.asr_buffer.stream_client.enabled:
-            if not force:
-                return
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self.asr_buffer.stream_client.accept_chunk(
-                    seq=-1,
-                    base64_data="",
-                    recognize_fallback=recognize_fn,
-                    force=True,
-                ),
-            )
-            if result is not None:
-                await self._handle_asr_result(result.__dict__, send=send)
+        if not force:
             return
-        if force:
-            await self._send_error(send, "streaming_asr_not_configured")
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: self.asr_buffer.flush_to_text(
+                recognize_fn,
+                force=True,
+            ),
+        )
+        if result is not None:
+            await self._handle_asr_result(result, send=send)
 
     async def _handle_asr_result(
         self,

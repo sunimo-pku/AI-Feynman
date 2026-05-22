@@ -822,6 +822,11 @@ git push origin main
   `failed`，后续断连分支只看 `_liveStatus` 就会漏设
   `_resumeRecordingAfterReconnect`，重连后停在灰麦。连接类错误在录音中只记录
   failure 文案，不切 failed；断连分支用 `_isLiveRecording` 判断是否续录。
+- **实时录音不要逐 chunk 同步 ASR**：`record.startStream` 会高频吐 PCM chunk；
+  如果 `/lecture/live` 每个 `audio_chunk` 都 `await` 火山 ASR（约 200ms/片），
+  WebSocket receive loop 会被 ASR 背压压住，表现为几乎每次录音十几秒后断连。
+  V2 手动「讲题结束」模式下，`audio_chunk` 只入 `LiveAsrBuffer`，点
+  `pause_detected` 时再一次性 `flush_to_text(force=True)`。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

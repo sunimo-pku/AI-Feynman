@@ -188,12 +188,10 @@ async def test_audio_chunk_then_pause_yields_peer_assessments() -> None:
     session = LiveLectureSession()
     session.asr_buffer.stream_client.enabled = True
 
-    def accept_chunk(**kwargs: Any) -> StreamAsrResult:
-        if kwargs.get("force"):
-            return StreamAsrResult(text="", is_final=True, mode="stream")
+    def recognize_window(**kwargs: Any) -> StreamAsrResult:
         return StreamAsrResult(text="我先讲这一题", is_final=False, mode="stream")
 
-    session.asr_buffer.stream_client.accept_chunk = accept_chunk  # type: ignore[method-assign]
+    session.asr_buffer.stream_client.recognize_window = recognize_window  # type: ignore[method-assign]
     sent: list[dict[str, Any]] = []
 
     async def send(payload: dict[str, Any]) -> None:
@@ -245,7 +243,7 @@ async def test_audio_chunk_then_pause_yields_peer_assessments() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audio_chunk_without_streaming_asr_emits_error() -> None:
+async def test_audio_chunk_buffers_without_streaming_asr_error() -> None:
     session = LiveLectureSession()
     sent: list[dict[str, Any]] = []
 
@@ -266,13 +264,21 @@ async def test_audio_chunk_without_streaming_asr_emits_error() -> None:
         peer_assessment_fn=_fake_peer_assessment_not_all_understood,
     )
 
-    assert sent[-1]["type"] == EVT_ERROR
-    assert sent[-1]["message"] == "streaming_asr_not_configured"
+    assert sent == []
+    assert session.asr_buffer.has_pending
 
 
 @pytest.mark.asyncio
 async def test_pause_without_steps_emits_warning() -> None:
     session = LiveLectureSession()
+    session.asr_buffer.stream_client.enabled = True
+    session.asr_buffer.stream_client.recognize_window = (  # type: ignore[method-assign]
+        lambda **_kwargs: StreamAsrResult(
+            text="我先讲这一题",
+            is_final=True,
+            mode="stream",
+        )
+    )
     sent: list[dict[str, Any]] = []
 
     async def send(payload: dict[str, Any]) -> None:
