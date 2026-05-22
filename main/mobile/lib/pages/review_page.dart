@@ -123,7 +123,7 @@ class _ReviewHeader extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
+        boxShadow: AppShadows.paper,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,7 +220,7 @@ class _ReviewCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
+        boxShadow: AppShadows.paper,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

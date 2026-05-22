@@ -29,9 +29,9 @@ class AgentMessageBubble extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.surface,
         borderRadius: AppRadius.cardR,
-        border: Border.all(
-          color: isHighlighted ? palette.accent : AppPalette.outlineSoft,
-          width: isHighlighted ? 1.6 : 1,
+        boxShadow: isHighlighted ? AppShadows.paperElevated : AppShadows.paper,
+        border: Border(
+          left: BorderSide(color: palette.accent, width: 3),
         ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -109,14 +109,14 @@ class AgentMessageBubble extends StatelessWidget {
     switch (role) {
       case AgentRole.xiaoming:
         return const _RolePalette(
-          surface: Color(0xFFF1F5FF),
+          surface: Color(0xFFF3F6FA),
           accent: AppPalette.secondary,
           roleLabel: '基础不牢型',
         );
       case AgentRole.daxiong:
         return const _RolePalette(
-          surface: Color(0xFFFFF7ED),
-          accent: Color(0xFFD97706),
+          surface: Color(0xFFFFF8F0),
+          accent: Color(0xFFC48A3A),
           roleLabel: '计算粗心型',
         );
       case AgentRole.classLeader:
@@ -126,19 +126,19 @@ class AgentMessageBubble extends StatelessWidget {
         // 避免后端返回 `role: "monitor"` 时 switch 不命中（Dart 3
         // 强制 exhaustive 会直接抛 `NoSuchEnumValueError`）。
         return const _RolePalette(
-          surface: Color(0xFFF0FDFA),
+          surface: Color(0xFFF2F8F7),
           accent: AppPalette.primaryAccent,
           roleLabel: '总结建议型',
         );
       case AgentRole.teacher:
         return const _RolePalette(
-          surface: Color(0xFFEFF6FF),
+          surface: Color(0xFFF4F7FB),
           accent: AppPalette.primary,
           roleLabel: '老师 · 把控者',
         );
       case AgentRole.system:
         return const _RolePalette(
-          surface: Color(0xFFF8FAFC),
+          surface: Color(0xFFF5F2EC),
           accent: AppPalette.textSecondary,
           roleLabel: '系统提示',
         );

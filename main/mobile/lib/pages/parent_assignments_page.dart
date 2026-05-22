@@ -168,7 +168,7 @@ class _SummaryStrip extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppPalette.outlineSoft),
+        boxShadow: AppShadows.paper,
       ),
       child: Row(
         children: [
@@ -228,7 +228,7 @@ class _AssignmentCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppPalette.outlineSoft),
+        boxShadow: AppShadows.paper,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

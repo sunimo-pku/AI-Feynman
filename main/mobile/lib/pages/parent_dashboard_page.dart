@@ -112,12 +112,14 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   @override
   Widget build(BuildContext context) {
     return StudyShell(
-      title: '家长端 · 学习看板',
+      title: _payload?.studentName.isNotEmpty == true
+          ? '${_payload!.studentName}的学习记录'
+          : '学习记录',
       maxWidth: 1180,
       actions: [
         IconButton(
-          tooltip: '本周总结海报',
-          icon: const Icon(Icons.auto_awesome_outlined),
+          tooltip: '生成本周小结',
+          icon: const Icon(Icons.auto_stories_outlined),
           onPressed: () => _showPoster(context),
         ),
         IconButton(
@@ -233,28 +235,33 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         padding: const EdgeInsets.all(AppSpacing.pageEdge),
         children: [
           _StudentHeaderCard(payload: p),
-          const SizedBox(height: AppSpacing.moduleGap),
-          _DashboardPair(
-            left: _SuggestionCard(text: p.suggestedNextAction),
-            right: _SectionGroupCard(
-              title: '需要重点辅导',
-              subtitle: '掌握度低于 60，请优先复讲',
-              color: AppPalette.error,
-              sections: p.weakSections,
-              emptyText: '太好了，目前没有特别薄弱的章节。',
-            ),
+          const SizedBox(height: AppSpacing.sectionGap),
+          StudyInlineBanner(
+            message: p.suggestedNextAction.isEmpty
+                ? '继续保持每日讲题节奏，同伴们会在旁边听。'
+                : p.suggestedNextAction,
+            tone: StudyPanelTone.accent,
+            icon: Icons.lightbulb_outline,
           ),
           const SizedBox(height: AppSpacing.moduleGap),
           _DashboardPair(
             left: _SectionGroupCard(
-              title: '已经掌握的章节',
-              subtitle: '掌握度 >= 60，可继续挑战难度',
+              title: '最近常卡',
+              subtitle: '这些章节可以多讲一轮',
+              color: AppPalette.error,
+              sections: p.weakSections,
+              emptyText: '目前没有特别薄弱的章节，继续保持。',
+            ),
+            right: _SectionGroupCard(
+              title: '已经讲顺',
+              subtitle: '孩子对这些章节比较熟',
               color: AppPalette.primaryAccent,
               sections: p.strongSections,
-              emptyText: '还没有牢牢掌握的章节，多讲几轮就会出现这里。',
+              emptyText: '多讲几轮后，熟练的章节会出现在这里。',
             ),
-            right: _ReplayListCard(replays: _replays),
           ),
+          const SizedBox(height: AppSpacing.moduleGap),
+          _ReplayListCard(replays: _replays),
           const SizedBox(height: AppSpacing.moduleGap),
           _RecentReviewsCard(reviews: p.recentReviews),
           const SizedBox(height: AppSpacing.moduleGap),
@@ -330,29 +337,24 @@ class _StudentHeaderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StudyPanel(
-      tone: StudyPanelTone.primary,
-      padding: const EdgeInsets.all(20),
+      tone: StudyPanelTone.surface,
+      padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppPalette.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: AppPalette.warmTint,
                 child: Text(
                   payload.studentName.isNotEmpty
                       ? payload.studentName.substring(0, 1).toUpperCase()
                       : '?',
                   style: const TextStyle(
                     color: AppPalette.primary,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -365,9 +367,9 @@ class _StudentHeaderCard extends StatelessWidget {
                       payload.studentName,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
-                      '${payload.grade} · 已练 ${payload.practicedSections} 节 · 累计 ${payload.completedRounds} 轮',
+                      '${payload.grade} · 本周练了 ${payload.practicedSections} 节 · 共 ${payload.completedRounds} 轮讲题',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -375,21 +377,21 @@ class _StudentHeaderCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          LinearProgressIndicator(
-            value: (payload.overallMastery / 100).clamp(0.0, 1.0),
-            minHeight: 10,
-            backgroundColor: AppPalette.primary.withValues(alpha: 0.08),
-            valueColor: const AlwaysStoppedAnimation<Color>(AppPalette.primary),
+          const SizedBox(height: 16),
+          ClipRRect(
             borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: (payload.overallMastery / 100).clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: AppPalette.primary.withValues(alpha: 0.08),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppPalette.primary),
+            ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
-            '总体掌握度 ${payload.overallMastery} / 100',
-            style: const TextStyle(
-              fontSize: 13,
+            '整体进度 ${payload.overallMastery}%',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: AppPalette.textSecondary,
-              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -411,20 +413,17 @@ class _ReplayListCard extends StatelessWidget {
         children: [
           const SectionHeader(
             title: '精彩回放',
-            subtitle: '完成 live 讲题后，家长可回看笔迹与 AI 讨论节奏。',
-            icon: Icons.play_circle_outline,
+            subtitle: '回看孩子讲题时的笔迹与讨论',
             accent: AppPalette.primaryAccent,
           ),
           const SizedBox(height: 10),
           if (replays.isEmpty)
-            const Text('暂无回放。完成一次 live 讲题后会出现在这里。')
+            const StudyEmptyHint('完成一次讲题后，回放会出现在这里')
           else
             ...replays.map(
-              (r) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: FormulaText(r.questionPrompt),
-                subtitle: Text('${r.sectionId} · ${r.durationMs}ms'),
-                trailing: const Icon(Icons.play_circle_outline),
+              (r) => StudyListRow(
+                title: r.sectionId,
+                subtitle: '${r.durationMs ~/ 1000} 秒',
                 onTap:
                     () => Navigator.of(context).push(
                       MaterialPageRoute(
@@ -436,20 +435,6 @@ class _ReplayListCard extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-class _SuggestionCard extends StatelessWidget {
-  const _SuggestionCard({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return StudyInlineBanner(
-      message: text.isEmpty ? '继续保持每日讲题节奏。' : text,
-      tone: StudyPanelTone.accent,
-      icon: Icons.lightbulb_outline,
     );
   }
 }
@@ -479,7 +464,6 @@ class _SectionGroupCard extends StatelessWidget {
           SectionHeader(
             title: title,
             subtitle: subtitle,
-            icon: Icons.stacked_line_chart_outlined,
             accent: color,
           ),
           const SizedBox(height: 12),
@@ -518,20 +502,9 @@ class _SectionRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '${info.masteryScore} / 100',
-                  style: TextStyle(
-                    color: accent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              StudySoftTag(
+                text: '进度 ${info.masteryScore}%',
+                accent: accent,
               ),
             ],
           ),
@@ -569,15 +542,11 @@ class _RecentReviewsCard extends StatelessWidget {
         children: [
           const SectionHeader(
             title: '最近讲题',
-            subtitle: '点击查看 AI 同伴与孩子讨论的关键点。',
-            icon: Icons.history_edu_outlined,
+            subtitle: '孩子最近练了哪些题',
           ),
           const SizedBox(height: 12),
           if (reviews.isEmpty)
-            const Text(
-              '最近还没有讲题记录，可以让孩子先选一个小节讲一题。',
-              style: TextStyle(color: AppPalette.textSecondary),
-            )
+            const StudyEmptyHint('还没有讲题记录，让孩子先选一小节讲一题吧')
           else
             ...reviews.map((r) => _ReviewItem(card: r)),
         ],
@@ -618,17 +587,10 @@ class _ReviewItem extends StatelessWidget {
           ),
           if (card.summary.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppPalette.primaryAccent.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: FormulaText(
-                card.summary,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppPalette.textSecondary,
-                ),
+            FormulaText(
+              card.summary,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppPalette.textSecondary,
               ),
             ),
           ],
@@ -793,7 +755,7 @@ class _PosterCard extends StatelessWidget {
               end: Alignment.bottomRight,
             ),
             borderRadius: AppRadius.cardR,
-            border: Border.all(color: AppPalette.outlineSoft),
+            boxShadow: AppShadows.paper,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

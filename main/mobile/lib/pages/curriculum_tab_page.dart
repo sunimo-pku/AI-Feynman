@@ -26,58 +26,33 @@ class CurriculumTabPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.pageEdge,
-        12,
+        16,
         AppSpacing.pageEdge,
-        24,
+        32,
       ),
       children: [
+        Text(
+          '本学期目录',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 6),
         Row(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppPalette.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: AppPalette.primary.withValues(alpha: 0.28),
-                ),
-              ),
-              child: Text(
-                studentGradeLabel,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppPalette.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
+            StudySoftTag(text: studentGradeLabel, accent: AppPalette.primary),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '本学期目录',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                '换年级请去「我的」→ 编辑资料',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Text(
-          '年级在注册时选定；若要更换，请到「我的」→ 编辑资料修改。',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: AppPalette.textSecondary,
-            height: 1.45,
-          ),
-        ),
         const SizedBox(height: AppSpacing.moduleGap),
         if (books.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppPalette.surface,
-              borderRadius: AppRadius.cardR,
-              border: Border.all(color: AppPalette.outlineSoft),
-            ),
+          StudyPanel(
+            tone: StudyPanelTone.quiet,
+            padding: const EdgeInsets.all(20),
             child: Text(
               '未找到 $studentGradeLabel 的课程目录，请到「我的」检查年级设置。',
               style: Theme.of(context).textTheme.bodyMedium,
@@ -124,15 +99,11 @@ class _BookDenseTile extends StatelessWidget {
       0,
       (sum, c) => sum + c.sections.length,
     );
-    final hasPractice = practicable > 0;
 
-    return StudyDenseTile(
-      onTap: onTap,
+    return StudyListRow(
       title: book.label,
       subtitle: '${book.chapters.length} 章 · $totalSections 节 · $practicable 节可练',
-      icon: hasPractice ? Icons.menu_book_outlined : Icons.lock_outline,
-      accent: hasPractice ? AppPalette.primary : AppPalette.comingSoon,
-      trailing: const Icon(Icons.chevron_right, size: 20, color: AppPalette.textSecondary),
+      onTap: onTap,
     );
   }
 }

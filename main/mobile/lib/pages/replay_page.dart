@@ -95,7 +95,7 @@ class _ReplayPageState extends State<ReplayPage> {
                       decoration: BoxDecoration(
                         color: AppPalette.surface,
                         borderRadius: AppRadius.cardR,
-                        border: Border.all(color: AppPalette.outlineSoft),
+                        boxShadow: AppShadows.paper,
                       ),
                       child: CustomPaint(
                         painter: _ReplayInkPainter(
@@ -126,7 +126,7 @@ class _ReplayPageState extends State<ReplayPage> {
                       decoration: BoxDecoration(
                         color: AppPalette.surface,
                         borderRadius: AppRadius.buttonR,
-                        border: Border.all(color: AppPalette.outlineSoft),
+                        boxShadow: AppShadows.paper,
                       ),
                       child: FormulaText(
                         '${t['displayName'] ?? t['role']}: ${t['text'] ?? ''}',

@@ -113,12 +113,10 @@ class CurriculumSectionPill extends StatelessWidget {
     final hasProgress = progress != null && progress.hasAnyCompletion;
     final bg =
         available
-            ? AppPalette.primary.withValues(alpha: 0.08)
-            : AppPalette.comingSoon.withValues(alpha: 0.08);
-    final border =
-        available
-            ? AppPalette.primary.withValues(alpha: 0.4)
-            : AppPalette.outline;
+            ? AppPalette.primary.withValues(alpha: 0.06)
+            : AppPalette.comingSoon.withValues(alpha: 0.06);
+    final spineColor =
+        available ? AppPalette.primary : AppPalette.comingSoon;
     final textColor = available ? AppPalette.primary : AppPalette.comingSoon;
 
     final hasReview =
@@ -132,15 +130,24 @@ class CurriculumSectionPill extends StatelessWidget {
           borderRadius: AppRadius.buttonR,
           onTap: () => onTap(section),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: AppRadius.buttonR,
-              border: Border.all(color: border),
+              boxShadow: available ? AppShadows.paper : null,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Container(
+                  width: 3,
+                  height: 28,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: spineColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
                 Icon(
                   available
                       ? (hasProgress
@@ -216,10 +223,7 @@ class CurriculumSectionReviewButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: color.withValues(alpha: hasReview ? 0.10 : 0.05),
-              borderRadius: AppRadius.buttonR,
-              border: Border.all(
-                color: color.withValues(alpha: hasReview ? 0.4 : 0.22),
-              ),
+              borderRadius: AppRadius.capsuleR,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -258,20 +262,20 @@ class CurriculumSectionStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!available) {
-      return _badge(color: AppPalette.comingSoon, bgAlpha: 0.18, text: '整理中');
+      return _badge(color: AppPalette.comingSoon, bgAlpha: 0.14, text: '即将开放');
     }
     final p = progress;
     if (p == null || !p.hasAnyCompletion) {
       final count = MockLectureRepository.instance.questionCountForSection(
         sectionId,
       );
-      final text = count > 0 ? '$count 道题 · 可练习' : '可练习';
-      return _badge(color: AppPalette.primaryAccent, bgAlpha: 0.15, text: text);
+      final text = count > 0 ? '$count 道题 · 可练' : '可练习';
+      return _badge(color: AppPalette.primaryAccent, bgAlpha: 0.12, text: text);
     }
     return _badge(
       color: AppPalette.primaryAccent,
-      bgAlpha: 0.18,
-      text: '已完成 ${p.completedRounds} 轮 · ${p.masteryScore}/100',
+      bgAlpha: 0.14,
+      text: '已练 ${p.completedRounds} 轮',
     );
   }
 

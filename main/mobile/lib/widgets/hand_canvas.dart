@@ -187,7 +187,7 @@ class HandCanvas extends StatefulWidget {
   const HandCanvas({
     super.key,
     required this.controller,
-    this.backgroundColor = AppPalette.surface,
+    this.backgroundColor = AppPalette.canvas,
     this.penStyle = 'default',
     this.edgeToEdge = false,
   });

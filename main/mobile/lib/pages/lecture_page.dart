@@ -2414,7 +2414,7 @@ class _LecturePageState extends State<LecturePage> {
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
+        boxShadow: AppShadows.paper,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2510,9 +2510,9 @@ class _LecturePageState extends State<LecturePage> {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 8, 10),
       decoration: BoxDecoration(
-        color: AppPalette.background,
+        color: AppPalette.canvas,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppPalette.outlineSoft),
+        boxShadow: AppShadows.paper,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3060,18 +3060,18 @@ class _SoftTextField extends StatelessWidget {
         ),
         isDense: dense,
         filled: true,
-        fillColor: AppPalette.background,
+        fillColor: AppPalette.canvas,
         contentPadding: EdgeInsets.symmetric(
           horizontal: 12,
           vertical: dense ? 10 : 12,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppPalette.outlineSoft),
+          borderSide: BorderSide(color: AppPalette.outline.withValues(alpha: 0.55)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppPalette.outlineSoft),
+          borderSide: BorderSide(color: AppPalette.outline.withValues(alpha: 0.45)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

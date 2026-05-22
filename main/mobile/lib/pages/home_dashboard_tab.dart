@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/mock_lecture_repository.dart';
+import '../services/auth_service.dart';
 import '../services/progress_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/study_layout.dart';
@@ -9,7 +10,7 @@ import 'daily_challenge_page.dart';
 import 'student_assignments_page.dart';
 import 'v2_pages.dart';
 
-/// 学生端「今日」Tab：紧凑仪表盘，仅展示账号年级下的推荐小节。
+/// 学生端「今日」Tab：自习室叙事首页，仅展示账号年级下的推荐小节。
 class HomeDashboardTab extends StatelessWidget {
   const HomeDashboardTab({
     super.key,
@@ -39,9 +40,9 @@ class HomeDashboardTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.pageEdge,
-        12,
+        16,
         AppSpacing.pageEdge,
-        24,
+        32,
       ),
       children: [
         _CompactGreeting(gradeLabel: studentGradeLabel),
@@ -54,18 +55,18 @@ class HomeDashboardTab extends StatelessWidget {
         ],
         const SizedBox(height: AppSpacing.moduleGap),
         StudyPanel(
-          tone: StudyPanelTone.primary,
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          tone: StudyPanelTone.surface,
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeader(
-                title: '今日继续',
+                title: recommended == null ? '今天想练哪一节？' : '今天想继续练',
                 subtitle:
                     recommended == null
-                        ? '题库准备中'
+                        ? '题库准备中，先去「课程」看看'
                         : recommended.label,
-                icon: Icons.play_circle_outline,
+                accent: AppPalette.primaryAccent,
                 action:
                     recommended == null
                         ? null
@@ -75,34 +76,34 @@ class HomeDashboardTab extends StatelessWidget {
                         ),
               ),
               if (recommended != null) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    StudyStatPill(
-                      label: '本节题量',
-                      value: questionCount > 0 ? '$questionCount 道' : '可练',
-                      icon: Icons.edit_note_outlined,
+                    StudySoftTag(
+                      text:
+                          questionCount > 0 ? '本节 $questionCount 道题' : '本节可练',
+                      accent: AppPalette.primary,
                     ),
                     AnimatedBuilder(
                       animation: ProgressRepository.instance,
                       builder: (context, _) {
                         final progress = ProgressRepository.instance
                             .progressFor(recommended.id);
-                        return StudyStatPill(
-                          label: '掌握度',
-                          value:
+                        return StudySoftTag(
+                          text:
                               !progress.hasAnyCompletion
-                                  ? '未开始'
-                                  : '${progress.masteryScore}/100',
-                          icon: Icons.insights_outlined,
+                                  ? '还没开始讲'
+                                  : '已练 ${progress.completedRounds} 轮',
                           accent: AppPalette.primaryAccent,
                         );
                       },
                     ),
                   ],
                 ),
+                const SizedBox(height: 14),
+                const StudyCompanionRow(),
               ],
             ],
           ),
@@ -113,8 +114,8 @@ class HomeDashboardTab extends StatelessWidget {
           cells: [
             StudyToolCell(
               label: '每日挑战',
-              subtitle: '分步找错',
-              icon: Icons.where_to_vote_outlined,
+              subtitle: '帮同学找错',
+              icon: Icons.edit_outlined,
               color: AppPalette.primaryAccent,
               onTap:
                   () => Navigator.of(context).push(
@@ -125,8 +126,8 @@ class HomeDashboardTab extends StatelessWidget {
             ),
             StudyToolCell(
               label: '我的作业',
-              subtitle: '家长布置',
-              icon: Icons.assignment_outlined,
+              subtitle: '家长布置的',
+              icon: Icons.description_outlined,
               onTap:
                   () => Navigator.of(context).push(
                     MaterialPageRoute(
@@ -136,8 +137,8 @@ class HomeDashboardTab extends StatelessWidget {
             ),
             StudyToolCell(
               label: '晶石商城',
-              subtitle: '实物文具',
-              icon: Icons.diamond_outlined,
+              subtitle: '兑换文具',
+              icon: Icons.card_giftcard_outlined,
               onTap:
                   () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const ShopPage()),
@@ -145,7 +146,7 @@ class HomeDashboardTab extends StatelessWidget {
             ),
             StudyToolCell(
               label: '学习榜单',
-              subtitle: '冲榜',
+              subtitle: '看看排名',
               icon: Icons.emoji_events_outlined,
               color: AppPalette.primaryAccent,
               onTap:
@@ -162,7 +163,7 @@ class HomeDashboardTab extends StatelessWidget {
           '完整章节目录在「课程」；换年级请去「我的」→ 编辑资料。',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppPalette.textSecondary,
-            height: 1.45,
+            height: 1.5,
           ),
         ),
       ],
@@ -187,6 +188,14 @@ class HomeDashboardTab extends StatelessWidget {
   }
 }
 
+String _timeGreeting() {
+  final hour = DateTime.now().hour;
+  if (hour < 11) return '上午好';
+  if (hour < 14) return '中午好';
+  if (hour < 18) return '下午好';
+  return '晚上好';
+}
+
 class _CompactGreeting extends StatelessWidget {
   const _CompactGreeting({required this.gradeLabel});
 
@@ -194,55 +203,33 @@ class _CompactGreeting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '你好，今天也要讲明白',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+    return AnimatedBuilder(
+      animation: AuthService.instance,
+      builder: (context, _) {
+        final name = AuthService.instance.currentUsername;
+        final who = name.isEmpty ? '同学' : name;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${_timeGreeting()}，$who',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '找一节想讲的题，讲给同伴听就好',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppPalette.textSecondary,
               ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppPalette.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: AppPalette.primary.withValues(alpha: 0.28),
-                  ),
-                ),
-                child: Text(
-                  '当前 $gradeLabel',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppPalette.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: AppPalette.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppPalette.outlineSoft),
-          ),
-          child: const Icon(
-            Icons.school_outlined,
-            color: AppPalette.primary,
-            size: 28,
-          ),
-        ),
-      ],
+            ),
+            const SizedBox(height: 10),
+            StudySoftTag(
+              text: gradeLabel,
+              accent: AppPalette.primary,
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -256,16 +243,20 @@ class _PendingAssignmentsBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppPalette.primary.withValues(alpha: 0.06),
-      borderRadius: BorderRadius.circular(12),
+      color: AppPalette.warmTint.withValues(alpha: 0.55),
+      borderRadius: AppRadius.cardR,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.cardR,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              const Icon(Icons.assignment_outlined, size: 20, color: AppPalette.primary),
+              Icon(
+                Icons.description_outlined,
+                size: 20,
+                color: AppPalette.primary.withValues(alpha: 0.85),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -275,7 +266,11 @@ class _PendingAssignmentsBanner extends StatelessWidget {
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_right, size: 18, color: AppPalette.primary),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: AppPalette.primary.withValues(alpha: 0.7),
+              ),
             ],
           ),
         ),

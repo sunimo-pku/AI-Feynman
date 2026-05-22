@@ -134,7 +134,7 @@ class _ParentAssignmentReportPageState extends State<ParentAssignmentReportPage>
                       decoration: BoxDecoration(
                         color: AppPalette.background,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppPalette.outlineSoft),
+                        boxShadow: AppShadows.paper,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,7 +173,7 @@ class _ReportHeader extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppPalette.outlineSoft),
+        boxShadow: AppShadows.paper,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,7 +248,7 @@ class _ReportSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppPalette.outlineSoft),
+        boxShadow: AppShadows.paper,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

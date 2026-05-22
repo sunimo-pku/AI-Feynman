@@ -22,13 +22,11 @@ class MoreTabPage extends StatelessWidget {
       children: [
         Text(
           '学习工具',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 4),
         Text(
-          '挑战、奖励与辅助功能；年级仅在「我的」→ 编辑资料中修改。',
+          '挑战、奖励与辅助功能',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppPalette.textSecondary,
             height: 1.4,

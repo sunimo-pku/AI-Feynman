@@ -13,6 +13,7 @@ import '../services/review_repository.dart';
 import '../services/round12_service.dart';
 import '../services/student_grade_store.dart';
 import '../theme/app_theme.dart';
+import '../widgets/study_layout.dart';
 import 'curriculum_tab_page.dart';
 import 'home_dashboard_tab.dart';
 import 'lecture_page.dart';
@@ -231,25 +232,37 @@ class _StudentMainShellState extends State<StudentMainShell> {
             unawaited(_syncStudentGrade());
           }
         },
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.today_outlined),
-            selectedIcon: Icon(Icons.today),
+            icon: StudyTabIcon(asset: 'assets/icons/tab_today.svg'),
+            selectedIcon: StudyTabIcon(
+              asset: 'assets/icons/tab_today.svg',
+              selected: true,
+            ),
             label: '今日',
           ),
           NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            selectedIcon: Icon(Icons.menu_book),
+            icon: StudyTabIcon(asset: 'assets/icons/tab_curriculum.svg'),
+            selectedIcon: StudyTabIcon(
+              asset: 'assets/icons/tab_curriculum.svg',
+              selected: true,
+            ),
             label: '课程',
           ),
           NavigationDestination(
-            icon: Icon(Icons.apps_outlined),
-            selectedIcon: Icon(Icons.apps),
+            icon: StudyTabIcon(asset: 'assets/icons/tab_more.svg'),
+            selectedIcon: StudyTabIcon(
+              asset: 'assets/icons/tab_more.svg',
+              selected: true,
+            ),
             label: '更多',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
+            icon: StudyTabIcon(asset: 'assets/icons/tab_profile.svg'),
+            selectedIcon: StudyTabIcon(
+              asset: 'assets/icons/tab_profile.svg',
+              selected: true,
+            ),
             label: '我的',
           ),
         ],
@@ -276,22 +289,21 @@ class _StudentAccountChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: AppPalette.primary.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: AppPalette.primary.withValues(alpha: 0.3)),
+          color: AppPalette.warmTint.withValues(alpha: 0.6),
+          borderRadius: AppRadius.capsuleR,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.school_outlined,
+            Icon(
+              Icons.person_outline,
               size: 14,
-              color: AppPalette.primary,
+              color: AppPalette.primary.withValues(alpha: 0.85),
             ),
             const SizedBox(width: 4),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppPalette.primary,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
