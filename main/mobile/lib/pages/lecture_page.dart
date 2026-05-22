@@ -1311,17 +1311,40 @@ class _LecturePageState extends State<LecturePage> {
     });
   }
 
+  bool get _isLiveRecording =>
+      _liveStatus == _LiveStatus.listening ||
+      _liveStatus == _LiveStatus.paused ||
+      _liveStatus == _LiveStatus.connecting ||
+      _audioService.status == AudioStreamStatus.listening ||
+      _audioService.status == AudioStreamStatus.paused;
+
+  void _showLiveSnack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
   /// 「讲题结束」按钮：手动触发 AI 追问。
   ///
   /// 当前实时讲题改成类似微信群聊发语音：学生点「开始讲题」后持续录音，
   /// 不根据停顿/间隔自动判断讲完；只有学生明确点「讲题结束」才发
   /// pause_detected 进入 LLM 追问。
   void _onManualPause() {
-    if (!_liveService.isConnected) return;
+    if (!_isLiveRecording) {
+      _showLiveSnack('当前没有在录音，请先点「开始讲题」。');
+      return;
+    }
     _wrapUpTimer?.cancel();
     // 像发语音一样，学生点结束后立即停掉本段录音；AI 追问完成后再让
     // 学生手动开始下一段。
     unawaited(_audioService.stop());
+    if (!_liveService.isConnected) {
+      setState(() {
+        _liveStatus = _LiveStatus.disconnected;
+        _liveFailureReason = '连接已断开，请点「重新连接」或「用文字提交」。';
+      });
+      _showLiveSnack('连接已断开，未能提交本轮讲解。');
+      return;
+    }
     _liveService.sendPauseDetected(silenceMs: 0);
     _armThinkingWatchdog();
     setState(() {
@@ -1442,7 +1465,8 @@ class _LecturePageState extends State<LecturePage> {
         // 「讲题结束」才把这一段语音交给 AI。
         break;
       case AudioStreamStatus.listening:
-        if (_liveStatus == _LiveStatus.paused ||
+        if (_liveStatus == _LiveStatus.connecting ||
+            _liveStatus == _LiveStatus.paused ||
             _liveStatus == _LiveStatus.idle) {
           setState(() => _liveStatus = _LiveStatus.listening);
         }
@@ -2196,9 +2220,7 @@ class _LecturePageState extends State<LecturePage> {
             _status == _LectureStatus.awaiting ||
             _status == _LectureStatus.error) &&
         !_canvasController.isEmpty;
-    final listening =
-        _liveStatus == _LiveStatus.listening ||
-        _liveStatus == _LiveStatus.paused;
+    final listening = _isLiveRecording;
     final orbs = <Widget>[];
 
     switch (_panelState) {

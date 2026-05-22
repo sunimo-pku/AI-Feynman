@@ -63,11 +63,20 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
 
   void _onAudioStatus(AudioStreamStatus status) {
     if (!mounted) return;
+    if (status == AudioStreamStatus.idle && _listening) {
+      setState(() => _listening = false);
+      return;
+    }
     if (status == AudioStreamStatus.permissionDenied ||
         status == AudioStreamStatus.failed) {
       setState(() => _listening = false);
       _showMessage(_audio.failureReason ?? '麦克风不可用');
     }
+  }
+
+  Future<void> _stopRecordingOnly() async {
+    await _audio.stop();
+    if (mounted) setState(() => _listening = false);
   }
 
   Map<String, String> _answersFor(String challengeId) {
@@ -450,6 +459,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   Widget _buildOrbToolbar(BountyChallenge challenge, BountySubmitResult? result) {
     final canSubmit = _allStepsAnswered(challenge);
     final canvasToolsEnabled = _canDrawOnCanvas;
+    final canEndVoice = _listening || canSubmit;
     final orbs = <Widget>[
       if (!_listening)
         LectureOrbButton(
@@ -461,11 +471,12 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
       else
         LectureOrbButton(
           icon: Icons.mic,
-          tooltip: '录音中',
+          tooltip: '停止录音',
           filled: true,
           accent: AppPalette.error,
           pulse: true,
-          onPressed: _submitting ? null : () => unawaited(_audio.stop()),
+          onPressed:
+              _submitting ? null : () => unawaited(_stopRecordingOnly()),
         ),
       LectureOrbButton(
         icon: Icons.stop_circle_outlined,
@@ -473,7 +484,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
         filled: true,
         loading: _submitting,
         onPressed:
-            _submitting || !canSubmit
+            _submitting || !canEndVoice
                 ? null
                 : () => unawaited(_stopVoiceAndSubmit(challenge)),
       ),
