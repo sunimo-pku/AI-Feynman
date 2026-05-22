@@ -38,13 +38,15 @@ class _AuthGateState extends State<_AuthGate> {
 
   Future<void> _boot() async {
     await AuthService.instance.load();
-    if (AuthService.instance.isLoggedIn) {
+    if (AuthService.instance.isLoggedIn && AuthService.instance.isStudent) {
       LearningSyncService.instance.pullAndMerge();
     }
   }
 
   void _onAuthenticated() {
-    LearningSyncService.instance.pullAndMerge();
+    if (AuthService.instance.isStudent) {
+      LearningSyncService.instance.pullAndMerge();
+    }
     setState(() {});
   }
 

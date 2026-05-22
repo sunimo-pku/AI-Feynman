@@ -74,6 +74,12 @@ class AuthService extends ChangeNotifier {
       _token = prefs.getString(_tokenKey) ?? '';
       _username = prefs.getString(_usernameKey) ?? '';
       _role = prefs.getString(_roleKey) ?? 'student';
+      if (_token.isNotEmpty) {
+        final jwtRole = _sessionRoleFromToken(_token);
+        if (jwtRole == 'parent' || jwtRole == 'student') {
+          _role = jwtRole!;
+        }
+      }
     } catch (e, st) {
       developer.log(
         'AuthService load failed; treating as logged out',
@@ -94,6 +100,42 @@ class AuthService extends ChangeNotifier {
       }
       notifyListeners();
     }
+  }
+
+  String? _sessionRoleFromToken(String token) {
+    if (token.isEmpty) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length < 2) return null;
+      final normalized = base64Url.normalize(parts[1]);
+      final decoded = jsonDecode(utf8.decode(base64Url.decode(normalized)));
+      if (decoded is Map<String, dynamic>) {
+        final role = (decoded['role'] as String?)?.trim();
+        if (role == 'parent' || role == 'student') return role;
+      }
+    } catch (_) {
+      /* 解析失败时走 prefs / loginAs 兜底 */
+    }
+    return null;
+  }
+
+  String _resolveSessionRole({
+    required String token,
+    required Map<String, dynamic>? userMap,
+    required String loginAs,
+    String? sessionRole,
+  }) {
+    final fromJwt = _sessionRoleFromToken(token);
+    if (fromJwt == 'parent' || fromJwt == 'student') {
+      return fromJwt!;
+    }
+    final fromBody = sessionRole?.trim();
+    if (fromBody == 'parent' || fromBody == 'student') return fromBody!;
+    if (userMap != null) {
+      final fromUser = (userMap['role'] as String?)?.trim();
+      if (fromUser == 'parent' || fromUser == 'student') return fromUser!;
+    }
+    return loginAs == 'parent' ? 'parent' : 'student';
   }
 
   Future<AuthResult> register({
@@ -149,10 +191,12 @@ class AuthService extends ChangeNotifier {
         userMap is Map<String, dynamic>
             ? (userMap['username'] as String? ?? username)
             : username;
-    final returnedRole =
-        userMap is Map<String, dynamic>
-            ? (userMap['role'] as String? ?? loginAs)
-            : loginAs;
+    final returnedRole = _resolveSessionRole(
+      token: token,
+      userMap: userMap is Map<String, dynamic> ? userMap : null,
+      loginAs: loginAs,
+      sessionRole: responseBody['sessionRole'] as String?,
+    );
     if (token.isEmpty) {
       return const AuthResult.failure('后端登录成功但没返回 token，请联系开发同学。');
     }

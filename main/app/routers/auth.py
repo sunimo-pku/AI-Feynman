@@ -139,6 +139,7 @@ async def login(req: LoginReq, db: Session = Depends(get_db)):
     token = create_access_token({"sub": user.username, "role": session_role})
     return {
         "token": token,
+        "sessionRole": session_role,
         "user": _user_out(user, session_role=session_role).model_dump(),
     }
 

@@ -233,6 +233,25 @@ def test_learning_reviews_can_filter_by_section(client: TestClient) -> None:
 # ------------------------------------------------------------------ #
 
 
+def test_parent_login_session_role(client: TestClient) -> None:
+    child_name, child_password = _register_student(
+        client, f"parent-role{uuid.uuid4().hex[:6]}"
+    )
+    resp = client.post(
+        "/auth/login",
+        json={
+            "username": child_name,
+            "password": child_password,
+            "loginAs": "parent",
+            "parentPassword": DEFAULT_PARENT_PASSWORD,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["sessionRole"] == "parent"
+    assert body["user"]["role"] == "parent"
+
+
 def test_parent_dashboard_requires_auth(client: TestClient) -> None:
     resp = client.get("/parent/dashboard")
     assert resp.status_code == 401
