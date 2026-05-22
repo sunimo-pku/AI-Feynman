@@ -314,9 +314,18 @@ class LeaderboardPage extends StatefulWidget {
 class _LeaderboardPageState extends State<LeaderboardPage> {
   final _service = Round12Service();
   String _scope = 'school';
-  late Future<List<LeaderboardEntry>> _future = _service.fetchLeaderboard(
-    scope: _scope,
-  );
+  String _sectionId = 'pep-g8-down-s16-3';
+  Map<String, String> _sectionLabels = const {};
+  List<PowerSection> _rankedSections = const [];
+  Future<List<LeaderboardEntry>>? _entriesFuture;
+  bool _bootstrapping = true;
+  String? _bootstrapError;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_bootstrap());
+  }
 
   @override
   void dispose() {
@@ -324,12 +333,58 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
     super.dispose();
   }
 
-  void _select(String scope) {
+  Future<void> _bootstrap() async {
+    try {
+      final labels = await CurriculumRepository.instance.sectionLabelIndex();
+      final profile = await _service.fetchPowerProfile();
+      final ranked = [...profile.sections]
+        ..sort((a, b) => b.powerScore.compareTo(a.powerScore));
+      final withPower = ranked.where((s) => s.powerScore > 0).toList();
+      if (!mounted) return;
+      setState(() {
+        _sectionLabels = labels;
+        _rankedSections = withPower.isNotEmpty ? withPower : ranked;
+        if (_rankedSections.isNotEmpty) {
+          _sectionId = _rankedSections.first.sectionId;
+        }
+        _bootstrapping = false;
+        _bootstrapError = null;
+        _entriesFuture = _loadEntries();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _bootstrapping = false;
+        _bootstrapError = '$e';
+        _entriesFuture = _loadEntries();
+      });
+    }
+  }
+
+  Future<List<LeaderboardEntry>> _loadEntries() {
+    return _service.fetchLeaderboard(scope: _scope, sectionId: _sectionId);
+  }
+
+  void _reloadEntries() {
+    setState(() => _entriesFuture = _loadEntries());
+  }
+
+  void _selectScope(String scope) {
     setState(() {
       _scope = scope;
-      _future = _service.fetchLeaderboard(scope: scope);
+      _entriesFuture = _loadEntries();
     });
   }
+
+  void _selectSection(String sectionId) {
+    setState(() {
+      _sectionId = sectionId;
+      _entriesFuture = _loadEntries();
+    });
+  }
+
+  String get _sectionTitle =>
+      _sectionLabels[_sectionId] ?? _sectionId;
 
   @override
   Widget build(BuildContext context) {
@@ -339,6 +394,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       'city': '市榜',
       'province': '省榜',
     };
+    final theme = Theme.of(context);
     return _ScaffoldShell(
       title: '排行榜',
       child: ListView(
@@ -352,61 +408,104 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
                       (e) => ChoiceChip(
                         label: Text(e.value),
                         selected: _scope == e.key,
-                        onSelected: (_) => _select(e.key),
+                        onSelected: (_) => _selectScope(e.key),
                       ),
                     )
                     .toList(),
           ),
-          const SizedBox(height: 12),
-          FutureBuilder<List<LeaderboardEntry>>(
-            future: _future,
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return _loadingOrError(snapshot, () => _select(_scope));
-              }
-              final entries = snapshot.data!;
-              if (entries.isEmpty) {
-                return const StudyEmptyHint('本周还没有同地区战力记录，先完成一题冲榜。');
-              }
-              return StudyGroupedPanel(
-                children:
-                    entries
-                        .map(
-                          (e) => StudyDenseTile(
-                            dense: true,
-                            title: e.studentName,
-                            subtitle: e.titleLabel,
-                            icon: Icons.emoji_events_outlined,
-                            accent:
-                                e.rank <= 3
-                                    ? AppPalette.primaryAccent
-                                    : AppPalette.primary,
-                            trailing: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '#${e.rank}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelLarge
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        color: AppPalette.primary,
-                                      ),
-                                ),
-                                Text(
-                                  '${e.powerScore}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                        .toList(),
-              );
-            },
+          const SizedBox(height: 10),
+          Text(
+            '本章：$_sectionTitle',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: AppPalette.primary,
+            ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            '按章节分别排名；默认展示你战力最高的小节。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppPalette.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          if (_rankedSections.length > 1) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children:
+                  _rankedSections
+                      .map(
+                        (s) => ChoiceChip(
+                          label: Text(
+                            _sectionLabels[s.sectionId] ?? s.sectionId,
+                          ),
+                          selected: _sectionId == s.sectionId,
+                          onSelected: (_) => _selectSection(s.sectionId),
+                        ),
+                      )
+                      .toList(),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (_bootstrapping)
+            const Center(child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ))
+          else if (_bootstrapError != null)
+            StudyEmptyHint('加载章节战力失败：$_bootstrapError')
+          else
+            FutureBuilder<List<LeaderboardEntry>>(
+              future: _entriesFuture,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return _loadingOrError(snapshot, _reloadEntries);
+                }
+                final entries = snapshot.data!;
+                if (entries.isEmpty) {
+                  return StudyEmptyHint(
+                    '「$_sectionTitle」在${labels[_scope] ?? _scope}还没有记录。'
+                    '完成该章讲题或每日挑战后会出现你的名次；若已有战力仍为空，请点上方切换章节。',
+                  );
+                }
+                return StudyGroupedPanel(
+                  children:
+                      entries
+                          .map(
+                            (e) => StudyDenseTile(
+                              dense: true,
+                              title: e.studentName,
+                              subtitle: e.titleLabel,
+                              icon: Icons.emoji_events_outlined,
+                              accent:
+                                  e.rank <= 3
+                                      ? AppPalette.primaryAccent
+                                      : AppPalette.primary,
+                              trailing: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '#${e.rank}',
+                                    style: theme.textTheme.labelLarge?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      color: AppPalette.primary,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${e.powerScore}',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                          .toList(),
+                );
+              },
+            ),
         ],
       ),
     );
