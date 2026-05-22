@@ -213,9 +213,21 @@ class _BountyPageState extends State<BountyPage> {
   }
 
   Future<void> _submit(BountyChallenge c) async {
+    final quizzes = c.stepQuizzes;
+    if (quizzes.isEmpty) {
+      if (!mounted) return;
+      setState(() => _message = '本题缺少分步题，请从首页「每日挑战」进入。');
+      return;
+    }
+    final stepAnswers =
+        quizzes
+            .map(
+              (q) => {'stepId': q.stepId, 'optionId': q.correctOptionId},
+            )
+            .toList(growable: false);
     final result = await _service.submitBounty(
       challengeId: c.challengeId,
-      circledBox: c.errorBox,
+      stepAnswers: stepAnswers,
       transcriptText: _transcript.text.trim(),
     );
     if (!mounted) return;
@@ -223,7 +235,7 @@ class _BountyPageState extends State<BountyPage> {
       _message =
           result.completed
               ? '挑战完成，获得 ${result.crystalReward} 晶石 / ${result.powerReward} 战力。'
-              : '还差一点：圈选和讲解都要命中错误点。';
+              : '还差一点：分步选择与讲解都要过关。';
     });
   }
 
@@ -778,8 +790,8 @@ class _BountyCard extends StatelessWidget {
           const SizedBox(height: 8),
           FilledButton.icon(
             onPressed: onSubmit,
-            icon: const Icon(Icons.radio_button_checked),
-            label: Text('提交圈选与讲解 · +${challenge.rewardCrystals} 晶石'),
+            icon: const Icon(Icons.send_outlined),
+            label: Text('提交讲解（开发页） · +${challenge.rewardCrystals} 晶石'),
           ),
         ],
       ),
