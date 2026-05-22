@@ -183,6 +183,19 @@ void main() {
       expect(q.tags, isEmpty);
     });
 
+    test('几何章节题库含 SVG 配图元数据', () {
+      var withImage = 0;
+      for (final s in ['pep-g7-up-s4-1', 'pep-g7-up-s4-2', 'pep-g8-down-s20-1']) {
+        for (final q in repo.questionsForSection(s)) {
+          if (q.image != null && q.image!.asset.endsWith('.svg')) {
+            withImage++;
+          }
+        }
+      }
+      expect(withImage, greaterThanOrEqualTo(4),
+          reason: '带图题应能从 asset JSON 解析出 image.asset');
+    });
+
     test('fromJson 可解析可选 SVG 题图', () {
       final q = LectureQuestion.fromJson(const {
         'questionId': 'q-image',

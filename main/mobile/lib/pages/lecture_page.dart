@@ -274,6 +274,29 @@ class _LecturePageState extends State<LecturePage> {
     _reasonPlayback.addListener(_onReasonPlaybackChanged);
     _wireLiveServices();
     UserCosmeticsPrefs.instance.load();
+    unawaited(_ensureAssetBankLoaded());
+  }
+
+  /// 题库 JSON 在 [StudentMainShell] 里异步加载；若进讲题页时尚未完成，
+  /// 会先拿到 stub 题（无配图）。加载完成后按 questionId 刷新本题列表。
+  Future<void> _ensureAssetBankLoaded() async {
+    final repo = MockLectureRepository.instance;
+    await repo.loadAssetBank();
+    if (!mounted || widget.questionOverride != null) return;
+    final fresh = repo.questionsForSection(widget.section.id);
+    if (fresh.isEmpty) return;
+    var idx = _questionIndex % fresh.length;
+    for (var i = 0; i < fresh.length; i++) {
+      if (fresh[i].questionId == _question.questionId) {
+        idx = i;
+        break;
+      }
+    }
+    setState(() {
+      _questions = fresh;
+      _questionIndex = idx;
+      _question = fresh[idx];
+    });
   }
 
   /// 把 [_audioService] 与 [_liveService] 的所有事件流串到 setState 上。
@@ -1984,7 +2007,7 @@ class _LecturePageState extends State<LecturePage> {
             left: 8,
             top: topPad + 6,
             right: 220,
-            child: _buildTopChrome(order: order, total: total),
+            child: _buildQuestionDock(order: order, total: total),
           ),
           Positioned(
             right: 8,
@@ -2067,64 +2090,69 @@ class _LecturePageState extends State<LecturePage> {
     );
   }
 
-  Widget _buildTopChrome({required int order, required int total}) {
-    final repo = MockLectureRepository.instance;
-    final diff = repo.difficultyLabel(_question.difficulty);
-    return Row(
+  Widget _buildQuestionDock({required int order, required int total}) {
+    final maxDockHeight = MediaQuery.sizeOf(context).height * 0.32;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        LectureOrbButton(
-          icon: Icons.arrow_back,
-          tooltip: '返回',
-          size: 44,
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Material(
-            color: AppPalette.surface.withValues(alpha: 0.92),
-            shape: const StadiumBorder(),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: _showQuestionSheet,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _question.prompt,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$diff · $order/$total',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppPalette.primary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const Icon(Icons.expand_more, size: 18),
-                  ],
+        Row(
+          children: [
+            LectureOrbButton(
+              icon: Icons.arrow_back,
+              tooltip: '返回',
+              size: 44,
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${_question.sectionLabel} · 第 $order / $total 题',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppPalette.primary,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-          ),
+            LectureOrbButton(
+              icon: Icons.unfold_more,
+              tooltip: '全屏查看题面',
+              size: 40,
+              onPressed: _showQuestionSheet,
+            ),
+            const SizedBox(width: 6),
+            AnimatedBuilder(
+              animation: ProgressRepository.instance,
+              builder: (context, _) {
+                final p = ProgressRepository.instance.progressFor(
+                  widget.section.id,
+                );
+                return _MasteryBadge(round: _round, progress: p);
+              },
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        AnimatedBuilder(
-          animation: ProgressRepository.instance,
-          builder: (context, _) {
-            final p = ProgressRepository.instance.progressFor(widget.section.id);
-            return _MasteryBadge(round: _round, progress: p);
-          },
+        const SizedBox(height: 8),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxDockHeight),
+          child: Material(
+            color: AppPalette.surface.withValues(alpha: 0.96),
+            elevation: 1,
+            shadowColor: AppPalette.textPrimary.withValues(alpha: 0.08),
+            borderRadius: AppRadius.cardR,
+            clipBehavior: Clip.antiAlias,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+              child: _QuestionCard(
+                question: _question,
+                order: order,
+                total: total,
+                compactHeader: true,
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -2751,6 +2779,7 @@ class _QuestionCard extends StatelessWidget {
     required this.question,
     required this.order,
     required this.total,
+    this.compactHeader = false,
   });
 
   final LectureQuestion question;
@@ -2761,47 +2790,49 @@ class _QuestionCard extends StatelessWidget {
   /// 本节总题数。
   final int total;
 
+  /// 顶部题面坞已展示小节标题时，卡片内不再重复一行标题。
+  final bool compactHeader;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final difficultyLabel = MockLectureRepository.instance.difficultyLabel(
       question.difficulty,
     );
-    // 第七轮：标签数量已由 Mock 题库控制在 1-3 个；此处再做一次硬上限
-    // 防御未来题库走样，避免题面卡片被 chip 撑成 N 行挤压手写板主区。
     final tags = question.tags.take(3).toList(growable: false);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: AppPalette.primary.withValues(alpha: 0.06),
+        color: AppPalette.primary.withValues(alpha: 0.05),
         borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.18)),
+        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.14)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.menu_book_outlined,
-                size: 16,
-                color: AppPalette.primary,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  '${question.sectionLabel} · 第 $order / $total 题',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: AppPalette.primary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+          if (!compactHeader) ...[
+            Row(
+              children: [
+                const Icon(
+                  Icons.menu_book_outlined,
+                  size: 16,
+                  color: AppPalette.primary,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // 难度 chip + 知识标签 chip。Wrap 让窄屏自动换行，不会挤压手写板。
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '${question.sectionLabel} · 第 $order / $total 题',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: AppPalette.primary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -2816,10 +2847,11 @@ class _QuestionCard extends StatelessWidget {
           const SizedBox(height: 10),
           FormulaText(
             question.prompt,
-            style: theme.textTheme.bodyLarge,
+            style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
             formulaStyle: theme.textTheme.bodyLarge?.copyWith(
               color: AppPalette.primary,
               fontWeight: FontWeight.w700,
+              height: 1.45,
             ),
           ),
           if (question.image != null) ...[
@@ -2829,10 +2861,11 @@ class _QuestionCard extends StatelessWidget {
           const SizedBox(height: 8),
           FormulaText(
             question.hint,
-            style: theme.textTheme.bodySmall,
+            style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
             formulaStyle: theme.textTheme.bodySmall?.copyWith(
               color: AppPalette.primaryAccent,
               fontWeight: FontWeight.w600,
+              height: 1.4,
             ),
           ),
         ],
@@ -2850,15 +2883,67 @@ class _QuestionImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: image.alt,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: AppPalette.surface,
-          borderRadius: AppRadius.cardR,
-          border: Border.all(color: AppPalette.outline),
-        ),
-        child: SvgPicture.asset(image.asset, height: 150, fit: BoxFit.contain),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth.isFinite ? constraints.maxWidth : 320.0;
+          final h = (w * 0.52).clamp(120.0, 200.0);
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppPalette.surface,
+              borderRadius: AppRadius.cardR,
+              border: Border.all(color: AppPalette.outline),
+            ),
+            child: SvgPicture.asset(
+              image.asset,
+              width: w - 20,
+              height: h,
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+              placeholderBuilder:
+                  (context) => SizedBox(
+                    height: h,
+                    child: const Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+              errorBuilder: (context, error, stackTrace) {
+                return SizedBox(
+                  height: h,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.image_not_supported_outlined,
+                        color: AppPalette.textSecondary,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        image.alt,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppPalette.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '配图未能加载',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppPalette.error,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }

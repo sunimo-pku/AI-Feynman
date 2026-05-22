@@ -749,6 +749,7 @@ git push origin main
   污染成错误章节，调试体验比直接报错更差。
 - **回放上传必须吞失败**：`ReplayService.finishAndUpload()` 只服务家长端回看，失败不能影响学生完成态、进度写入或下一题。调试看 `ai_feynman.replay` 日志。
 - **流式 ASR 接线要标明 mode**：有 `VOLC_ASR_STREAM_*` 时走 `asr_mode=stream`；未配置或调用失败时必须显式报错，不能静默伪装成流式，也不能降级成窗口式 ASR。
+- **讲题页题面必须完整可见 + 配图在主界面展示**：题面坞 `maxHeight≈32%` 可滚动，含全文与 `SvgPicture`；勿只用顶部 `maxLines:1` 省略。全册题库 `loadAssetBank()` 异步，进讲题页须 `await` 后按 `questionId` 刷新，否则 `image` 仍为 null。
 - **Agent SVG 路径必须合法**：`monitor.svg` 若含损坏的 `d="...2z"` 等非法 path，整图在 `flutter_svg` 下会渲染为空白；改完后用讲题页右侧头像轨目测。`aria-label` 建议英文 ASCII，避免编码损坏。
 - **商城仅实物文具占位**：SKU 来自 `data/shop/stationery_skus.json`，`/shop/redeem` 只接受 `type=physical` 且必填收货人/电话；`geekSkus` 与装扮类 SKU 已下线。`UserCosmeticsPrefs` 仍保留给历史本地数据，新兑换不再写 penStyle。
 - **全册题库以 JSON 为准**：`data/questions/pep-junior-math-questions.json` 由 `scripts/generate_section_questions.py` 生成并同步到 Flutter asset；当前口径是 90 个小节 × 基础/巩固/挑战 3 题，非 16 章用 `quality=generated_seed` 标记，后续逐章教研校对。
