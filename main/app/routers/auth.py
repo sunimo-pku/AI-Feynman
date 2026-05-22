@@ -18,6 +18,8 @@ from app.middleware.auth import (
     create_access_token,
     get_current_user,
     get_password_hash,
+    require_parent_user,
+    require_student_user,
     require_user,
     session_role_from_credentials,
     user_role,
@@ -48,6 +50,12 @@ class LoginReq(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class SwitchParentReq(BaseModel):
+    parent_password: str = Field(..., alias="parentPassword", min_length=6)
+
+    model_config = {"populate_by_name": True}
+
+
 class UserOut(BaseModel):
     id: int
     username: str
@@ -59,6 +67,36 @@ class UserOut(BaseModel):
 
 def _user_out(user: User, *, session_role: str) -> UserOut:
     return UserOut(id=user.id, username=user.username, role=session_role)
+
+
+def _login_response(user: User, *, session_role: str) -> dict:
+    token = create_access_token({"sub": user.username, "role": session_role})
+    return {
+        "token": token,
+        "sessionRole": session_role,
+        "user": _user_out(user, session_role=session_role).model_dump(),
+    }
+
+
+def _verify_parent_password(user: User, parent_password: str) -> None:
+    if not user.parent_password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Parent password is not set for this account",
+        )
+    if not verify_password(parent_password, user.parent_password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid parent password",
+        )
+
+
+def _ensure_parent_view_available(db: Session, user: User) -> None:
+    if linked_child_profile(db, user) is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No student profile available for parent view",
+        )
 
 
 @router.post("/register", response_model=UserOut)
@@ -114,18 +152,8 @@ async def login(req: LoginReq, db: Session = Depends(get_db)):
         parent_password = (req.parent_password or "").strip()
         if not parent_password:
             raise HTTPException(status_code=401, detail="Parent password required")
-        if not user.parent_password_hash:
-            raise HTTPException(
-                status_code=401,
-                detail="Parent password is not set for this account",
-            )
-        if not verify_password(parent_password, user.parent_password_hash):
-            raise HTTPException(status_code=401, detail="Invalid parent password")
-        if linked_child_profile(db, user) is None:
-            raise HTTPException(
-                status_code=403,
-                detail="No student profile available for parent view",
-            )
+        _verify_parent_password(user, parent_password)
+        _ensure_parent_view_available(db, user)
         session_role = "parent"
     else:
         if user_role(user) == "parent":
@@ -136,12 +164,35 @@ async def login(req: LoginReq, db: Session = Depends(get_db)):
         ensure_student_profile(db, user)
         session_role = "student"
 
-    token = create_access_token({"sub": user.username, "role": session_role})
-    return {
-        "token": token,
-        "sessionRole": session_role,
-        "user": _user_out(user, session_role=session_role).model_dump(),
-    }
+    return _login_response(user, session_role=session_role)
+
+
+@router.post("/switch-parent")
+async def switch_to_parent(
+    req: SwitchParentReq,
+    user: User = Depends(require_student_user),
+    db: Session = Depends(get_db),
+):
+    """已登录学生端：仅凭家长密码切换到家长会话，无需再次输入账号密码。"""
+    parent_password = req.parent_password.strip()
+    _verify_parent_password(user, parent_password)
+    _ensure_parent_view_available(db, user)
+    return _login_response(user, session_role="parent")
+
+
+@router.post("/switch-student")
+async def switch_to_student(
+    user: User = Depends(require_parent_user),
+    db: Session = Depends(get_db),
+):
+    """已登录家长端：切回学生会话，无需再次输入密码。"""
+    if user_role(user) == "parent":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This legacy parent account cannot sign in as student.",
+        )
+    ensure_student_profile(db, user)
+    return _login_response(user, session_role="student")
 
 
 @router.get("/me", response_model=UserOut)

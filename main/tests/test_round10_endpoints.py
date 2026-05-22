@@ -252,6 +252,68 @@ def test_parent_login_session_role(client: TestClient) -> None:
     assert body["user"]["role"] == "parent"
 
 
+def test_switch_parent_requires_student_session(client: TestClient) -> None:
+    child_name, child_password = _register_student(client)
+    student_token = _login(client, child_name, child_password)
+    resp = client.post(
+        "/auth/switch-parent",
+        json={"parentPassword": DEFAULT_PARENT_PASSWORD},
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["sessionRole"] == "parent"
+    parent_token = body["token"]
+    assert parent_token != student_token
+
+    me = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert me.status_code == 200
+    assert me.json()["role"] == "parent"
+
+
+def test_switch_parent_wrong_password(client: TestClient) -> None:
+    child_name, child_password = _register_student(client)
+    student_token = _login(client, child_name, child_password)
+    resp = client.post(
+        "/auth/switch-parent",
+        json={"parentPassword": "wrong-parent-pass"},
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert resp.status_code == 401
+
+
+def test_switch_parent_forbidden_from_parent_session(client: TestClient) -> None:
+    child_name, child_password = _register_student(client)
+    _, _, parent_token = _register_parent(client, child_name, child_password)
+    resp = client.post(
+        "/auth/switch-parent",
+        json={"parentPassword": DEFAULT_PARENT_PASSWORD},
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert resp.status_code == 403
+
+
+def test_switch_student_from_parent_session(client: TestClient) -> None:
+    child_name, child_password = _register_student(client)
+    _, _, parent_token = _register_parent(client, child_name, child_password)
+    resp = client.post(
+        "/auth/switch-student",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["sessionRole"] == "student"
+    student_token = body["token"]
+    dash = client.get(
+        "/parent/dashboard",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert dash.status_code == 403
+
+
 def test_parent_dashboard_requires_auth(client: TestClient) -> None:
     resp = client.get("/parent/dashboard")
     assert resp.status_code == 401

@@ -223,6 +223,71 @@ class AuthService extends ChangeNotifier {
     return AuthResult.success(_username, role: _role);
   }
 
+  /// 已登录学生端：仅凭家长密码切换到家长会话。
+  Future<AuthResult> switchToParent({required String parentPassword}) async {
+    if (!isStudent) {
+      return const AuthResult.failure('当前不是学生端会话，请重新登录。');
+    }
+    final outcome = await _postAuth(
+      '/auth/switch-parent',
+      body: {'parentPassword': parentPassword},
+    );
+    if (outcome is _ApiFailure) {
+      return AuthResult.failure(outcome.message);
+    }
+    return _applySessionFromBody((outcome as _ApiSuccess).body);
+  }
+
+  /// 已登录家长端：切回学生会话，无需密码。
+  Future<AuthResult> switchToStudent() async {
+    if (!isParent) {
+      return const AuthResult.failure('当前不是家长端会话。');
+    }
+    final outcome = await _postAuth('/auth/switch-student', body: {});
+    if (outcome is _ApiFailure) {
+      return AuthResult.failure(outcome.message);
+    }
+    return _applySessionFromBody((outcome as _ApiSuccess).body);
+  }
+
+  Future<AuthResult> _applySessionFromBody(Map<String, dynamic> responseBody) async {
+    final token = (responseBody['token'] as String?) ?? '';
+    final userMap = responseBody['user'];
+    if (token.isEmpty) {
+      return const AuthResult.failure('后端切换成功但没返回 token，请联系开发同学。');
+    }
+    _token = token;
+    if (userMap is Map<String, dynamic>) {
+      _username = (userMap['username'] as String?) ?? _username;
+    }
+    _role = _resolveSessionRole(
+      token: token,
+      userMap: userMap is Map<String, dynamic> ? userMap : null,
+      loginAs: _role,
+      sessionRole: responseBody['sessionRole'] as String?,
+    );
+    try {
+      final prefs = await _obtainPrefs();
+      await prefs.setString(_tokenKey, _token);
+      await prefs.setString(_usernameKey, _username);
+      await prefs.setString(_roleKey, _role);
+    } catch (e, st) {
+      developer.log(
+        'AuthService persist token failed',
+        name: 'ai_feynman.auth',
+        error: e,
+        stackTrace: st,
+      );
+    }
+    if (_role == 'student') {
+      await ProgressRepository.instance.switchUser(storageNamespace);
+      await ReviewRepository.instance.switchUser(storageNamespace);
+      await StudentGradeStore.instance.load();
+    }
+    notifyListeners();
+    return AuthResult.success(_username, role: _role);
+  }
+
   Future<void> logout() async {
     _token = '';
     _username = '';
@@ -269,6 +334,39 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<_ApiOutcome> _postAuth(
+    String path, {
+    required Map<String, dynamic> body,
+  }) async {
+    if (_token.isEmpty) {
+      return const _ApiFailure('需要先登录。');
+    }
+    try {
+      final resp = await _client
+          .post(
+            ApiConfig.uri(path),
+            headers: authHeaders(),
+            body: utf8.encode(jsonEncode(body)),
+          )
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+        if (decoded is Map<String, dynamic>) {
+          return _ApiSuccess(decoded);
+        }
+        return const _ApiFailure('后端返回格式不符合契约');
+      }
+      final detail = _extractDetail(resp.bodyBytes);
+      return _ApiFailure(_humanize(resp.statusCode, detail));
+    } on TimeoutException {
+      return const _ApiFailure('网络超时，请稍后再试。');
+    } on SocketException {
+      return const _ApiFailure('连不上后端，请确认后端已启动。');
+    } catch (e) {
+      return _ApiFailure('请求失败：$e');
+    }
+  }
+
   static String _extractDetail(List<int> bytes) {
     try {
       final raw = utf8.decode(bytes);
@@ -289,6 +387,7 @@ class AuthService extends ChangeNotifier {
     if (status == 400 && detail.isNotEmpty) return detail;
     if (status == 401) {
       if (detail.contains('Parent password')) return '家长密码错误或未填写。';
+      if (detail.contains('Invalid parent password')) return '家长密码错误。';
       return detail.isNotEmpty ? detail : '账号或密码错误。';
     }
     if (status == 403 && detail.isNotEmpty) return detail;

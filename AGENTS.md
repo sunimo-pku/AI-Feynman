@@ -804,9 +804,13 @@ git push origin main
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 
 - **`User.role` 与 `parent_password_hash`**：学生 `role=student` 仅账号密码；
-  家长 `role=parent` 登录时需 **账号密码 + 家长密码** 两道校验。JWT payload 带
+  **冷启动登录家长端**时需 **账号密码 + 家长密码** 两道校验。JWT payload 带
   `role`，Flutter `AuthService.isParent / isStudent` 决定进 `ParentDashboardPage`
   还是 `HomePage`。
+- **已登录会话内切换**：学生端「我的 → 切换到家长账号」走
+  `POST /auth/switch-parent`（Bearer 学生会话 + 仅 `parentPassword`）；
+  家长端切回学生走 `POST /auth/switch-student`（Bearer 家长会话，无需密码）。
+  **禁止**在已登录切换时重复索要账号密码。
 - **1 孩子 : 1 家长，注册时绑定**：先注册学生，再注册家长并填 `childUsername`；
   后端写 `ParentStudentLink`，parent / child 各 UNIQUE。**已删除**
   `POST /parent/children/bind` 与 App 内「绑定孩子」入口。

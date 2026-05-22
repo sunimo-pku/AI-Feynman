@@ -185,10 +185,8 @@ Future<void> _logoutAccount() async {
 }
 
 Future<void> _showSwitchParentDialog(BuildContext context) async {
-  final username = AuthService.instance.currentUsername;
-  if (username.isEmpty) return;
+  if (!AuthService.instance.isStudent) return;
 
-  final accountPasswordController = TextEditingController();
   final parentPasswordController = TextEditingController();
   var submitting = false;
   String? errorMessage;
@@ -199,14 +197,7 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
       return StatefulBuilder(
         builder: (ctx, setDialogState) {
           Future<void> submit() async {
-            final accountPassword = accountPasswordController.text;
             final parentPassword = parentPasswordController.text;
-            if (accountPassword.length < 6) {
-              setDialogState(
-                () => errorMessage = '请填写账号密码（至少 6 位）。',
-              );
-              return;
-            }
             if (parentPassword.length < 6) {
               setDialogState(
                 () => errorMessage = '请填写家长密码（至少 6 位）。',
@@ -217,10 +208,7 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
               submitting = true;
               errorMessage = null;
             });
-            final result = await AuthService.instance.login(
-              username: username,
-              password: accountPassword,
-              loginAs: 'parent',
+            final result = await AuthService.instance.switchToParent(
               parentPassword: parentPassword,
             );
             if (!ctx.mounted) return;
@@ -242,26 +230,18 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '账号：$username',
+                    '当前已登录学生端，输入家长密码即可进入家长端查看报告。',
                     style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                       color: AppPalette.textSecondary,
+                      height: 1.45,
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: accountPasswordController,
-                    obscureText: true,
-                    enabled: !submitting,
-                    decoration: const InputDecoration(
-                      labelText: '账号密码',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
                     controller: parentPasswordController,
                     obscureText: true,
                     enabled: !submitting,
+                    autofocus: true,
                     decoration: const InputDecoration(
                       labelText: '家长密码',
                       border: OutlineInputBorder(),
@@ -303,7 +283,6 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
     },
   );
 
-  accountPasswordController.dispose();
   parentPasswordController.dispose();
 }
 
