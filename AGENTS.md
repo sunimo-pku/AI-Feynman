@@ -808,6 +808,10 @@ git push origin main
   `connected` 后 `replaySegmentAudio()` 按序补发 `audio_chunk` 到新 session。
   点「讲题结束」或 `endSession` / 下一题时才 `clearSegmentAudio()`。补传完成
   前禁止提交（`_segmentReplayInProgress`）。勿在 `_markDisconnected` 里清 buffer。
+- **断连后自动续录**：断连时若 `_liveStatus` 为 listening/paused/connecting，
+  置 `_resumeRecordingAfterReconnect`；自动重连 `connected` 且非用户手动
+  `connecting` 态时，补传 segment 后 `AudioStreamService.start()` 恢复录音。
+  手动点「重新连接」仍走 `_onStartLive`，避免双启动。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

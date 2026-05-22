@@ -199,6 +199,8 @@ class _LecturePageState extends State<LecturePage> {
   _LiveStatus _liveStatus = _LiveStatus.idle;
   String? _liveFailureReason;
   bool _segmentReplayInProgress = false;
+  /// 断连时若正在录音（listening/paused/connecting），重连后自动开麦。
+  bool _resumeRecordingAfterReconnect = false;
 
   /// 当前正在被流式增量的 AI turn id；空字符串表示当前没有未完成 turn。
   String _activeStreamingTurnId = '';
@@ -1098,6 +1100,7 @@ class _LecturePageState extends State<LecturePage> {
     _reasonPlayback.clearQueue();
     _cancelThinkingWatchdog();
     _liveService.clearSegmentAudio();
+    _resumeRecordingAfterReconnect = false;
   }
 
   /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题
@@ -1188,6 +1191,7 @@ class _LecturePageState extends State<LecturePage> {
       setState(() {
         _clearFinishedUiIfContinuing();
         _liveStatus = _LiveStatus.listening;
+        _resumeRecordingAfterReconnect = false;
       });
       return;
     }
@@ -1240,6 +1244,7 @@ class _LecturePageState extends State<LecturePage> {
     setState(() {
       _clearFinishedUiIfContinuing();
       _liveStatus = _LiveStatus.listening;
+      _resumeRecordingAfterReconnect = false;
     });
   }
 
@@ -1302,6 +1307,7 @@ class _LecturePageState extends State<LecturePage> {
     }
     _liveService.sendPauseDetected(silenceMs: 0);
     _liveService.clearSegmentAudio();
+    _resumeRecordingAfterReconnect = false;
     _armThinkingWatchdog();
     setState(() {
       _clearFinishedUiIfContinuing();
@@ -1347,6 +1353,7 @@ class _LecturePageState extends State<LecturePage> {
   /// 「暂停倾听」按钮：thinking 阶段允许学生取消本轮，回到 idle 重写白板。
   void _onStopLive() {
     _cancelThinkingWatchdog();
+    _resumeRecordingAfterReconnect = false;
     unawaited(_audioService.stop());
     unawaited(_liveService.stopTts());
     setState(() {
@@ -1358,6 +1365,7 @@ class _LecturePageState extends State<LecturePage> {
   Future<void> _onEndLiveSession() async {
     _inkSnapshotDebounce?.cancel();
     _cancelThinkingWatchdog();
+    _resumeRecordingAfterReconnect = false;
     await _audioService.stop();
     await _liveService.endSession();
     await _liveService.stopTts();
@@ -1640,22 +1648,55 @@ class _LecturePageState extends State<LecturePage> {
     });
   }
 
-  Future<void> _restoreSegmentAudioAfterReconnect() async {
-    if (!_liveService.hasSegmentAudio) return;
-    _segmentReplayInProgress = true;
-    try {
-      await _liveService.replaySegmentAudio();
-    } finally {
-      _segmentReplayInProgress = false;
+  Future<void> _handleReconnectRestore({required bool autoResumeMic}) async {
+    if (_liveService.hasSegmentAudio) {
+      _segmentReplayInProgress = true;
+      try {
+        await _liveService.replaySegmentAudio();
+      } finally {
+        _segmentReplayInProgress = false;
+      }
     }
     if (!mounted) return;
-    if (_liveStatus == _LiveStatus.disconnected ||
-        (_liveStatus == _LiveStatus.idle && _liveService.hasSegmentAudio)) {
+
+    if (autoResumeMic) {
+      _resumeRecordingAfterReconnect = false;
+      await _resumeLiveRecordingAfterReconnect();
+      return;
+    }
+
+    if (_liveStatus == _LiveStatus.disconnected &&
+        _liveService.hasSegmentAudio) {
       setState(() {
         _liveStatus = _LiveStatus.idle;
         _liveFailureReason = '断连前的讲解已恢复，可继续讲或点「讲题结束」。';
       });
     }
+  }
+
+  Future<void> _resumeLiveRecordingAfterReconnect() async {
+    if (!_liveService.isConnected || !mounted) return;
+    final audioStarted = await _audioService.start();
+    if (!mounted) return;
+    if (!audioStarted) {
+      final next =
+          _audioService.status == AudioStreamStatus.permissionDenied
+              ? _LiveStatus.permissionDenied
+              : _LiveStatus.failed;
+      setState(() {
+        _liveStatus = next;
+        _liveFailureReason = _audioService.failureReason ?? '录音不可用';
+      });
+      return;
+    }
+    setState(() {
+      _clearFinishedUiIfContinuing();
+      _liveStatus = _LiveStatus.listening;
+      _liveFailureReason =
+          _liveService.hasSegmentAudio
+              ? '已恢复连接并继续录音，断连前的讲解已补传。'
+              : '已恢复连接并继续录音。';
+    });
   }
 
   void _onLiveConnection(LiveConnectionState state) {
@@ -1669,12 +1710,27 @@ class _LecturePageState extends State<LecturePage> {
         // 点「讲题结束」会撞 no_steps_yet。同步推 snapshot 是幂等的：
         // 如果白板空，`_pushInkSnapshotNow` 会自然 early-return。
         _scheduleInkSnapshot(immediate: true);
-        if (_liveService.hasSegmentAudio) {
-          unawaited(_restoreSegmentAudioAfterReconnect());
+        // 用户手动点「重新连接」时 _liveStatus=connecting，由 _onStartLive
+        // 自己开麦，避免与这里双启动。
+        final autoResumeMic =
+            _resumeRecordingAfterReconnect &&
+            _liveStatus != _LiveStatus.connecting;
+        if (_liveService.hasSegmentAudio || autoResumeMic) {
+          unawaited(_handleReconnectRestore(autoResumeMic: autoResumeMic));
+        } else if (_liveStatus == _LiveStatus.disconnected) {
+          setState(() {
+            _liveStatus = _LiveStatus.idle;
+            _liveFailureReason = '连接已恢复，请点「开始讲题」继续。';
+          });
         }
         break;
       case LiveConnectionState.disconnected:
         _cancelThinkingWatchdog();
+        if (_liveStatus == _LiveStatus.listening ||
+            _liveStatus == _LiveStatus.paused ||
+            _liveStatus == _LiveStatus.connecting) {
+          _resumeRecordingAfterReconnect = true;
+        }
         setState(() {
           _liveStatus = _LiveStatus.disconnected;
           _activeStreamingTurnId = '';
