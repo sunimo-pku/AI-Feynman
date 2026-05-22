@@ -803,6 +803,11 @@ git push origin main
   `httpx.stream(...) + iter_lines()` 就能边收边 yield mp3 bytes，不用上
   WebSocket 协议。不要把 `synthesize` 改掉破坏现有 `/tts` 全量返回路径，
   新加 `synthesize_stream` 这个 generator 就够了。
+- **断连前未提交语音必须可恢复**：`LiveLectureService.ingestAudioBytes` 把当前
+  讲解段 PCM 写入 `_segmentPcmChunks`；WS 断开后 buffer **不清**；重连
+  `connected` 后 `replaySegmentAudio()` 按序补发 `audio_chunk` 到新 session。
+  点「讲题结束」或 `endSession` / 下一题时才 `clearSegmentAudio()`。补传完成
+  前禁止提交（`_segmentReplayInProgress`）。勿在 `_markDisconnected` 里清 buffer。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

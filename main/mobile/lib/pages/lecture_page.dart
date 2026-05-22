@@ -198,6 +198,7 @@ class _LecturePageState extends State<LecturePage> {
 
   _LiveStatus _liveStatus = _LiveStatus.idle;
   String? _liveFailureReason;
+  bool _segmentReplayInProgress = false;
 
   /// 当前正在被流式增量的 AI turn id；空字符串表示当前没有未完成 turn。
   String _activeStreamingTurnId = '';
@@ -1096,6 +1097,7 @@ class _LecturePageState extends State<LecturePage> {
     unawaited(_reasonPlayback.stop());
     _reasonPlayback.clearQueue();
     _cancelThinkingWatchdog();
+    _liveService.clearSegmentAudio();
   }
 
   /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题
@@ -1255,6 +1257,15 @@ class _LecturePageState extends State<LecturePage> {
       _audioService.status == AudioStreamStatus.listening ||
       _audioService.status == AudioStreamStatus.paused;
 
+  /// 断连前已录但未点「讲题结束」的讲解：重连补传后可继续讲或直接提交。
+  bool get _canSubmitRecoveredSegment =>
+      !_isLiveRecording &&
+      _liveService.isConnected &&
+      _liveService.hasSegmentAudio &&
+      !_segmentReplayInProgress &&
+      (_liveStatus == _LiveStatus.idle ||
+          _liveStatus == _LiveStatus.disconnected);
+
   void _showLiveSnack(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -1266,14 +1277,21 @@ class _LecturePageState extends State<LecturePage> {
   /// 不根据停顿/间隔自动判断讲完；只有学生明确点「讲题结束」才发
   /// pause_detected 进入 LLM 追问。
   void _onManualPause() {
-    if (!_isLiveRecording) {
+    if (_segmentReplayInProgress) {
+      _showLiveSnack('正在恢复断连前的讲解，请稍候…');
+      return;
+    }
+    final canSubmitRecovered = _canSubmitRecoveredSegment;
+    if (!_isLiveRecording && !canSubmitRecovered) {
       _showLiveSnack('当前没有在录音，请先点「开始讲题」。');
       return;
     }
     _wrapUpTimer?.cancel();
     // 像发语音一样，学生点结束后立即停掉本段录音；AI 追问完成后再让
     // 学生手动开始下一段。
-    unawaited(_audioService.stop());
+    if (_isLiveRecording) {
+      unawaited(_audioService.stop());
+    }
     if (!_liveService.isConnected) {
       setState(() {
         _liveStatus = _LiveStatus.disconnected;
@@ -1283,6 +1301,7 @@ class _LecturePageState extends State<LecturePage> {
       return;
     }
     _liveService.sendPauseDetected(silenceMs: 0);
+    _liveService.clearSegmentAudio();
     _armThinkingWatchdog();
     setState(() {
       _clearFinishedUiIfContinuing();
@@ -1351,8 +1370,8 @@ class _LecturePageState extends State<LecturePage> {
 
   void _onAudioChunk(Uint8List data) {
     if (data.isEmpty) return;
+    _liveService.ingestAudioBytes(data);
     if (!_liveService.isConnected) return;
-    _liveService.sendAudioBytes(data);
     _replayService.appendAudioChunk(base64Encode(data));
   }
 
@@ -1621,6 +1640,24 @@ class _LecturePageState extends State<LecturePage> {
     });
   }
 
+  Future<void> _restoreSegmentAudioAfterReconnect() async {
+    if (!_liveService.hasSegmentAudio) return;
+    _segmentReplayInProgress = true;
+    try {
+      await _liveService.replaySegmentAudio();
+    } finally {
+      _segmentReplayInProgress = false;
+    }
+    if (!mounted) return;
+    if (_liveStatus == _LiveStatus.disconnected ||
+        (_liveStatus == _LiveStatus.idle && _liveService.hasSegmentAudio)) {
+      setState(() {
+        _liveStatus = _LiveStatus.idle;
+        _liveFailureReason = '断连前的讲解已恢复，可继续讲或点「讲题结束」。';
+      });
+    }
+  }
+
   void _onLiveConnection(LiveConnectionState state) {
     if (!mounted) return;
     switch (state) {
@@ -1632,6 +1669,9 @@ class _LecturePageState extends State<LecturePage> {
         // 点「讲题结束」会撞 no_steps_yet。同步推 snapshot 是幂等的：
         // 如果白板空，`_pushInkSnapshotNow` 会自然 early-return。
         _scheduleInkSnapshot(immediate: true);
+        if (_liveService.hasSegmentAudio) {
+          unawaited(_restoreSegmentAudioAfterReconnect());
+        }
         break;
       case LiveConnectionState.disconnected:
         _cancelThinkingWatchdog();
@@ -2147,6 +2187,16 @@ class _LecturePageState extends State<LecturePage> {
             onPressed: submitting ? null : _onStartLive,
           ),
         );
+        if (_canSubmitRecoveredSegment) {
+          orbs.add(
+            LectureOrbButton(
+              icon: Icons.stop_circle_outlined,
+              tooltip: '讲题结束',
+              filled: true,
+              onPressed: _onManualPause,
+            ),
+          );
+        }
         break;
       case RealtimeAudioPanelState.listening:
       case RealtimeAudioPanelState.paused:

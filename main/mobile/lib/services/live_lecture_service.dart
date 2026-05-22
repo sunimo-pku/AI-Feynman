@@ -12,6 +12,7 @@ import '../data/live_lecture_events.dart';
 import '../utils/tts_text.dart';
 import 'auth_service.dart';
 import 'ocr_service.dart';
+import 'segment_audio_buffer.dart';
 
 /// 实时讲题服务（第九轮）。
 ///
@@ -54,6 +55,9 @@ class LiveLectureService {
   bool _disposed = false;
   int _audioSeq = 0;
   String _sessionId = '';
+
+  /// 当前「未提交」讲解段的 PCM 缓冲：断连时不丢；重连后 [replaySegmentAudio] 补发。
+  final SegmentAudioBuffer _segmentAudio = SegmentAudioBuffer();
 
   /// 应用层心跳 timer：每 20s 发一个 `{"type":"ping"}` 给后端，让运营商
   /// NAT 看到上行流量。无任何重要副作用 —— 后端识别 ping 直接忽略。
@@ -110,6 +114,8 @@ class LiveLectureService {
 
   bool get isConnected => _isConnected;
   String get sessionId => _sessionId;
+  bool get hasSegmentAudio => _segmentAudio.isNotEmpty;
+  int get segmentAudioChunkCount => _segmentAudio.length;
 
   /// 连接 WS、立即发送 session_start。
   ///
@@ -253,8 +259,33 @@ class LiveLectureService {
     });
   }
 
-  /// 把一段 PCM16 字节流编码后通过 audio_chunk 事件发送。
-  void sendAudioBytes(Uint8List data, {int sampleRate = 16000}) {
+  /// 写入当前讲解段缓冲；若 WS 已连则同步上送 audio_chunk。
+  void ingestAudioBytes(Uint8List data, {int sampleRate = 16000}) {
+    if (data.isEmpty) return;
+    _segmentAudio.add(data);
+    if (_isConnected && _sessionId.isNotEmpty) {
+      _transmitAudioChunk(data, sampleRate: sampleRate);
+    }
+  }
+
+  /// 兼容旧调用点。
+  void sendAudioBytes(Uint8List data, {int sampleRate = 16000}) =>
+      ingestAudioBytes(data, sampleRate: sampleRate);
+
+  /// 重连成功后把断连前缓冲的 PCM 按序补发给当前 session（新 seq）。
+  Future<void> replaySegmentAudio({int sampleRate = 16000}) async {
+    if (!_isConnected || _sessionId.isEmpty || _segmentAudio.isEmpty) {
+      return;
+    }
+    for (final chunk in _segmentAudio.chunks) {
+      if (!_isConnected || _sessionId.isEmpty) break;
+      _transmitAudioChunk(chunk, sampleRate: sampleRate);
+    }
+  }
+
+  void clearSegmentAudio() => _segmentAudio.clear();
+
+  void _transmitAudioChunk(Uint8List data, {int sampleRate = 16000}) {
     if (!_isConnected || _sessionId.isEmpty || data.isEmpty) return;
     final seq = _audioSeq++;
     final base64Data = base64Encode(data);
@@ -354,6 +385,7 @@ class LiveLectureService {
     // 被 service 自己拉起来」的鬼畜体验。
     _cancelReconnect();
     _clearTtsQueue();
+    clearSegmentAudio();
     if (_isConnected && _sessionId.isNotEmpty) {
       _sendJson(LiveClientEvent.sessionEnd(sessionId: _sessionId));
     }
