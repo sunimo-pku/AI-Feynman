@@ -807,6 +807,10 @@ git push origin main
   才能进家长端。
 - **学生首页勿单页堆叠全册目录**：课程应走底部「课程」Tab → 点册别 →
   `CurriculumBookPage` 二级页；今日 Tab 只保留推荐小节与快捷入口。
+- **每日挑战 `/asr` 勿直接上传裸 PCM**：火山录音文件识别要求容器格式；
+  Flutter 发 `format: pcm` 时后端须 `pcm16le_mono_to_wav` 再标 `wav`，否则
+  query 阶段 `45000151 Invalid audio format`。短音频（≤120s）优先走
+  `recognize/flash` + `volc.bigasr.auc_turbo`。
 - **OpenAI SDK 禁止模块级用空 `api_key` 建 client**：GitHub Actions 无
   `.env` 时 `OpenAI(api_key="")` 会在 **pytest 收集阶段**就抛
   `Missing credentials`。`kimi.py` 对未配置 key 用 `ci-placeholder-key`
