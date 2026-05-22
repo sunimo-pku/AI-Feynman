@@ -4,8 +4,36 @@ from openai import OpenAI
 from app.config import Config
 from app.services.agent_tools import AVAILABLE_TOOLS, TOOL_SCHEMAS
 
-kimi_client = OpenAI(api_key=Config.KIMI_API_KEY, base_url=Config.KIMI_BASE_URL)
-deepseek_client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+# OpenAI SDK 在 __init__ 时拒绝空 api_key；CI / pytest 收集阶段通常没有 .env。
+# 用占位 key 完成 import，真正发请求前仍按 Config 判断是否已配置。
+_CI_PLACEHOLDER_API_KEY = "ci-placeholder-key"
+
+
+def _api_key_for_client(raw: str | None) -> str:
+    key = (raw or "").strip()
+    if not key or key == "your_kimi_api_key_here":
+        return _CI_PLACEHOLDER_API_KEY
+    return key
+
+
+def deepseek_api_key_configured() -> bool:
+    key = (Config.DEEPSEEK_API_KEY or "").strip()
+    return bool(key) and key != "your_kimi_api_key_here"
+
+
+def kimi_api_key_configured() -> bool:
+    key = (Config.KIMI_API_KEY or "").strip()
+    return bool(key) and key != "your_kimi_api_key_here"
+
+
+kimi_client = OpenAI(
+    api_key=_api_key_for_client(Config.KIMI_API_KEY),
+    base_url=Config.KIMI_BASE_URL,
+)
+deepseek_client = OpenAI(
+    api_key=_api_key_for_client(Config.DEEPSEEK_API_KEY),
+    base_url=Config.DEEPSEEK_BASE_URL,
+)
 
 DEEPSEEK_THINKING_DISABLED: dict = {"thinking": {"type": "disabled"}}
 
@@ -243,7 +271,12 @@ def chat(
     file_ids: list[str] | None = None,
 ) -> str:
     client, actual_model = _get_client(model)
-    if not client.api_key or client.api_key == "your_kimi_api_key_here":
+    configured = (
+        kimi_api_key_configured()
+        if actual_model.startswith("kimi")
+        else deepseek_api_key_configured()
+    )
+    if not configured:
         provider = _provider_for_model(actual_model)
         return f"⚠️ {provider} API_KEY 未配置，请在项目根目录的 .env 文件中设置。"
 
@@ -307,7 +340,12 @@ def chat_stream(
       {"done": true}     — 流结束
     """
     client, actual_model = _get_client(model)
-    if not client.api_key or client.api_key == "your_kimi_api_key_here":
+    configured = (
+        kimi_api_key_configured()
+        if actual_model.startswith("kimi")
+        else deepseek_api_key_configured()
+    )
+    if not configured:
         provider = _provider_for_model(actual_model)
         yield _sse({"error": f"⚠️ {provider} API_KEY 未配置，请在项目根目录的 .env 文件中设置。"})
         yield _sse({"done": True})
