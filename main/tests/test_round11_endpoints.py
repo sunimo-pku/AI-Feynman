@@ -158,18 +158,56 @@ def test_gamification_me_and_leaderboard_filter_by_grade(client: TestClient) -> 
     assert me.status_code == 200, me.text
     body = me.json()
     assert body["grade"] == "八年级"
-    section_ids = {s["sectionId"] for s in body["sections"]}
-    assert "pep-g7-down-s9-2" not in section_ids
-    assert "pep-g8-down-s16-3" in section_ids
+    chapter_ids = {c["chapterId"] for c in body["chapters"]}
+    assert "pep-g7-down-ch9" not in chapter_ids
+    assert "pep-g8-down-ch16" in chapter_ids
+    ch16 = next(c for c in body["chapters"] if c["chapterId"] == "pep-g8-down-ch16")
+    assert ch16["powerScore"] == 405
 
     assert client.get(
-        "/leaderboard?sectionId=pep-g7-down-s9-2&scope=school",
+        "/leaderboard?chapterId=pep-g7-down-ch9&scope=school",
         headers=headers,
     ).status_code == 400
+    assert client.get(
+        "/leaderboard?chapterId=pep-g8-down-ch16&scope=school",
+        headers=headers,
+    ).status_code == 200
     assert client.get(
         "/leaderboard?sectionId=pep-g8-down-s16-3&scope=school",
         headers=headers,
     ).status_code == 200
+
+
+def test_gamification_me_sums_chapter_power(client: TestClient) -> None:
+    token = _register_and_login(client, f"gs{uuid.uuid4().hex[:8]}")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assert client.patch(
+        "/learning/profile",
+        headers=headers,
+        json={"grade": "八年级"},
+    ).status_code == 200
+
+    for section_id, mastery in [
+        ("pep-g8-down-s16-1", 1),
+        ("pep-g8-down-s16-2", 2),
+        ("pep-g8-down-s16-3", 3),
+    ]:
+        resp = client.post(
+            "/gamification/power/adjust",
+            headers=headers,
+            json={
+                "sectionId": section_id,
+                "masteryScore": mastery,
+                "completedRounds": 0,
+                "bountyWins": 0,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+
+    me = client.get("/gamification/me", headers=headers).json()
+    ch16 = next(c for c in me["chapters"] if c["chapterId"] == "pep-g8-down-ch16")
+    assert ch16["powerScore"] == 10 + 20 + 30
 
 
 def test_bounty_today_only_current_grade(client: TestClient) -> None:

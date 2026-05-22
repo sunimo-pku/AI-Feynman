@@ -44,6 +44,13 @@ from app.middleware.auth import (
 )
 from app.services import knowledge_index
 from app.services.qwen_vision import recognize_question_image
+from app.services.section_chapter import (
+    chapter_in_student_grade,
+    chapter_label,
+    chapter_id_from_section_id,
+    resolve_leaderboard_chapter_id,
+    section_belongs_to_chapter,
+)
 from app.services.section_grade import section_in_student_grade
 
 router = APIRouter(tags=["Round11"])
@@ -170,6 +177,46 @@ def _power_payload(row: SectionPower) -> dict[str, Any]:
         "powerScore": int(row.power_score or 0),
         "rankTier": row.rank_tier or _tier(int(row.power_score or 0)),
     }
+
+
+def _chapter_power_payload(chapter_id: str, power_score: int) -> dict[str, Any]:
+    return {
+        "chapterId": chapter_id,
+        "powerScore": power_score,
+        "rankTier": _tier(power_score),
+    }
+
+
+def _aggregate_chapter_powers(rows: list[SectionPower]) -> list[dict[str, Any]]:
+    """同一大章下各小节战力求和。"""
+    totals: dict[str, int] = {}
+    for row in rows:
+        chapter_id = chapter_id_from_section_id(row.section_id)
+        if not chapter_id:
+            continue
+        totals[chapter_id] = totals.get(chapter_id, 0) + int(row.power_score or 0)
+    ordered = sorted(totals.items(), key=lambda item: (-item[1], item[0]))
+    return [_chapter_power_payload(cid, score) for cid, score in ordered]
+
+
+def _chapter_power_totals_for_students(
+    db: Session,
+    *,
+    student_ids: list[int],
+    chapter_id: str,
+    grade: str,
+) -> list[tuple[int, int]]:
+    if not student_ids:
+        return []
+    rows = db.query(SectionPower).filter(SectionPower.student_id.in_(student_ids)).all()
+    totals: dict[int, int] = {}
+    for row in rows:
+        if not section_belongs_to_chapter(row.section_id, chapter_id):
+            continue
+        if not section_in_student_grade(row.section_id, grade):
+            continue
+        totals[row.student_id] = totals.get(row.student_id, 0) + int(row.power_score or 0)
+    return sorted(totals.items(), key=lambda item: (-item[1], item[0]))
 
 
 def _replay_subject_profile(db: Session, user: User, session_role: str) -> StudentProfile:
@@ -501,7 +548,7 @@ async def gamification_me(user: User = Depends(require_student_user), db: Sessio
         "equippedTitle": getattr(profile, "equipped_title", "") or "",
         "crystalBalance": wallet.balance,
         "grade": grade,
-        "sections": [_power_payload(p) for p in in_grade],
+        "chapters": _aggregate_chapter_powers(in_grade),
     }
 
 
@@ -522,17 +569,24 @@ async def adjust_power(req: PowerAdjustRequest, user: User = Depends(require_stu
 
 @router.get("/leaderboard")
 async def leaderboard(
-    section_id: str = Query("pep-g8-down-s16-3", alias="sectionId"),
+    chapter_id: str = Query("pep-g8-down-ch16", alias="chapterId"),
+    section_id: str | None = Query(None, alias="sectionId"),
     scope: Literal["school", "district", "city", "province"] = "school",
     user: User = Depends(require_student_user),
     db: Session = Depends(get_db),
 ):
     profile = ensure_student_profile(db, user)
     grade = (profile.grade or "八年级").strip() or "八年级"
-    if not section_in_student_grade(section_id, grade):
+    resolved_chapter_id = resolve_leaderboard_chapter_id(section_id or chapter_id)
+    if not resolved_chapter_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Leaderboard section must belong to {grade}.",
+            detail="Invalid chapterId or sectionId.",
+        )
+    if not chapter_in_student_grade(resolved_chapter_id, grade):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Leaderboard chapter must belong to {grade}.",
         )
     scope_attr = {
         "school": "school_name",
@@ -545,9 +599,10 @@ async def leaderboard(
     ).all()
     ids = [p.id for p in same_area]
     week_id = _week_id(datetime.utcnow() - timedelta(days=7))
+    chapter_label_text = chapter_label(resolved_chapter_id)
     snapshots = db.query(LeaderboardSnapshot).filter(
         LeaderboardSnapshot.scope == scope,
-        LeaderboardSnapshot.section_id == section_id,
+        LeaderboardSnapshot.section_id == resolved_chapter_id,
         LeaderboardSnapshot.week_id == week_id,
         LeaderboardSnapshot.student_id.in_(ids),
     ).order_by(LeaderboardSnapshot.rank.asc()).limit(50).all()
@@ -565,25 +620,39 @@ async def leaderboard(
                 "titleLabel": row.title_label,
                 "source": "snapshot",
             })
-        return {"scope": scope, "sectionId": section_id, "weekId": week_id, "entries": entries}
+        return {
+            "scope": scope,
+            "chapterId": resolved_chapter_id,
+            "sectionId": resolved_chapter_id,
+            "weekId": week_id,
+            "entries": entries,
+        }
 
-    rows = db.query(SectionPower).filter(
-        SectionPower.section_id == section_id,
-        SectionPower.student_id.in_(ids),
-    ).order_by(SectionPower.power_score.desc()).limit(50).all()
-    for idx, row in enumerate(rows, start=1):
-        p = profiles.get(row.student_id)
-        title = f"{getattr(p, scope_attr) if p else ''} · {_SECTION_LABELS.get(section_id, section_id)}第 {idx} 名"
+    ranked = _chapter_power_totals_for_students(
+        db,
+        student_ids=ids,
+        chapter_id=resolved_chapter_id,
+        grade=grade,
+    )
+    for idx, (student_id, total_score) in enumerate(ranked[:50], start=1):
+        p = profiles.get(student_id)
+        title = f"{getattr(p, scope_attr) if p else ''} · {chapter_label_text}第 {idx} 名"
         entries.append({
             "rank": idx,
-            "studentId": row.student_id,
+            "studentId": student_id,
             "studentName": (p.display_name if p else "") or "同学",
-            "powerScore": row.power_score,
-            "rankTier": row.rank_tier,
+            "powerScore": total_score,
+            "rankTier": _tier(total_score),
             "titleLabel": title,
             "source": "realtime",
         })
-    return {"scope": scope, "sectionId": section_id, "weekId": week_id, "entries": entries}
+    return {
+        "scope": scope,
+        "chapterId": resolved_chapter_id,
+        "sectionId": resolved_chapter_id,
+        "weekId": week_id,
+        "entries": entries,
+    }
 
 
 @router.get("/leaderboard/my-titles")

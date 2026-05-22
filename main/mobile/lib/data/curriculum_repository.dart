@@ -26,6 +26,10 @@ bool sectionMatchesGrade(String sectionId, String gradeLabel) {
   return sectionGrade == gradeLabel.trim();
 }
 
+bool chapterMatchesGrade(String chapterId, String gradeLabel) {
+  return sectionMatchesGrade(chapterId, gradeLabel);
+}
+
 class CurriculumRepository {
   CurriculumRepository._();
 
@@ -33,6 +37,7 @@ class CurriculumRepository {
 
   MathCurriculum? _cache;
   Map<String, String>? _sectionLabelById;
+  Map<String, String>? _chapterLabelById;
 
   Future<MathCurriculum> load() async {
     if (_cache != null) return _cache!;
@@ -57,17 +62,25 @@ class CurriculumRepository {
     return Map<String, String>.unmodifiable(_sectionLabelById!);
   }
 
+  Future<Map<String, String>> chapterLabelIndex() async {
+    await _ensureSectionLabelIndex();
+    return Map<String, String>.unmodifiable(_chapterLabelById!);
+  }
+
   Future<void> _ensureSectionLabelIndex() async {
     if (_sectionLabelById != null) return;
     final curriculum = await load();
-    final map = <String, String>{};
+    final sectionMap = <String, String>{};
+    final chapterMap = <String, String>{};
     for (final book in curriculum.books) {
       for (final chapter in book.chapters) {
+        chapterMap[chapter.id] = chapter.label;
         for (final section in chapter.sections) {
-          map[section.id] = section.label;
+          sectionMap[section.id] = section.label;
         }
       }
     }
-    _sectionLabelById = map;
+    _sectionLabelById = sectionMap;
+    _chapterLabelById = chapterMap;
   }
 }

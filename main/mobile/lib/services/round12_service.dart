@@ -23,11 +23,11 @@ class Round12Service {
 
   Future<List<LeaderboardEntry>> fetchLeaderboard({
     required String scope,
-    String sectionId = 'pep-g8-down-s16-3',
+    String chapterId = 'pep-g8-down-ch16',
   }) async {
     final uri = ApiConfig.uri('/leaderboard').replace(queryParameters: {
       'scope': scope,
-      'sectionId': sectionId,
+      'chapterId': chapterId,
     });
     final json = await _getMap(uri);
     final raw = json['entries'];

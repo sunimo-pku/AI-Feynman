@@ -5,44 +5,44 @@ class PowerProfile {
     required this.studentName,
     required this.equippedTitle,
     required this.crystalBalance,
-    required this.sections,
+    required this.chapters,
   });
 
   final String studentName;
   final String equippedTitle;
   final int crystalBalance;
-  final List<PowerSection> sections;
+  final List<PowerChapter> chapters;
 
   factory PowerProfile.fromJson(Map<String, dynamic> json) {
-    final raw = json['sections'];
+    final raw = json['chapters'];
     return PowerProfile(
       studentName: json['studentName'] as String? ?? '同学',
       equippedTitle: json['equippedTitle'] as String? ?? '',
       crystalBalance: (json['crystalBalance'] as num?)?.toInt() ?? 0,
-      sections: raw is List
+      chapters: raw is List
           ? raw
               .whereType<Map<String, dynamic>>()
-              .map(PowerSection.fromJson)
+              .map(PowerChapter.fromJson)
               .toList(growable: false)
-          : const <PowerSection>[],
+          : const <PowerChapter>[],
     );
   }
 }
 
-class PowerSection {
-  const PowerSection({
-    required this.sectionId,
+class PowerChapter {
+  const PowerChapter({
+    required this.chapterId,
     required this.powerScore,
     required this.rankTier,
   });
 
-  final String sectionId;
+  final String chapterId;
   final int powerScore;
   final String rankTier;
 
-  factory PowerSection.fromJson(Map<String, dynamic> json) {
-    return PowerSection(
-      sectionId: json['sectionId'] as String? ?? '',
+  factory PowerChapter.fromJson(Map<String, dynamic> json) {
+    return PowerChapter(
+      chapterId: json['chapterId'] as String? ?? '',
       powerScore: (json['powerScore'] as num?)?.toInt() ?? 0,
       rankTier: json['rankTier'] as String? ?? '青铜',
     );

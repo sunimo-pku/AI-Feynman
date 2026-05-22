@@ -37,29 +37,29 @@ class PowerProfilePage extends StatefulWidget {
 class _PowerProfilePageState extends State<PowerProfilePage> {
   final _service = Round12Service();
   late Future<PowerProfile> _future = _service.fetchPowerProfile();
-  Map<String, String> _sectionLabels = const {};
+  Map<String, String> _chapterLabels = const {};
 
   @override
   void initState() {
     super.initState();
-    unawaited(_loadSectionLabels());
+    unawaited(_loadChapterLabels());
   }
 
-  Future<void> _loadSectionLabels() async {
-    final map = await CurriculumRepository.instance.sectionLabelIndex();
+  Future<void> _loadChapterLabels() async {
+    final map = await CurriculumRepository.instance.chapterLabelIndex();
     if (!mounted) return;
-    setState(() => _sectionLabels = map);
+    setState(() => _chapterLabels = map);
   }
 
-  String _sectionTitle(PowerSection section) {
-    return _sectionLabels[section.sectionId] ?? section.sectionId;
+  String _chapterTitle(PowerChapter chapter) {
+    return _chapterLabels[chapter.chapterId] ?? chapter.chapterId;
   }
 
-  List<PowerSection> _sectionsForGrade(PowerProfile profile) {
+  List<PowerChapter> _chaptersForGrade(PowerProfile profile) {
     final grade = StudentGradeStore.instance.gradeLabel;
-    if (grade == null) return profile.sections;
-    return profile.sections
-        .where((s) => sectionMatchesGrade(s.sectionId, grade))
+    if (grade == null) return profile.chapters;
+    return profile.chapters
+        .where((c) => chapterMatchesGrade(c.chapterId, grade))
         .toList(growable: false);
   }
 
@@ -85,8 +85,8 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
             }
             final p = snapshot.data!;
             final grade = StudentGradeStore.instance.gradeLabel;
-            final sections = _sectionsForGrade(p);
-            final total = sections.fold<int>(0, (sum, s) => sum + s.powerScore);
+            final chapters = _chaptersForGrade(p);
+            final total = chapters.fold<int>(0, (sum, c) => sum + c.powerScore);
             return ListView(
               padding: EdgeInsets.fromLTRB(
                 AppSpacing.pageEdge,
@@ -156,20 +156,20 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                 StudySectionTitle(
                   title: grade == null ? '章节战力' : '$grade · 章节战力',
                 ),
-                if (sections.isEmpty)
+                if (chapters.isEmpty)
                   StudyEmptyHint(
                     grade == null
-                        ? '完成一轮讲题或今日悬赏后，这里会出现章节战力。'
-                        : '完成$grade讲题或每日挑战后，这里会出现本章节的战力。',
+                        ? '完成一轮讲题或今日悬赏后，这里会出现各章战力。'
+                        : '完成$grade讲题或每日挑战后，这里会出现各章战力。',
                   )
                 else
                   StudyGroupedPanel(
                     children:
-                        sections
+                        chapters
                             .map(
-                              (s) => StudyDenseTile(
-                                title: _sectionTitle(s),
-                                subtitle: '${s.rankTier} · ${s.powerScore} 战力',
+                              (c) => StudyDenseTile(
+                                title: _chapterTitle(c),
+                                subtitle: '${c.rankTier} · ${c.powerScore} 战力',
                                 icon: Icons.insights_outlined,
                                 dense: true,
                               ),
@@ -335,9 +335,9 @@ class LeaderboardPage extends StatefulWidget {
 class _LeaderboardPageState extends State<LeaderboardPage> {
   final _service = Round12Service();
   String _scope = 'school';
-  String _sectionId = 'pep-g8-down-s16-3';
-  Map<String, String> _sectionLabels = const {};
-  List<PowerSection> _rankedSections = const [];
+  String _chapterId = 'pep-g8-down-ch16';
+  Map<String, String> _chapterLabels = const {};
+  List<PowerChapter> _rankedChapters = const [];
   Future<List<LeaderboardEntry>>? _entriesFuture;
   bool _bootstrapping = true;
   String? _bootstrapError;
@@ -356,34 +356,34 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
 
   Future<void> _bootstrap() async {
     try {
-      final labels = await CurriculumRepository.instance.sectionLabelIndex();
+      final labels = await CurriculumRepository.instance.chapterLabelIndex();
       final profile = await _service.fetchPowerProfile();
       final grade = StudentGradeStore.instance.gradeLabel;
-      var sections = profile.sections;
+      var chapters = profile.chapters;
       if (grade != null) {
-        sections = sections
-            .where((s) => sectionMatchesGrade(s.sectionId, grade))
+        chapters = chapters
+            .where((c) => chapterMatchesGrade(c.chapterId, grade))
             .toList(growable: false);
       }
-      final ranked = [...sections]
+      final ranked = [...chapters]
         ..sort((a, b) => b.powerScore.compareTo(a.powerScore));
-      final withPower = ranked.where((s) => s.powerScore > 0).toList();
-      var sectionId = _sectionId;
+      final withPower = ranked.where((c) => c.powerScore > 0).toList();
+      var chapterId = _chapterId;
       if (withPower.isNotEmpty) {
-        sectionId = withPower.first.sectionId;
+        chapterId = withPower.first.chapterId;
       } else if (ranked.isNotEmpty) {
-        sectionId = ranked.first.sectionId;
+        chapterId = ranked.first.chapterId;
       } else if (grade != null) {
-        sectionId = labels.keys.firstWhere(
-          (id) => sectionMatchesGrade(id, grade),
-          orElse: () => _sectionId,
+        chapterId = labels.keys.firstWhere(
+          (id) => chapterMatchesGrade(id, grade),
+          orElse: () => _chapterId,
         );
       }
       if (!mounted) return;
       setState(() {
-        _sectionLabels = labels;
-        _rankedSections = withPower.isNotEmpty ? withPower : ranked;
-        _sectionId = sectionId;
+        _chapterLabels = labels;
+        _rankedChapters = withPower.isNotEmpty ? withPower : ranked;
+        _chapterId = chapterId;
         _bootstrapping = false;
         _bootstrapError = null;
         _entriesFuture = _loadEntries();
@@ -399,7 +399,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   }
 
   Future<List<LeaderboardEntry>> _loadEntries() {
-    return _service.fetchLeaderboard(scope: _scope, sectionId: _sectionId);
+    return _service.fetchLeaderboard(scope: _scope, chapterId: _chapterId);
   }
 
   void _reloadEntries() {
@@ -413,15 +413,15 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
     });
   }
 
-  void _selectSection(String sectionId) {
+  void _selectChapter(String chapterId) {
     setState(() {
-      _sectionId = sectionId;
+      _chapterId = chapterId;
       _entriesFuture = _loadEntries();
     });
   }
 
-  String get _sectionTitle =>
-      _sectionLabels[_sectionId] ?? _sectionId;
+  String get _chapterTitle =>
+      _chapterLabels[_chapterId] ?? _chapterId;
 
   @override
   Widget build(BuildContext context) {
@@ -452,7 +452,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            '本章：$_sectionTitle',
+            '本章：$_chapterTitle',
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
               color: AppPalette.primary,
@@ -460,26 +460,26 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            '按章节分别排名；默认展示你战力最高的小节。',
+            '按大章分别排名；默认展示你战力最高的一章（各小节战力求和）。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: AppPalette.textSecondary,
               height: 1.4,
             ),
           ),
-          if (_rankedSections.length > 1) ...[
+          if (_rankedChapters.length > 1) ...[
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children:
-                  _rankedSections
+                  _rankedChapters
                       .map(
-                        (s) => ChoiceChip(
+                        (c) => ChoiceChip(
                           label: Text(
-                            _sectionLabels[s.sectionId] ?? s.sectionId,
+                            _chapterLabels[c.chapterId] ?? c.chapterId,
                           ),
-                          selected: _sectionId == s.sectionId,
-                          onSelected: (_) => _selectSection(s.sectionId),
+                          selected: _chapterId == c.chapterId,
+                          onSelected: (_) => _selectChapter(c.chapterId),
                         ),
                       )
                       .toList(),
@@ -503,7 +503,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
                 final entries = snapshot.data!;
                 if (entries.isEmpty) {
                   return StudyEmptyHint(
-                    '「$_sectionTitle」在${labels[_scope] ?? _scope}还没有记录。'
+                    '「$_chapterTitle」在${labels[_scope] ?? _scope}还没有记录。'
                     '完成该章讲题或每日挑战后会出现你的名次；若已有战力仍为空，请点上方切换章节。',
                   );
                 }

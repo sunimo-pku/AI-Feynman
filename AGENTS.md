@@ -833,10 +833,10 @@ git push origin main
   `StudentGradeStore` + `/learning/profile`；「今日」「课程」只读该年级，
   禁止在课程 Tab 用 SegmentedButton 切换年级；勿再拼 `人教版 · X年级数学`
   长副标题；`_booksForGrade` 匹配失败时展示空状态，勿回退全册目录。
-- **战力 / 排行榜按年级过滤小节**：战力存于 `SectionPower`（**每小节一条**）；
-  `GET /gamification/me` 与 Flutter「章节战力 / 排行榜」必须只展示
-  `profile.grade` 对应册别的小节（`pep-g7-*`↔七年级等）；跨年级
-  `sectionId` 调 `/leaderboard` 应 400。八年级账号看到七年级小节战力是 bug。
+- **战力 / 排行榜按年级过滤小节**：底层仍按**小节**写入 `SectionPower`；展示与排行按**大章**
+  汇总（同章各小节战力求和）。`GET /gamification/me` 返回 `chapters[]`（含
+  `chapterId`）；`/leaderboard?chapterId=` 按章实时汇总排名，旧 `sectionId`
+  参数会自动映射成大章 id。必须只含 `profile.grade` 对应册别（`pep-g7-*`↔七年级等）。
 - **每日挑战按年级选题**：`_select_today_bounties` 必须先按
   `profile.grade` 过滤 `challenges.json`（`section_in_student_grade`）；
   弱项优先也只认同年级 `sectionId`；`/bounty/submit` 走当日集合校验，
