@@ -837,6 +837,10 @@ git push origin main
   `GET /gamification/me` 与 Flutter「章节战力 / 排行榜」必须只展示
   `profile.grade` 对应册别的小节（`pep-g7-*`↔七年级等）；跨年级
   `sectionId` 调 `/leaderboard` 应 400。八年级账号看到七年级小节战力是 bug。
+- **每日挑战按年级选题**：`_select_today_bounties` 必须先按
+  `profile.grade` 过滤 `challenges.json`（`section_in_student_grade`）；
+  弱项优先也只认同年级 `sectionId`；`/bounty/submit` 走当日集合校验，
+  不能完成跨年级挑战领奖励。
 - **每日挑战 `/asr` 勿直接上传裸 PCM**：火山录音文件识别要求容器格式；
   Flutter 发 `format: pcm` 时后端须 `pcm16le_mono_to_wav` 再标 `wav`，否则
   query 阶段 `45000151 Invalid audio format`。短音频（≤120s）优先走

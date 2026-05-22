@@ -254,7 +254,12 @@ def _select_today_bounties(
     *,
     date_key: str,
 ) -> list[dict[str, Any]]:
-    bank = _load_bounty_bank()
+    grade = (profile.grade or "八年级").strip() or "八年级"
+    bank = [
+        item
+        for item in _load_bounty_bank()
+        if section_in_student_grade(str(item.get("sectionId") or ""), grade)
+    ]
     if not bank:
         return []
 
@@ -265,6 +270,8 @@ def _select_today_bounties(
         .first()
     )
     weak_section_id = weak.section_id if weak else ""
+    if weak_section_id and not section_in_student_grade(weak_section_id, grade):
+        weak_section_id = ""
     selected: list[dict[str, Any]] = []
     used: set[str] = set()
     tracks = ("review", "weak", "advanced")
