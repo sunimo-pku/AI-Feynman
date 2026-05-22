@@ -807,6 +807,10 @@ git push origin main
   才能进家长端。
 - **学生首页勿单页堆叠全册目录**：课程应走底部「课程」Tab → 点册别 →
   `CurriculumBookPage` 二级页；今日 Tab 只保留推荐小节与快捷入口。
+- **学生年级全局唯一来源**：注册与「我的 → 编辑资料」写入
+  `StudentGradeStore` + `/learning/profile`；「今日」「课程」只读该年级，
+  禁止在课程 Tab 用 SegmentedButton 切换年级；勿再拼 `人教版 · X年级数学`
+  长副标题；`_booksForGrade` 匹配失败时展示空状态，勿回退全册目录。
 - **每日挑战 `/asr` 勿直接上传裸 PCM**：火山录音文件识别要求容器格式；
   Flutter 发 `format: pcm` 时后端须 `pcm16le_mono_to_wav` 再标 `wav`，否则
   query 阶段 `45000151 Invalid audio format`。短音频（≤120s）优先走

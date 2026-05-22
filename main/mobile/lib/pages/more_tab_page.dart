@@ -66,7 +66,7 @@ class MoreTabPage extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '挑战、奖励与辅助功能集中在此，主学习路径在「今日」与「课程」。',
+          '挑战、奖励与辅助功能在此；年级仅在「我的」→ 编辑资料中修改。',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppPalette.textSecondary,
           ),

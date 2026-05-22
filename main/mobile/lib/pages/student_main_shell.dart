@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/curriculum_models.dart';
@@ -9,6 +11,7 @@ import '../services/learning_sync_service.dart';
 import '../services/progress_repository.dart';
 import '../services/review_repository.dart';
 import '../services/round12_service.dart';
+import '../services/student_grade_store.dart';
 import '../theme/app_theme.dart';
 import 'curriculum_tab_page.dart';
 import 'home_dashboard_tab.dart';
@@ -37,7 +40,6 @@ class _StudentMainShellState extends State<StudentMainShell> {
   final AssignmentService _assignmentService = AssignmentService();
 
   int _tabIndex = 0;
-  String _studentGradeLabel = '八年级';
   int _pendingAssignments = 0;
 
   static const _tabTitles = ['今日', '课程', '更多', '我的'];
@@ -50,20 +52,38 @@ class _StudentMainShellState extends State<StudentMainShell> {
       if (mounted) setState(() {});
     });
     ReviewRepository.instance.load();
-    AuthService.instance.load().then((_) {
+    AuthService.instance.load().then((_) async {
       if (AuthService.instance.isLoggedIn) {
         LearningSyncService.instance.pullAndMerge();
-        _loadStudentGrade();
+        await _syncStudentGrade();
         _loadPendingAssignments();
       }
     });
+    StudentGradeStore.instance.addListener(_onGradeChanged);
   }
 
   @override
   void dispose() {
+    StudentGradeStore.instance.removeListener(_onGradeChanged);
     _profileService.close();
     _assignmentService.close();
     super.dispose();
+  }
+
+  void _onGradeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _syncStudentGrade() async {
+    await StudentGradeStore.instance.load();
+    try {
+      final profile = await _profileService.fetchProfile();
+      await StudentGradeStore.instance.applyServerGrade(
+        profile['grade'] as String?,
+      );
+    } catch (_) {
+      /* 资料拉取失败时沿用本地已缓存年级 */
+    }
   }
 
   Future<void> _loadPendingAssignments() async {
@@ -74,15 +94,6 @@ class _StudentMainShellState extends State<StudentMainShell> {
       final result = await _assignmentService.fetchStudentAssignments();
       if (!mounted) return;
       setState(() => _pendingAssignments = result.pendingCount);
-    } catch (_) {}
-  }
-
-  Future<void> _loadStudentGrade() async {
-    try {
-      final profile = await _profileService.fetchProfile();
-      final grade = (profile['grade'] as String? ?? '').trim();
-      if (!mounted || grade.isEmpty) return;
-      setState(() => _studentGradeLabel = grade);
     } catch (_) {}
   }
 
@@ -117,12 +128,13 @@ class _StudentMainShellState extends State<StudentMainShell> {
     await AuthService.instance.logout();
   }
 
-  List<CurriculumBook> _booksForGrade(MathCurriculum curriculum) {
-    final matched =
-        curriculum.books
-            .where((book) => book.gradeLabel == _studentGradeLabel)
-            .toList(growable: false);
-    return matched.isEmpty ? curriculum.books : matched;
+  List<CurriculumBook> _booksForGrade(
+    MathCurriculum curriculum,
+    String gradeLabel,
+  ) {
+    return curriculum.books
+        .where((book) => book.gradeLabel == gradeLabel)
+        .toList(growable: false);
   }
 
   @override
@@ -157,54 +169,68 @@ class _StudentMainShellState extends State<StudentMainShell> {
           ),
         ],
       ),
-      body: FutureBuilder<MathCurriculum>(
-        future: _curriculumFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
+      body: AnimatedBuilder(
+        animation: StudentGradeStore.instance,
+        builder: (context, _) {
+          final gradeLabel = StudentGradeStore.instance.gradeLabel;
+          if (!StudentGradeStore.instance.isLoaded || gradeLabel == null) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError) {
-            return Center(child: Text('目录加载失败：${snapshot.error}'));
-          }
-          final curriculum = snapshot.data!;
-          final visibleBooks = _booksForGrade(curriculum);
 
-          return IndexedStack(
-            index: _tabIndex,
-            children: [
-              HomeDashboardTab(
-                curriculum: curriculum,
-                studentGradeLabel: _studentGradeLabel,
-                books: visibleBooks,
-                pendingAssignments: _pendingAssignments,
-                onSectionTap: _onSectionTap,
-                onAssignmentsTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const StudentAssignmentsPage(),
-                    ),
-                  );
-                  await _loadPendingAssignments();
-                },
-              ),
-              CurriculumTabPage(
-                curriculum: curriculum,
-                initialGradeLabel: _studentGradeLabel,
-                onSectionTap: _onSectionTap,
-                onSectionReview: _onSectionReview,
-                onGradeChanged: (grade) {
-                  setState(() => _studentGradeLabel = grade);
-                },
-              ),
-              const MoreTabPage(),
-              const PowerProfilePage(embeddedInTab: true),
-            ],
+          return FutureBuilder<MathCurriculum>(
+            future: _curriculumFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('目录加载失败：${snapshot.error}'));
+              }
+              final curriculum = snapshot.data!;
+              final visibleBooks = _booksForGrade(curriculum, gradeLabel);
+
+              return IndexedStack(
+                index: _tabIndex,
+                children: [
+                  HomeDashboardTab(
+                    studentGradeLabel: gradeLabel,
+                    books: visibleBooks,
+                    pendingAssignments: _pendingAssignments,
+                    onSectionTap: _onSectionTap,
+                    onAssignmentsTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const StudentAssignmentsPage(),
+                        ),
+                      );
+                      await _loadPendingAssignments();
+                    },
+                  ),
+                  CurriculumTabPage(
+                    studentGradeLabel: gradeLabel,
+                    books: visibleBooks,
+                    onSectionTap: _onSectionTap,
+                    onSectionReview: _onSectionReview,
+                  ),
+                  const MoreTabPage(),
+                  PowerProfilePage(
+                    embeddedInTab: true,
+                    onProfileSaved: _syncStudentGrade,
+                  ),
+                ],
+              );
+            },
           );
         },
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
-        onDestinationSelected: (index) => setState(() => _tabIndex = index),
+        onDestinationSelected: (index) {
+          setState(() => _tabIndex = index);
+          if (index == 3) {
+            unawaited(_syncStudentGrade());
+          }
+        },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.today_outlined),

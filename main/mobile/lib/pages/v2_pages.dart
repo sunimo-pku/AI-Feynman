@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../data/curriculum_models.dart';
 import '../data/round12_models.dart';
 import '../services/round12_service.dart';
+import '../services/student_grade_store.dart';
 import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
@@ -15,10 +16,17 @@ import 'lecture_page.dart';
 const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
 
 class PowerProfilePage extends StatefulWidget {
-  const PowerProfilePage({super.key, this.embeddedInTab = false});
+  const PowerProfilePage({
+    super.key,
+    this.embeddedInTab = false,
+    this.onProfileSaved,
+  });
 
   /// 嵌入学生端底部「我的」Tab 时不重复套 AppBar。
   final bool embeddedInTab;
+
+  /// 资料保存后通知主壳刷新年级（全局唯一修改入口）。
+  final Future<void> Function()? onProfileSaved;
 
   @override
   State<PowerProfilePage> createState() => _PowerProfilePageState();
@@ -72,12 +80,14 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const StudentProfileEditPage(),
-                    ),
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const StudentProfileEditPage(),
                   ),
+                );
+                await widget.onProfileSaved?.call();
+              },
               icon: const Icon(Icons.edit_outlined),
               label: const Text('编辑展示名 / 年级'),
             ),
@@ -554,18 +564,22 @@ class _StudentProfileEditPageState extends State<StudentProfileEditPage> {
   }
 
   Future<void> _save() async {
+    final grade = _grade.text.trim();
     await _service.updateProfile({
       'displayName': _display.text.trim(),
-      'grade': _grade.text.trim(),
+      'grade': grade,
       'schoolName': _school.text.trim(),
       'province': _province.text.trim(),
       'city': _city.text.trim(),
       'district': _district.text.trim(),
     });
+    if (StudentGradeStore.validGrades.contains(grade)) {
+      await StudentGradeStore.instance.setGrade(grade);
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('资料已保存')));
+    ).showSnackBar(const SnackBar(content: Text('资料已保存，年级已同步到今日与课程')));
   }
 
   @override

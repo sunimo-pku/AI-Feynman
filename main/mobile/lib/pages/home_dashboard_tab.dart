@@ -9,11 +9,10 @@ import 'daily_challenge_page.dart';
 import 'student_assignments_page.dart';
 import 'v2_pages.dart';
 
-/// 学生端「今日」Tab：紧凑仪表盘，不含整册目录。
+/// 学生端「今日」Tab：紧凑仪表盘，仅展示账号年级下的推荐小节。
 class HomeDashboardTab extends StatelessWidget {
   const HomeDashboardTab({
     super.key,
-    required this.curriculum,
     required this.studentGradeLabel,
     required this.books,
     required this.pendingAssignments,
@@ -21,7 +20,6 @@ class HomeDashboardTab extends StatelessWidget {
     required this.onAssignmentsTap,
   });
 
-  final MathCurriculum curriculum;
   final String studentGradeLabel;
   final List<CurriculumBook> books;
   final int pendingAssignments;
@@ -46,11 +44,7 @@ class HomeDashboardTab extends StatelessWidget {
         24,
       ),
       children: [
-        _CompactGreeting(
-          publisher: curriculum.publisher,
-          gradeLabel: studentGradeLabel,
-          subjectLabel: curriculum.subjectLabel,
-        ),
+        _CompactGreeting(gradeLabel: studentGradeLabel),
         if (pendingAssignments > 0) ...[
           const SizedBox(height: AppSpacing.itemGap),
           _PendingAssignmentsBanner(
@@ -164,7 +158,7 @@ class HomeDashboardTab extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '完整章节目录在底部「课程」；挑战与奖励在「更多」。',
+                  '完整章节目录在「课程」；要换年级请去「我的」→ 编辑资料。',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppPalette.textSecondary,
                     height: 1.45,
@@ -197,15 +191,9 @@ class HomeDashboardTab extends StatelessWidget {
 }
 
 class _CompactGreeting extends StatelessWidget {
-  const _CompactGreeting({
-    required this.publisher,
-    required this.gradeLabel,
-    required this.subjectLabel,
-  });
+  const _CompactGreeting({required this.gradeLabel});
 
-  final String publisher;
   final String gradeLabel;
-  final String subjectLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -222,11 +210,22 @@ class _CompactGreeting extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '$publisher · $gradeLabel$subjectLabel',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppPalette.textSecondary,
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppPalette.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: AppPalette.primary.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Text(
+                  '当前 $gradeLabel',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: AppPalette.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],

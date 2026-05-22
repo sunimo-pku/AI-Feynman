@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import 'progress_repository.dart';
 import 'review_repository.dart';
+import 'student_grade_store.dart';
 
 /// 登录/注册 + token 持久化。
 ///
@@ -90,6 +91,7 @@ class AuthService extends ChangeNotifier {
       if (isLoggedIn) {
         await ProgressRepository.instance.switchUser(storageNamespace);
         await ReviewRepository.instance.switchUser(storageNamespace);
+        await StudentGradeStore.instance.load();
       }
       notifyListeners();
     }
@@ -141,11 +143,18 @@ class AuthService extends ChangeNotifier {
     };
     final outcome = await _post('/auth/register', body: body);
     if (outcome is _ApiSuccess) {
-      return login(
+      final loginResult = await login(
         username: username,
         password: password,
         parentPassword: role == 'parent' ? parentPassword : null,
       );
+      if (loginResult.ok &&
+          role == 'student' &&
+          grade != null &&
+          grade.trim().isNotEmpty) {
+        await StudentGradeStore.instance.setGrade(grade.trim());
+      }
+      return loginResult;
     }
     final failure = outcome as _ApiFailure;
     return AuthResult.failure(failure.message);
@@ -199,6 +208,7 @@ class AuthService extends ChangeNotifier {
     }
     await ProgressRepository.instance.switchUser(storageNamespace);
     await ReviewRepository.instance.switchUser(storageNamespace);
+    await StudentGradeStore.instance.load();
     notifyListeners();
     return AuthResult.success(_username, role: _role);
   }
@@ -207,6 +217,7 @@ class AuthService extends ChangeNotifier {
     _token = '';
     _username = '';
     _role = 'student';
+    StudentGradeStore.instance.clear();
     try {
       final prefs = await _obtainPrefs();
       await prefs.remove(_tokenKey);

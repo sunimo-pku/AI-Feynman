@@ -3,53 +3,25 @@ import 'package:flutter/material.dart';
 import '../data/curriculum_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/curriculum_catalog.dart';
-import '../widgets/study_layout.dart';
 import 'curriculum_book_page.dart';
 
-/// 学生端「课程」Tab：年级筛选 + 分册入口，目录在二级页展开。
-class CurriculumTabPage extends StatefulWidget {
+/// 学生端「课程」Tab：仅展示账号年级下的上下册（年级只在「我的」修改）。
+class CurriculumTabPage extends StatelessWidget {
   const CurriculumTabPage({
     super.key,
-    required this.curriculum,
-    required this.initialGradeLabel,
+    required this.studentGradeLabel,
+    required this.books,
     required this.onSectionTap,
     required this.onSectionReview,
-    required this.onGradeChanged,
   });
 
-  final MathCurriculum curriculum;
-  final String initialGradeLabel;
+  final String studentGradeLabel;
+  final List<CurriculumBook> books;
   final ValueChanged<CurriculumSection> onSectionTap;
   final ValueChanged<CurriculumSection> onSectionReview;
-  final ValueChanged<String> onGradeChanged;
-
-  @override
-  State<CurriculumTabPage> createState() => _CurriculumTabPageState();
-}
-
-class _CurriculumTabPageState extends State<CurriculumTabPage> {
-  static const _grades = ['七年级', '八年级', '九年级'];
-  late String _selectedGrade = widget.initialGradeLabel;
-
-  @override
-  void didUpdateWidget(CurriculumTabPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialGradeLabel != widget.initialGradeLabel) {
-      _selectedGrade = widget.initialGradeLabel;
-    }
-  }
-
-  List<CurriculumBook> get _booksForGrade {
-    final matched =
-        widget.curriculum.books
-            .where((b) => b.gradeLabel == _selectedGrade)
-            .toList();
-    return matched.isEmpty ? widget.curriculum.books : matched;
-  }
 
   @override
   Widget build(BuildContext context) {
-    final books = _booksForGrade;
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.pageEdge,
@@ -58,56 +30,78 @@ class _CurriculumTabPageState extends State<CurriculumTabPage> {
         24,
       ),
       children: [
-        Text(
-          '选择年级与册别',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppPalette.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: AppPalette.primary.withValues(alpha: 0.28),
+                ),
+              ),
+              child: Text(
+                studentGradeLabel,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppPalette.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '本学期目录',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
-          '每册单独打开章节目录，不再在首页一次性铺开。',
+          '年级在注册时选定；若要更换，请到「我的」→ 编辑资料修改。',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppPalette.textSecondary,
+            height: 1.45,
           ),
-        ),
-        const SizedBox(height: 14),
-        SegmentedButton<String>(
-          segments:
-              _grades
-                  .map((g) => ButtonSegment(value: g, label: Text(g)))
-                  .toList(),
-          selected: {_selectedGrade},
-          onSelectionChanged: (value) {
-            final grade = value.first;
-            setState(() => _selectedGrade = grade);
-            widget.onGradeChanged(grade);
-          },
         ),
         const SizedBox(height: AppSpacing.moduleGap),
-        ...books.map(
-          (book) => Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.itemGap),
-            child: _BookListTile(
-              book: book,
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder:
-                        (_) => CurriculumBookPage(
-                          book: book,
-                          onSectionTap: widget.onSectionTap,
-                          onSectionReview: widget.onSectionReview,
-                        ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
         if (books.isEmpty)
-          const StudyPanel(
-            child: Text('该年级暂无目录数据，请稍后再试。'),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppPalette.surface,
+              borderRadius: AppRadius.cardR,
+              border: Border.all(color: AppPalette.outlineSoft),
+            ),
+            child: Text(
+              '未找到 $studentGradeLabel 的课程目录，请到「我的」检查年级设置。',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          )
+        else
+          ...books.map(
+            (book) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.itemGap),
+              child: _BookListTile(
+                book: book,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (_) => CurriculumBookPage(
+                            book: book,
+                            onSectionTap: onSectionTap,
+                            onSectionReview: onSectionReview,
+                          ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
       ],
     );
