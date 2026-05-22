@@ -7,7 +7,6 @@ import '../data/curriculum_models.dart';
 import '../data/round12_models.dart';
 import '../services/round12_service.dart';
 import '../services/student_grade_store.dart';
-import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/study_layout.dart';
@@ -287,95 +286,6 @@ class ShopPage extends StatefulWidget {
 
 class _ShopPageState extends State<ShopPage> {
   final _service = Round12Service();
-  late Future<ShopCatalog> _future = _service.fetchShopCatalog();
-
-  @override
-  void dispose() {
-    _service.close();
-    super.dispose();
-  }
-
-  Future<void> _redeem(ShopItem item) async {
-    await _service.redeem(item.skuId);
-    if (item.type == 'penStyle') {
-      await UserCosmeticsPrefs.instance.equipPenStyle(item.skuId);
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('已兑换 ${item.name}')));
-    setState(() => _future = _service.fetchShopCatalog());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _ScaffoldShell(
-      title: '晶石商城',
-      actions: [
-        TextButton(
-          onPressed:
-              () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const GeekShopPage())),
-          child: const Text('工具局'),
-        ),
-      ],
-      child: FutureBuilder<ShopCatalog>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return _loadingOrError(
-              snapshot,
-              () => setState(() => _future = _service.fetchShopCatalog()),
-            );
-          }
-          final catalog = snapshot.data!;
-          return ListView(
-            padding: const EdgeInsets.all(AppSpacing.pageEdge),
-            children: [
-              _InfoCard(
-                title: '晶石余额',
-                subtitle: '${catalog.balance} 颗 · 晶石只能靠讲题和悬赏获得',
-                icon: Icons.diamond_outlined,
-              ),
-              const SizedBox(height: 12),
-              ...catalog.items.map(
-                (item) =>
-                    _ShopItemCard(item: item, onRedeem: () => _redeem(item)),
-              ),
-              const SizedBox(height: 12),
-              FutureBuilder<Map<String, dynamic>>(
-                future: _service.fetchLedger(),
-                builder: (context, ledger) {
-                  final raw = ledger.data?['ledger'];
-                  final rows = raw is List ? raw.take(5).toList() : const [];
-                  if (rows.isEmpty) return const _EmptyCard('暂无晶石流水。');
-                  return _InfoCard(
-                    title: '最近流水',
-                    subtitle: rows
-                        .map((e) => '${e['amount']} · ${e['reason']}')
-                        .join('\n'),
-                    icon: Icons.receipt_long_outlined,
-                  );
-                },
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class GeekShopPage extends StatefulWidget {
-  const GeekShopPage({super.key});
-
-  @override
-  State<GeekShopPage> createState() => _GeekShopPageState();
-}
-
-class _GeekShopPageState extends State<GeekShopPage> {
-  final _service = Round12Service();
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _address = TextEditingController();
@@ -391,24 +301,33 @@ class _GeekShopPageState extends State<GeekShopPage> {
   }
 
   Future<void> _redeem(ShopItem item) async {
+    final shipName = _name.text.trim();
+    final shipPhone = _phone.text.trim();
+    if (shipName.isEmpty || shipPhone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写收货人和电话')),
+      );
+      return;
+    }
     await _service.redeem(
       item.skuId,
       address: {
-        'name': _name.text.trim(),
-        'phone': _phone.text.trim(),
+        'name': shipName,
+        'phone': shipPhone,
         'address': _address.text.trim(),
       },
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('${item.name} 兑换申请已提交，状态 pending。')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${item.name} 兑换已提交，等待发货（占位奖品）')),
+    );
+    setState(() => _future = _service.fetchShopCatalog());
   }
 
   @override
   Widget build(BuildContext context) {
     return _ScaffoldShell(
-      title: '极客学习工具局',
+      title: '晶石商城',
       child: FutureBuilder<ShopCatalog>(
         future: _future,
         builder: (context, snapshot) {
@@ -418,17 +337,42 @@ class _GeekShopPageState extends State<GeekShopPage> {
               () => setState(() => _future = _service.fetchShopCatalog()),
             );
           }
+          final catalog = snapshot.data!;
+          final stationery = catalog.items;
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.pageEdge),
             children: [
+              _InfoCard(
+                title: '晶石余额',
+                subtitle: '${catalog.balance} 颗 · 仅可兑换实物文具（占位奖品）',
+                icon: Icons.diamond_outlined,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '收货信息',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
               _TextField(controller: _name, label: '收货人'),
               _TextField(controller: _phone, label: '电话'),
-              _TextField(controller: _address, label: '地址'),
-              const SizedBox(height: 12),
-              ...snapshot.data!.geekSkus.map(
-                (item) =>
-                    _ShopItemCard(item: item, onRedeem: () => _redeem(item)),
+              _TextField(controller: _address, label: '地址（省市区 + 详细地址）'),
+              const SizedBox(height: 16),
+              Text(
+                '文具兑换',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
+              const SizedBox(height: 8),
+              if (stationery.isEmpty)
+                const _EmptyCard('暂无文具商品，稍后再来看看。')
+              else
+                ...stationery.map(
+                  (item) =>
+                      _ShopItemCard(item: item, onRedeem: () => _redeem(item)),
+                ),
               const SizedBox(height: 12),
               FutureBuilder<Map<String, dynamic>>(
                 future: _service.fetchOrders(),
@@ -436,7 +380,7 @@ class _GeekShopPageState extends State<GeekShopPage> {
                   final raw = orders.data?['orders'];
                   final rows = raw is List ? raw : const [];
                   return _InfoCard(
-                    title: '我的订单',
+                    title: '我的兑换订单',
                     subtitle:
                         rows.isEmpty
                             ? '暂无订单'
@@ -444,6 +388,22 @@ class _GeekShopPageState extends State<GeekShopPage> {
                                 .map((e) => '${e['skuId']} · ${e['status']}')
                                 .join('\n'),
                     icon: Icons.local_shipping_outlined,
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              FutureBuilder<Map<String, dynamic>>(
+                future: _service.fetchLedger(),
+                builder: (context, ledger) {
+                  final raw = ledger.data?['ledger'];
+                  final rows = raw is List ? raw.take(5).toList() : const [];
+                  if (rows.isEmpty) return const _EmptyCard('暂无晶石流水。');
+                  return _InfoCard(
+                    title: '最近流水',
+                    subtitle: rows
+                        .map((e) => '${e['amount']} · ${e['reason']}')
+                        .join('\n'),
+                    icon: Icons.receipt_long_outlined,
                   );
                 },
               ),
@@ -806,14 +766,15 @@ class _ShopItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final desc =
+        item.description.trim().isEmpty
+            ? '占位文具 · 提交后订单状态为 pending'
+            : item.description.trim();
     return _InfoCard(
       title: item.name,
-      subtitle: '${item.crystalCost} 晶石 · ${item.type}\n点兑换后返回讲题页可看到笔迹变化。',
-      icon:
-          item.type == 'physical'
-              ? Icons.inventory_2_outlined
-              : Icons.brush_outlined,
-    ).withButton(onRedeem);
+      subtitle: '${item.crystalCost} 晶石\n$desc',
+      icon: Icons.inventory_2_outlined,
+    ).withButton(onRedeem, label: '兑换');
   }
 }
 
@@ -835,14 +796,14 @@ class _TextField extends StatelessWidget {
 }
 
 extension on Widget {
-  Widget withButton(VoidCallback onPressed) {
+  Widget withButton(VoidCallback onPressed, {String label = '兑换'}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         this,
         Align(
           alignment: Alignment.centerRight,
-          child: FilledButton(onPressed: onPressed, child: const Text('兑换')),
+          child: FilledButton(onPressed: onPressed, child: Text(label)),
         ),
         const SizedBox(height: 8),
       ],

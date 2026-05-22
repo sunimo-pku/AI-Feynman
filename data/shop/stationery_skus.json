@@ -1,0 +1,58 @@
+[
+  {
+    "skuId": "stat-notebook-a5",
+    "name": "A5 费曼错题本",
+    "type": "physical",
+    "crystalCost": 88,
+    "description": "占位文具 · 120 页活页，封面款式随机"
+  },
+  {
+    "skuId": "stat-compass-set",
+    "name": "专业圆规套装",
+    "type": "physical",
+    "crystalCost": 120,
+    "description": "占位文具 · 圆规 + 笔芯 + 收纳盒"
+  },
+  {
+    "skuId": "stat-pencil-2b",
+    "name": "2B 铅笔 12 支装",
+    "type": "physical",
+    "crystalCost": 45,
+    "description": "占位文具 · 适合演算与作图"
+  },
+  {
+    "skuId": "stat-eraser-pack",
+    "name": "绘图橡皮 4 块装",
+    "type": "physical",
+    "crystalCost": 35,
+    "description": "占位文具 · 少屑款（示意）"
+  },
+  {
+    "skuId": "stat-ruler-set",
+    "name": "直尺 + 三角板套装",
+    "type": "physical",
+    "crystalCost": 55,
+    "description": "占位文具 · 透明款 15cm / 30° 60°"
+  },
+  {
+    "skuId": "stat-highlighter-3",
+    "name": "荧光笔 3 色套装",
+    "type": "physical",
+    "crystalCost": 42,
+    "description": "占位文具 · 标注重点步骤"
+  },
+  {
+    "skuId": "stat-draft-pad",
+    "name": "A4 草稿本 2 本",
+    "type": "physical",
+    "crystalCost": 50,
+    "description": "占位文具 · 讲题前打草稿用"
+  },
+  {
+    "skuId": "stat-pencil-case",
+    "name": "简约笔袋",
+    "type": "physical",
+    "crystalCost": 68,
+    "description": "占位文具 · 可装圆规与铅笔"
+  }
+]

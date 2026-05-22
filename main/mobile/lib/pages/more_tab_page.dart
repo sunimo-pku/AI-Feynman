@@ -25,8 +25,8 @@ class MoreTabPage extends StatelessWidget {
         () => const DailyChallengePage(),
       ),
       _MoreTool(
-        '晶石奖励',
-        '兑换画笔皮肤等',
+        '晶石商城',
+        '兑换实物文具（占位奖品）',
         Icons.diamond_outlined,
         () => const ShopPage(),
       ),

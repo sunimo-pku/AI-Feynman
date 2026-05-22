@@ -370,12 +370,14 @@ class ShopItem {
     required this.name,
     required this.type,
     required this.crystalCost,
+    this.description = '',
   });
 
   final String skuId;
   final String name;
   final String type;
   final int crystalCost;
+  final String description;
 
   factory ShopItem.fromJson(Map<String, dynamic> json) {
     return ShopItem(
@@ -383,6 +385,7 @@ class ShopItem {
       name: json['name'] as String? ?? '',
       type: json['type'] as String? ?? '',
       crystalCost: (json['crystalCost'] as num?)?.toInt() ?? 0,
+      description: json['description'] as String? ?? '',
     );
   }
 }

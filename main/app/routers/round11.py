@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -40,6 +41,7 @@ from app.services import knowledge_index
 from app.services.qwen_vision import recognize_question_image
 
 router = APIRouter(tags=["Round11"])
+logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _QUESTIONS_FILE = _PROJECT_ROOT / "data" / "questions" / "pep-junior-math-questions.json"
 _BOUNTY_FILE = _PROJECT_ROOT / "data" / "bounty" / "challenges.json"
@@ -47,15 +49,30 @@ _BOUNTY_FILE = _PROJECT_ROOT / "data" / "bounty" / "challenges.json"
 _SECTION_LABELS: dict[str, str] = {}
 _TIERS = ((900, "王者"), (600, "黄金"), (300, "白银"), (0, "青铜"))
 
-_SHOP_ITEMS = [
-    {"skuId": "pen-gold", "name": "金色流光笔迹", "type": "penStyle", "crystalCost": 30},
-    {"skuId": "frame-blue", "name": "湖青讲师头像框", "type": "avatarFrame", "crystalCost": 45},
-]
-_GEEK_SKUS = [
-    {"skuId": "geek-compass", "name": "专业圆规套装", "type": "physical", "crystalCost": 120},
-    {"skuId": "geek-timer", "name": "翻转番茄钟", "type": "physical", "crystalCost": 180},
-    {"skuId": "geek-notebook", "name": "费曼错题本", "type": "physical", "crystalCost": 90},
-]
+_STATIONERY_SKUS_FILE = _PROJECT_ROOT / "data" / "shop" / "stationery_skus.json"
+
+
+def _load_stationery_skus() -> list[dict]:
+    try:
+        raw = json.loads(_STATIONERY_SKUS_FILE.read_text(encoding="utf-8"))
+        if isinstance(raw, list):
+            return [x for x in raw if isinstance(x, dict) and x.get("skuId")]
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("[shop] failed to load stationery_skus.json: %s", e)
+    return [
+        {
+            "skuId": "stat-notebook-a5",
+            "name": "A5 费曼错题本",
+            "type": "physical",
+            "crystalCost": 88,
+            "description": "占位文具",
+        },
+    ]
+
+
+_SHOP_ITEMS = _load_stationery_skus()
+# 第十二轮起商城仅实物文具；geekSkus 保留空数组以兼容旧客户端字段。
+_GEEK_SKUS: list[dict] = []
 class PowerAdjustRequest(BaseModel):
     section_id: str = Field(..., alias="sectionId")
     mastery_score: int = Field(0, alias="masteryScore", ge=0, le=100)
@@ -668,20 +685,29 @@ async def shop_redeem(req: RedeemRequest, user: User = Depends(require_student_u
     sku = next((x for x in [*_SHOP_ITEMS, *_GEEK_SKUS] if x["skuId"] == req.sku_id), None)
     if sku is None:
         raise HTTPException(status_code=404, detail="SKU not found.")
-    _change_crystals(db, profile, -int(sku["crystalCost"]), reason="redeem", ref_id=req.sku_id)
-    order = None
-    if sku.get("type") == "physical":
-        order = RedeemOrder(
-            order_id=uuid.uuid4().hex,
-            sku_id=req.sku_id,
-            student_id=profile.id,
-            status="pending",
-            crystal_cost=int(sku["crystalCost"]),
-            address_json=dump_json(req.address),
+    if sku.get("type") != "physical":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only physical stationery can be redeemed.",
         )
-        db.add(order)
+    addr = req.address or {}
+    if not str(addr.get("name") or "").strip() or not str(addr.get("phone") or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Shipping name and phone are required.",
+        )
+    _change_crystals(db, profile, -int(sku["crystalCost"]), reason="redeem", ref_id=req.sku_id)
+    order = RedeemOrder(
+        order_id=uuid.uuid4().hex,
+        sku_id=req.sku_id,
+        student_id=profile.id,
+        status="pending",
+        crystal_cost=int(sku["crystalCost"]),
+        address_json=dump_json(req.address),
+    )
+    db.add(order)
     db.commit()
-    return {"ok": True, "skuId": req.sku_id, "orderId": order.order_id if order else "", "status": order.status if order else "owned"}
+    return {"ok": True, "skuId": req.sku_id, "orderId": order.order_id, "status": order.status}
 
 
 @router.get("/shop/orders")

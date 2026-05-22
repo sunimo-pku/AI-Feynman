@@ -749,7 +749,7 @@ git push origin main
   污染成错误章节，调试体验比直接报错更差。
 - **回放上传必须吞失败**：`ReplayService.finishAndUpload()` 只服务家长端回看，失败不能影响学生完成态、进度写入或下一题。调试看 `ai_feynman.replay` 日志。
 - **流式 ASR 接线要标明 mode**：有 `VOLC_ASR_STREAM_*` 时走 `asr_mode=stream`；未配置或调用失败时必须显式报错，不能静默伪装成流式，也不能降级成窗口式 ASR。
-- **商城皮肤是本地 prefs + 画笔渲染联动**：兑换 `pen-gold` 后写 `UserCosmeticsPrefs`，讲题页 `HandCanvas` 订阅并立即变成金色粗笔；不要只扣晶石不改白板。
+- **商城仅实物文具占位**：SKU 来自 `data/shop/stationery_skus.json`，`/shop/redeem` 只接受 `type=physical` 且必填收货人/电话；`geekSkus` 与装扮类 SKU 已下线。`UserCosmeticsPrefs` 仍保留给历史本地数据，新兑换不再写 penStyle。
 - **全册题库以 JSON 为准**：`data/questions/pep-junior-math-questions.json` 由 `scripts/generate_section_questions.py` 生成并同步到 Flutter asset；当前口径是 90 个小节 × 基础/巩固/挑战 3 题，非 16 章用 `quality=generated_seed` 标记，后续逐章教研校对。
 - **每日挑战改为逐步选择题 + 白板语音**：`wrongSolution` 由后端拆成
   `stepQuizzes`（`ok` / `wrong` / `unsure`）；`/bounty/submit` 必传
