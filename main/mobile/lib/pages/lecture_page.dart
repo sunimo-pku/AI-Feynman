@@ -153,6 +153,7 @@ class _LecturePageState extends State<LecturePage> {
   late List<LectureQuestion> _questions;
   int _questionIndex = 0;
   late LectureQuestion _question;
+  bool _questionsLoading = true;
 
   final List<AgentTurn> _turns = <AgentTurn>[];
 
@@ -258,54 +259,78 @@ class _LecturePageState extends State<LecturePage> {
     super.initState();
     final repo = MockLectureRepository.instance;
     if (widget.questionOverride != null) {
+      _questionsLoading = false;
       _questions = [widget.questionOverride!];
       _questionIndex = 0;
       _question = widget.questionOverride!;
     } else {
-      // 第七轮：题库一次性加载，后续翻题只动 [_questionIndex] —— 仓库本身
-      // 是不可变 const list，多次调用 questionsForSection 也安全，但保留
-      // 一份快照能让讲题页所有 sub-widget 看到的题序保持一致。
+      // 先用占位题撑住 UI；[_bootstrapQuestions] await 全册 JSON 后再刷新。
       _questions = repo.questionsForSection(widget.section.id);
-      // 第八轮：优先用 widget.initialQuestionId 定位（来自回顾页「再讲这题」）,
-      // 命中失败时回落 widget.initialQuestionIndex，再不行回落第 1 题。
-      _questionIndex = _resolveInitialQuestionIndex();
-      if (widget.initialQuestionId == null &&
-          widget.initialQuestionIndex == null) {
-        _questionIndex = _recommendedInitialQuestionIndex();
-      }
-      _question =
-          _questions.isEmpty
-              ? repo.questionForSection(widget.section.id)
-              : _questions[_questionIndex];
+      _questionIndex = 0;
+      _question = _questions.first;
+      _questionsLoading = true;
     }
     _turns.add(_introTurn());
     _canvasController.addListener(_onCanvasChanged);
     _reasonPlayback.addListener(_onReasonPlaybackChanged);
     _wireLiveServices();
     UserCosmeticsPrefs.instance.load();
-    unawaited(_ensureAssetBankLoaded());
+    unawaited(_bootstrapQuestions());
   }
 
-  /// 题库 JSON 在 [StudentMainShell] 里异步加载；若进讲题页时尚未完成，
-  /// 会先拿到 stub 题（无配图）。加载完成后按 questionId 刷新本题列表。
-  Future<void> _ensureAssetBankLoaded() async {
+  /// 必须 await 全册 JSON，否则首帧拿到 stub 题（无 `image`）且配图永远不出现。
+  Future<void> _bootstrapQuestions() async {
+    if (widget.questionOverride != null) return;
     final repo = MockLectureRepository.instance;
-    await repo.loadAssetBank();
-    if (!mounted || widget.questionOverride != null) return;
-    final fresh = repo.questionsForSection(widget.section.id);
-    if (fresh.isEmpty) return;
-    var idx = _questionIndex % fresh.length;
-    for (var i = 0; i < fresh.length; i++) {
-      if (fresh[i].questionId == _question.questionId) {
-        idx = i;
-        break;
-      }
+    try {
+      await repo.loadAssetBank();
+    } catch (e, st) {
+      debugPrint('loadAssetBank failed: $e\n$st');
+      if (mounted) setState(() => _questionsLoading = false);
+      return;
     }
+    if (!mounted) return;
+    final fresh = repo.questionsForSection(widget.section.id);
+    if (fresh.isEmpty) {
+      setState(() => _questionsLoading = false);
+      return;
+    }
+    final idx = _resolveQuestionIndex(fresh);
+    final next = fresh[idx];
     setState(() {
       _questions = fresh;
       _questionIndex = idx;
-      _question = fresh[idx];
+      _question = next;
+      _questionsLoading = false;
     });
+    await _precacheQuestionImage(next);
+  }
+
+  int _resolveQuestionIndex(List<LectureQuestion> questions) {
+    if (questions.isEmpty) return 0;
+    final wantedId = widget.initialQuestionId;
+    if (wantedId != null && wantedId.isNotEmpty) {
+      for (var i = 0; i < questions.length; i++) {
+        if (questions[i].questionId == wantedId) return i;
+      }
+    }
+    final raw = widget.initialQuestionIndex;
+    if (raw != null) return raw % questions.length;
+    return _recommendedInitialQuestionIndex(questions);
+  }
+
+  Future<void> _precacheQuestionImage(LectureQuestion question) async {
+    final asset = question.image?.asset;
+    if (asset == null || asset.isEmpty || !mounted) return;
+    try {
+      final loader = SvgAssetLoader(asset);
+      await svg.cache.putIfAbsent(
+        loader.cacheKey(null),
+        () => loader.loadBytes(null),
+      );
+    } catch (_) {
+      // 预加载失败时仍交给 SvgPicture.errorBuilder 展示
+    }
   }
 
   /// 把 [_audioService] 与 [_liveService] 的所有事件流串到 setState 上。
@@ -322,32 +347,14 @@ class _LecturePageState extends State<LecturePage> {
     _audioStatusSub = _audioService.statusStream.listen(_onAudioStatus);
   }
 
-  /// 解析 [LecturePage.initialQuestionId] / [LecturePage.initialQuestionIndex]
-  /// 为合法的 `_questionIndex`（已经做过 modulo 与空题库防御）。
-  ///
-  /// 第八轮新增。被 [initState] 一次性调用，并不暴露给后续切题逻辑。
-  int _resolveInitialQuestionIndex() {
-    if (_questions.isEmpty) return 0;
-    final wantedId = widget.initialQuestionId;
-    if (wantedId != null && wantedId.isNotEmpty) {
-      for (var i = 0; i < _questions.length; i++) {
-        if (_questions[i].questionId == wantedId) return i;
-      }
-    }
-    final raw = widget.initialQuestionIndex;
-    if (raw == null) return 0;
-    // 与第七轮 `MockLectureRepository.questionForSection` 同口径：负数 /
-    // 越界都走 modulo，不抛异常 —— Dart 的 `%` 对负数返回非负余数。
-    return raw % _questions.length;
-  }
-
-  int _recommendedInitialQuestionIndex() {
-    if (_questions.isEmpty) return 0;
+  int _recommendedInitialQuestionIndex([List<LectureQuestion>? source]) {
+    final questions = source ?? _questions;
+    if (questions.isEmpty) return 0;
     final mastery =
         ProgressRepository.instance.progressFor(widget.section.id).masteryScore;
     final preferred = mastery >= 60 ? 3 : (mastery >= 30 ? 2 : 1);
-    for (var i = 0; i < _questions.length; i++) {
-      if (_questions[i].difficulty >= preferred) return i;
+    for (var i = 0; i < questions.length; i++) {
+      if (questions[i].difficulty >= preferred) return i;
     }
     return 0;
   }
@@ -1204,6 +1211,7 @@ class _LecturePageState extends State<LecturePage> {
         ..clear()
         ..add(_introTurn());
     });
+    unawaited(_precacheQuestionImage(_question));
   }
 
   /// 「再讲一遍」：保留**同一道题**，但清空多轮历史 / 画布 / 输入区,
@@ -2233,7 +2241,9 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   Widget _buildQuestionDock({required int order, required int total}) {
-    final maxDockHeight = MediaQuery.sizeOf(context).height * 0.32;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final hasImage = _question.image != null;
+    final maxDockHeight = screenH * (hasImage ? 0.46 : 0.32);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -2287,9 +2297,22 @@ class _LecturePageState extends State<LecturePage> {
             clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-              child: _QuestionCard(
-                question: _question,
-              ),
+              child:
+                  _questionsLoading
+                      ? const SizedBox(
+                        height: 120,
+                        child: Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                      : _QuestionCard(
+                        key: ValueKey(_question.questionId),
+                        question: _question,
+                      ),
             ),
           ),
         ),
@@ -2931,7 +2954,7 @@ class _MasteryDeltaRow extends StatelessWidget {
 }
 
 class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({required this.question});
+  const _QuestionCard({super.key, required this.question});
 
   final LectureQuestion question;
 
@@ -2977,67 +3000,60 @@ class _QuestionImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: image.alt,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final w = constraints.maxWidth.isFinite ? constraints.maxWidth : 320.0;
-          final h = (w * 0.52).clamp(120.0, 200.0);
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppPalette.surface,
-              borderRadius: AppRadius.cardR,
-              border: Border.all(color: AppPalette.outline),
-            ),
-            child: SvgPicture.asset(
-              image.asset,
-              width: w - 20,
-              height: h,
-              fit: BoxFit.contain,
-              alignment: Alignment.center,
-              placeholderBuilder:
-                  (context) => SizedBox(
-                    height: h,
-                    child: const Center(
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: AppPalette.surfaceElevated,
+          borderRadius: AppRadius.cardR,
+          border: Border.all(color: AppPalette.outline),
+        ),
+        padding: const EdgeInsets.all(8),
+        child: AspectRatio(
+          aspectRatio: 420 / 220,
+          child: SvgPicture.asset(
+            image.asset,
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
+            semanticsLabel: image.alt,
+            placeholderBuilder:
+                (context) => const Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+            errorBuilder: (context, error, stackTrace) {
+              debugPrint('Question SVG failed ${image.asset}: $error');
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.image_not_supported_outlined,
+                    color: AppPalette.textSecondary,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    image.alt,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppPalette.textSecondary,
                     ),
                   ),
-              errorBuilder: (context, error, stackTrace) {
-                return SizedBox(
-                  height: h,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.image_not_supported_outlined,
-                        color: AppPalette.textSecondary,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        image.alt,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppPalette.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '配图未能加载',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppPalette.error,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 4),
+                  Text(
+                    '配图未能加载',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: AppPalette.error,
+                    ),
                   ),
-                );
-              },
-            ),
-          );
-        },
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
