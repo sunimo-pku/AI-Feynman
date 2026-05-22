@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
+import '../data/lecture_models.dart';
 import '../theme/app_theme.dart';
+import 'agent_avatar.dart';
 
 enum StudyPanelTone { surface, primary, accent, quiet, danger }
 
@@ -47,9 +50,10 @@ class StudyPanel extends StatelessWidget {
     super.key,
     required this.child,
     this.tone = StudyPanelTone.surface,
-    this.padding = const EdgeInsets.all(18),
+    this.padding = const EdgeInsets.all(20),
     this.margin = EdgeInsets.zero,
     this.radius = AppRadius.cardR,
+    this.elevated = false,
   });
 
   final Widget child;
@@ -57,33 +61,28 @@ class StudyPanel extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final EdgeInsetsGeometry margin;
   final BorderRadius radius;
+  final bool elevated;
 
   @override
   Widget build(BuildContext context) {
     final colors = _PanelColors.forTone(tone);
+    final showShadow = tone != StudyPanelTone.quiet;
     return Container(
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
         color: colors.background,
         borderRadius: radius,
-        border: Border.all(color: colors.border),
-        boxShadow:
-            tone == StudyPanelTone.quiet
-                ? null
-                : [
-                  BoxShadow(
-                    color: AppPalette.textPrimary.withValues(alpha: 0.035),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
+        boxShadow: showShadow
+            ? (elevated ? AppShadows.paperElevated : AppShadows.paper)
+            : null,
       ),
       child: child,
     );
   }
 }
 
+/// 区块标题：左色条 + 文字，无图标底框。
 class SectionHeader extends StatelessWidget {
   const SectionHeader({
     super.key,
@@ -92,6 +91,7 @@ class SectionHeader extends StatelessWidget {
     this.icon,
     this.action,
     this.accent = AppPalette.primary,
+    this.showAccentBar = true,
   });
 
   final String title;
@@ -99,23 +99,26 @@ class SectionHeader extends StatelessWidget {
   final IconData? icon;
   final Widget? action;
   final Color accent;
+  final bool showAccentBar;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (icon != null) ...[
+        if (showAccentBar)
           Container(
-            width: 36,
-            height: 36,
+            width: 3,
+            height: subtitle == null ? 20 : 36,
+            margin: const EdgeInsets.only(top: 2, right: 10),
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
+              color: accent,
+              borderRadius: BorderRadius.circular(2),
             ),
-            child: Icon(icon, size: 20, color: accent),
           ),
-          const SizedBox(width: 10),
+        if (icon != null && !showAccentBar) ...[
+          Icon(icon, size: 18, color: accent),
+          const SizedBox(width: 8),
         ],
         Expanded(
           child: Column(
@@ -123,7 +126,7 @@ class SectionHeader extends StatelessWidget {
             children: [
               Text(title, style: Theme.of(context).textTheme.titleMedium),
               if (subtitle != null) ...[
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(subtitle!, style: Theme.of(context).textTheme.bodySmall),
               ],
             ],
@@ -155,7 +158,6 @@ class PrimaryActionBar extends StatelessWidget {
   }
 }
 
-/// 区块小标题（不包大面板）。
 class StudySectionTitle extends StatelessWidget {
   const StudySectionTitle({
     super.key,
@@ -171,7 +173,7 @@ class StudySectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -182,16 +184,16 @@ class StudySectionTitle extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 if (subtitle != null) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle!,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppPalette.textSecondary,
-                      height: 1.35,
+                      height: 1.4,
                     ),
                   ),
                 ],
@@ -205,7 +207,6 @@ class StudySectionTitle extends StatelessWidget {
   }
 }
 
-/// 单条紧凑行：用于分组列表内，避免「一行一条大卡片」。
 class StudyDenseTile extends StatelessWidget {
   const StudyDenseTile({
     super.key,
@@ -216,6 +217,7 @@ class StudyDenseTile extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.dense = false,
+    this.showIconBox = false,
   });
 
   final String title;
@@ -225,6 +227,7 @@ class StudyDenseTile extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool dense;
+  final bool showIconBox;
 
   @override
   Widget build(BuildContext context) {
@@ -235,15 +238,18 @@ class StudyDenseTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (icon != null) ...[
-            Container(
-              width: dense ? 32 : 36,
-              height: dense ? 32 : 36,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: dense ? 18 : 20, color: accent),
-            ),
+            if (showIconBox)
+              Container(
+                width: dense ? 32 : 36,
+                height: dense ? 32 : 36,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: dense ? 18 : 20, color: accent),
+              )
+            else
+              Icon(icon, size: dense ? 18 : 20, color: accent),
             const SizedBox(width: 10),
           ],
           Expanded(
@@ -254,7 +260,7 @@ class StudyDenseTile extends StatelessWidget {
                   title,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
-                    height: 1.25,
+                    height: 1.3,
                   ),
                 ),
                 if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
@@ -263,7 +269,7 @@ class StudyDenseTile extends StatelessWidget {
                     subtitle!,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppPalette.textSecondary,
-                      height: 1.35,
+                      height: 1.4,
                     ),
                   ),
                 ],
@@ -286,13 +292,37 @@ class StudyDenseTile extends StatelessWidget {
   }
 }
 
-/// 多条 [StudyDenseTile] 合在一个面板里，中间细分割线。
+class StudyListRow extends StatelessWidget {
+  const StudyListRow({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return StudyDenseTile(
+      title: title,
+      subtitle: subtitle,
+      trailing: trailing ?? const Icon(Icons.chevron_right, size: 20, color: AppPalette.textSecondary),
+      onTap: onTap,
+    );
+  }
+}
+
 class StudyGroupedPanel extends StatelessWidget {
   const StudyGroupedPanel({
     super.key,
     required this.children,
     this.tone = StudyPanelTone.surface,
-    this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
     this.margin = EdgeInsets.zero,
   });
 
@@ -311,7 +341,7 @@ class StudyGroupedPanel extends StatelessWidget {
     for (var i = 0; i < visible.length; i++) {
       body.add(visible[i]);
       if (i < visible.length - 1) {
-        body.add(const Divider(height: 1, thickness: 1));
+        body.add(const Divider(height: 1));
       }
     }
     return StudyPanel(
@@ -326,7 +356,6 @@ class StudyGroupedPanel extends StatelessWidget {
   }
 }
 
-/// 空状态：轻提示，不用整屏大卡片。
 class StudyEmptyHint extends StatelessWidget {
   const StudyEmptyHint(this.text, {super.key});
 
@@ -335,31 +364,30 @@ class StudyEmptyHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 4),
       child: Text(
         text,
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: AppPalette.textSecondary,
-          height: 1.45,
+          height: 1.5,
         ),
       ),
     );
   }
 }
 
-/// 行内反馈条（成功 / 提示 / 错误），替代全宽 InfoCard。
 class StudyInlineBanner extends StatelessWidget {
   const StudyInlineBanner({
     super.key,
     required this.message,
     this.tone = StudyPanelTone.quiet,
-    this.icon = Icons.info_outline,
+    this.icon,
   });
 
   final String message;
   final StudyPanelTone tone;
-  final IconData icon;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -369,21 +397,26 @@ class StudyInlineBanner extends StatelessWidget {
       StudyPanelTone.primary => AppPalette.primary,
       _ => AppPalette.textSecondary,
     };
-    return StudyPanel(
-      tone: tone,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    return Container(
       margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: AppRadius.cardR,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: accent),
-          const SizedBox(width: 8),
+          if (icon != null) ...[
+            Icon(icon, size: 18, color: accent),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Text(
               message,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppPalette.textPrimary,
-                height: 1.4,
+                height: 1.5,
               ),
             ),
           ),
@@ -393,7 +426,107 @@ class StudyInlineBanner extends StatelessWidget {
   }
 }
 
-/// 2 列工具入口（今日 / 更多 Tab 复用）。
+/// 同伴旁听提示：小明 / 大雄 / 班长会在旁边听。
+class StudyCompanionRow extends StatelessWidget {
+  const StudyCompanionRow({
+    super.key,
+    this.message = '小明、大雄和班长会在旁边听你讲',
+  });
+
+  final String message;
+
+  static const _roles = [
+    AgentRole.xiaoming,
+    AgentRole.daxiong,
+    AgentRole.monitor,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 72,
+            height: 32,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (var i = 0; i < _roles.length; i++)
+                  Positioned(
+                    left: i * 20.0,
+                    child: AgentAvatar(role: _roles[i], size: 32, ringWidth: 1),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppPalette.textSecondary,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class StudySoftTag extends StatelessWidget {
+  const StudySoftTag({
+    super.key,
+    required this.text,
+    this.accent = AppPalette.primary,
+  });
+
+  final String text;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: AppRadius.capsuleR,
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: accent,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
+/// 指标标签（叙事化文案，无边框）。
+class StudyStatPill extends StatelessWidget {
+  const StudyStatPill({
+    super.key,
+    required this.label,
+    required this.value,
+    this.icon,
+    this.accent = AppPalette.primary,
+  });
+
+  final String label;
+  final String value;
+  final IconData? icon;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return StudySoftTag(text: '$label · $value', accent: accent);
+  }
+}
+
 class StudyToolGrid extends StatelessWidget {
   const StudyToolGrid({super.key, required this.cells});
 
@@ -443,45 +576,39 @@ class _StudyToolTile extends StatelessWidget {
     return Material(
       color: AppPalette.surface,
       borderRadius: AppRadius.cardR,
+      elevation: 0,
+      shadowColor: AppPalette.ink.withValues(alpha: 0.05),
       child: InkWell(
         borderRadius: AppRadius.cardR,
         onTap: cell.onTap,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+        child: Ink(
           decoration: BoxDecoration(
             borderRadius: AppRadius.cardR,
-            border: Border.all(color: AppPalette.outlineSoft),
+            boxShadow: AppShadows.paper,
           ),
+          padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: cell.color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(cell.icon, color: cell.color, size: 20),
-              ),
-              const SizedBox(height: 8),
+              Icon(cell.icon, color: cell.color, size: 22),
+              const SizedBox(height: 10),
               Text(
                 cell.label,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
-                  height: 1.2,
+                  height: 1.25,
                 ),
               ),
               if (cell.subtitle != null) ...[
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   cell.subtitle!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppPalette.textSecondary,
-                    height: 1.25,
-                    fontSize: 11,
+                    height: 1.35,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -493,89 +620,51 @@ class _StudyToolTile extends StatelessWidget {
   }
 }
 
-class StudyStatPill extends StatelessWidget {
-  const StudyStatPill({
+class StudyTabIcon extends StatelessWidget {
+  const StudyTabIcon({
     super.key,
-    required this.label,
-    required this.value,
-    this.icon,
-    this.accent = AppPalette.primary,
+    required this.asset,
+    this.selected = false,
+    this.size = 22,
   });
 
-  final String label;
-  final String value;
-  final IconData? icon;
-  final Color accent;
+  final String asset;
+  final bool selected;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.08),
-        borderRadius: AppRadius.buttonR,
-        border: Border.all(color: accent.withValues(alpha: 0.16)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 16, color: accent),
-            const SizedBox(width: 6),
-          ],
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppPalette.textSecondary,
-                  height: 1.2,
-                ),
-              ),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+    final color = selected ? AppPalette.primary : AppPalette.textSecondary;
+    return SvgPicture.asset(
+      asset,
+      width: size,
+      height: size,
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
     );
   }
 }
 
 class _PanelColors {
-  const _PanelColors({required this.background, required this.border});
+  const _PanelColors({required this.background});
 
   final Color background;
-  final Color border;
 
   static _PanelColors forTone(StudyPanelTone tone) {
     return switch (tone) {
       StudyPanelTone.primary => _PanelColors(
-        background: AppPalette.primary.withValues(alpha: 0.06),
-        border: AppPalette.primary.withValues(alpha: 0.12),
+        background: AppPalette.primary.withValues(alpha: 0.05),
       ),
       StudyPanelTone.accent => _PanelColors(
         background: AppPalette.primaryAccent.withValues(alpha: 0.06),
-        border: AppPalette.primaryAccent.withValues(alpha: 0.18),
       ),
       StudyPanelTone.quiet => const _PanelColors(
         background: AppPalette.background,
-        border: AppPalette.outline,
       ),
       StudyPanelTone.danger => _PanelColors(
         background: AppPalette.error.withValues(alpha: 0.06),
-        border: AppPalette.error.withValues(alpha: 0.24),
       ),
       StudyPanelTone.surface => const _PanelColors(
         background: AppPalette.surface,
-        border: AppPalette.outlineSoft,
       ),
     };
   }
