@@ -65,6 +65,9 @@ class AgentAvatar extends StatelessWidget {
           height: size,
           fit: BoxFit.cover,
           semanticsLabel: _semanticsLabel(role),
+          errorBuilder: (context, error, stackTrace) {
+            return _AvatarFallback(role: role, size: size);
+          },
         ),
       ),
     );
@@ -80,6 +83,33 @@ class AgentAvatar extends StatelessWidget {
       AgentRole.teacher => '李老师头像',
       AgentRole.system => '系统提示',
     };
+  }
+}
+
+/// SVG 加载失败时的圆形占位（避免空白头像）。
+class _AvatarFallback extends StatelessWidget {
+  const _AvatarFallback({required this.role, required this.size});
+
+  final AgentRole role;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AgentAvatar.accentFor(role);
+    final icon = switch (role) {
+      AgentRole.teacher => Icons.school_outlined,
+      AgentRole.classLeader || AgentRole.monitor => Icons.verified_outlined,
+      AgentRole.xiaoming => Icons.face_outlined,
+      AgentRole.daxiong => Icons.face_3_outlined,
+      AgentRole.system => Icons.info_outline,
+    };
+    return Container(
+      width: size,
+      height: size,
+      color: accent.withValues(alpha: 0.12),
+      alignment: Alignment.center,
+      child: Icon(icon, size: size * 0.48, color: accent),
+    );
   }
 }
 
