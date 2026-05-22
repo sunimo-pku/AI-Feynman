@@ -23,12 +23,12 @@ import '../services/replay_service.dart';
 import '../services/review_repository.dart';
 import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
-import '../widgets/peer_listen_status_bar.dart';
 import '../widgets/agent_message_bubble.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
+import '../widgets/lecture_orb_button.dart';
+import '../widgets/lecture_peer_rail.dart';
 import '../widgets/realtime_audio_panel.dart';
-import '../widgets/study_layout.dart';
 import 'privacy_notice_page.dart';
 
 /// 讲题页：左侧多 Agent 对话区，右侧手写板（横屏），手机竖屏降级为上下布局。
@@ -1625,393 +1625,653 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   void _scrollToBottomSoon() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_discussionScrollController.hasClients) return;
-      _discussionScrollController.animateTo(
-        _discussionScrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOut,
-      );
-    });
+    // 全屏白板布局不再展示对话 ListView；保留调用点供后续轻量 toast 等扩展。
   }
+
+  PeerAssessment? _assessmentFor(AgentRole role) {
+    bool roleMatches(AgentRole a, AgentRole b) {
+      if (a == b) return true;
+      final peer = {AgentRole.monitor, AgentRole.classLeader};
+      return peer.contains(a) && peer.contains(b);
+    }
+
+    for (final a in _peerAssessments) {
+      if (roleMatches(a.role, role)) return a;
+    }
+    return null;
+  }
+
+  AgentTurn? _latestTurnFor(AgentRole role) {
+    for (var i = _turns.length - 1; i >= 0; i--) {
+      if (_turns[i].role == role && _turns[i].text.trim().isNotEmpty) {
+        return _turns[i];
+      }
+    }
+    return null;
+  }
+
+  AgentRole? get _activeSpeakingRole {
+    if (_liveStatus != _LiveStatus.aiSpeaking ||
+        _activeStreamingTurnId.isEmpty) {
+      return null;
+    }
+    for (var i = _turns.length - 1; i >= 0; i--) {
+      if (_turns[i].turnId == _activeStreamingTurnId) {
+        return _turns[i].role;
+      }
+    }
+    return null;
+  }
+
+  bool get _teacherHasMessage =>
+      _turns.any(
+        (t) => t.role == AgentRole.teacher && t.text.trim().isNotEmpty,
+      );
+
+  void _showConfusedPeerPopover(AgentRole role) {
+    final assessment = _assessmentFor(role);
+    if (assessment == null || assessment.understood) return;
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black26,
+      builder:
+          (ctx) => Center(
+            child: LecturePeerReasonPopover(
+              assessment: assessment,
+              onPlay:
+                  () => unawaited(_reasonPlayback.playPeer(role)),
+              onHighlightSteps:
+                  assessment.highlightStepIds.isEmpty
+                      ? null
+                      : () {
+                        Navigator.of(ctx).pop();
+                        _canvasController.setHighlight(
+                          assessment.highlightStepIds,
+                        );
+                      },
+            ),
+          ),
+    );
+  }
+
+  void _showAgentMessageDialog(AgentRole role) {
+    final assessment = _assessmentFor(role);
+    if (assessment != null && !assessment.understood) {
+      _showConfusedPeerPopover(role);
+      return;
+    }
+    final turn = _latestTurnFor(role);
+    if (turn == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_defaultDisplayName(role)}还没有发言')),
+      );
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black26,
+      builder:
+          (ctx) => Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: Material(
+                color: Colors.transparent,
+                child: AgentMessageBubble(
+                  turn: turn,
+                  isHighlighted: turn.highlightStepIds.any(
+                    _canvasController.highlightStepIds.contains,
+                  ),
+                  onHighlightTap:
+                      turn.highlightStepIds.isEmpty
+                          ? null
+                          : () {
+                            Navigator.of(ctx).pop();
+                            _canvasController.setHighlight(
+                              turn.highlightStepIds,
+                            );
+                          },
+                ),
+              ),
+            ),
+          ),
+    );
+  }
+
+  void _showQuestionSheet() {
+    final total = _questions.isEmpty ? 1 : _questions.length;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (ctx) => DraggableScrollableSheet(
+            initialChildSize: 0.42,
+            minChildSize: 0.28,
+            maxChildSize: 0.75,
+            builder:
+                (_, scroll) => Container(
+                  decoration: const BoxDecoration(
+                    color: AppPalette.surface,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: ListView(
+                    controller: scroll,
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppPalette.outline,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _QuestionCard(
+                        question: _question,
+                        order: _questionIndex + 1,
+                        total: total,
+                      ),
+                    ],
+                  ),
+                ),
+          ),
+    );
+  }
+
+  void _showCompletionSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder:
+          (ctx) => Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _LectureSummaryCard(
+                  summary: _lastSummary,
+                  progress: _sectionProgressAfterCompletion,
+                  gained: _lastMasteryGain,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    LectureOrbButton(
+                      icon: Icons.history,
+                      tooltip: '再讲一遍',
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        _onReplay();
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    LectureOrbButton(
+                      icon: Icons.east,
+                      tooltip: '下一题',
+                      filled: true,
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        _onContinue();
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+    );
+  }
+
+  void _showFallbackInputSheet() {
+    if (_canvasController.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('先在白板上写一两行思路。')));
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (ctx) => Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+            ),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: AppPalette.surface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '用文字补充讲解',
+                    style: Theme.of(ctx).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 10),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.sizeOf(ctx).height * 0.4,
+                    ),
+                    child: SingleChildScrollView(
+                      child: AnimatedBuilder(
+                        animation: _canvasController,
+                        builder:
+                            (context, _) => _buildSemanticInputsPanel(context),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      LectureOrbButton(
+                        icon: Icons.send_outlined,
+                        tooltip: '提交',
+                        filled: true,
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          unawaited(_onSubmit());
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
+
+  void _showErrorDialog() {
+    final msg = _errorMessage ?? _liveFailureReason;
+    if (msg == null) return;
+    showDialog<void>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('出错了'),
+            content: Text(msg),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('关闭'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _onRetry();
+                },
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  bool get _showFallbackOrbs =>
+      _kShowLegacyTextInputByDefault ||
+      _liveStatus == _LiveStatus.disconnected ||
+      _liveStatus == _LiveStatus.permissionDenied ||
+      _liveStatus == _LiveStatus.failed;
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final isWide = media.size.width >= 720;
     final total = _questions.isEmpty ? 1 : _questions.length;
     final order = _questionIndex + 1;
+    final topPad = MediaQuery.paddingOf(context).top;
+
     return Scaffold(
       backgroundColor: AppPalette.background,
-      appBar: AppBar(
-        // 第七轮：AppBar 标题同时点出小节与"第 N / M 题"，让学生即使
-        // 滚到对话区底部也能看清自己当前在哪道题；切下一题时随题面同步。
-        title: Text('${widget.section.label} · 第 $order / $total 题'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: AnimatedBuilder(
-                // 第六轮：徽标既反映「本题第几轮」也反映「本节当前掌握度」。
-                // ProgressRepository notify 时（completed 写盘成功）自动重建。
-                animation: ProgressRepository.instance,
-                builder: (context, _) {
-                  final p = ProgressRepository.instance.progressFor(
-                    widget.section.id,
-                  );
-                  return _MasteryBadge(round: _round, progress: p);
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(isWide ? AppSpacing.pageEdge : 16),
-          child: isWide ? _buildWideLayout() : _buildNarrowLayout(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWideLayout() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildWorkspaceHeader(),
-        const SizedBox(height: AppSpacing.moduleGap),
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(flex: 38, child: _buildDiscussionPanel()),
-              const SizedBox(width: AppSpacing.moduleGap),
-              Expanded(flex: 62, child: _buildCanvasPanel()),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNarrowLayout() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildWorkspaceHeader(),
-        const SizedBox(height: AppSpacing.moduleGap),
-        Expanded(flex: 5, child: _buildDiscussionPanel()),
-        const SizedBox(height: AppSpacing.moduleGap),
-        Expanded(flex: 7, child: _buildCanvasPanel()),
-      ],
-    );
-  }
-
-  Widget _buildWorkspaceHeader() {
-    return _QuestionCard(
-      question: _question,
-      order: _questionIndex + 1,
-      total: _questions.isEmpty ? 1 : _questions.length,
-    );
-  }
-
-  Widget _buildDiscussionPanel() {
-    return StudyPanel(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.forum_outlined,
-                size: 20,
-                color: AppPalette.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'AI 同伴讨论',
-                  style: Theme.of(context).textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '小明、大雄、班长各自判断有没有听懂；都听懂后李老师才总结。',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 10),
-          AnimatedBuilder(
-            animation: _reasonPlayback,
-            builder:
-                (context, _) => PeerListenStatusBar(
-                  assessments: _peerAssessments,
-                  playingRole: _reasonPlayback.playingRole,
-                  onConfusedPeerTap:
-                      (role) => unawaited(_reasonPlayback.playPeer(role)),
-                ),
-          ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: ListView.separated(
-              controller: _discussionScrollController,
-              itemCount:
-                  _turns.length +
-                  (_status == _LectureStatus.submitting ? 1 : 0),
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                if (index >= _turns.length) {
-                  return const _ThinkingBubble();
-                }
-                final turn = _turns[index];
-                final isReasonTurn = turn.turnId?.startsWith('reason_') ?? false;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    AgentMessageBubble(
-                      turn: turn,
-                      isHighlighted: turn.highlightStepIds.any(
-                        _canvasController.highlightStepIds.contains,
-                      ),
-                      onHighlightTap:
-                          turn.highlightStepIds.isEmpty
-                              ? null
-                              : () => _canvasController.setHighlight(
-                                turn.highlightStepIds,
-                              ),
-                    ),
-                    if (isReasonTurn)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed:
-                              _reasonPlayback.isPlaying
-                                  ? null
-                                  : () => unawaited(
-                                    _reasonPlayback.playPeer(turn.role),
-                                  ),
-                          icon: const Icon(Icons.volume_up, size: 18),
-                          label: Text('听${turn.displayName}说'),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
-          if (_status == _LectureStatus.error && _errorMessage != null) ...[
-            const SizedBox(height: 12),
-            _ErrorBanner(message: _errorMessage!, onRetry: _onRetry),
-          ],
-          // 第六轮：completed 状态下展示「本题讲题小结」卡（替换第五轮的
-          // 简单 banner），随后是「再讲一遍 / 下一题」两个对等动作。
-          // 不自动清空画布，给学生留时间回看高亮。
-          if (_status == _LectureStatus.finished &&
-              _lastResponseStatus == 'completed') ...[
-            const SizedBox(height: 12),
-            _LectureSummaryCard(
-              summary: _lastSummary,
-              progress: _sectionProgressAfterCompletion,
-              gained: _lastMasteryGain,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _onReplay,
-                    icon: const Icon(Icons.history),
-                    label: const Text('再讲一遍'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _onContinue,
-                    icon: const Icon(Icons.east),
-                    label: const Text('下一题'),
-                  ),
-                ),
-              ],
-            ),
-          ] else if (_status == _LectureStatus.awaiting) ...[
-            if (_reasonPlayback.hasQueue) ...[
-              const SizedBox(height: 12),
-              _ReasonPlaybackBar(playback: _reasonPlayback),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _hintLoading ? null : _onRequestHint,
-                    icon: const Icon(Icons.lightbulb_outline),
-                    label: const Text('需要提示'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _onSubmit,
-                    icon: const Icon(Icons.mic_none),
-                    label: const Text('再讲一轮'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(onPressed: _onContinue, child: const Text('下一题')),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCanvasPanel() {
-    final canSubmit =
-        (_status == _LectureStatus.idle ||
-            _status == _LectureStatus.awaiting ||
-            _status == _LectureStatus.error) &&
-        !_canvasController.isEmpty;
-    final submitting = _status == _LectureStatus.submitting;
-    return StudyPanel(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SectionHeader(
-            title: '手写白板',
-            subtitle: '像在草稿纸上一样写步骤，讲完后交给 AI 同伴追问。',
-            icon: Icons.edit_outlined,
-            action: AnimatedBuilder(
-              animation: _canvasController,
-              builder: (context, _) {
-                final count = _canvasController.collectStepIds().length;
-                return Text(
-                  count == 0 ? '尚未书写' : '已识别 $count 步',
-                  style: Theme.of(context).textTheme.bodySmall,
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
+          Positioned.fill(
             child: AnimatedBuilder(
               animation: UserCosmeticsPrefs.instance,
               builder:
                   (context, _) => HandCanvas(
                     controller: _canvasController,
                     penStyle: UserCosmeticsPrefs.instance.penStyle,
+                    backgroundColor: AppPalette.surface,
+                    edgeToEdge: true,
                   ),
             ),
           ),
-          const SizedBox(height: 12),
-          // 第九轮：白板下方默认展示实时音频面板（替换第四轮的文字输入区）。
-          // 兜底情况下（_kShowLegacyTextInputByDefault=true 或 disconnected /
-          // permissionDenied / failed）才再展示文字输入区作为白板-only 兜底
-          // 提交的辅助。brief 第 9 节"默认不展示文字输入框，但允许白板-only
-          // 兜底提交"。
-          RealtimeAudioPanel(
-            state: _panelState,
-            onStart: _onStartLive,
-            onStop: _onStopLive,
-            onEndQuestion: _onEndLiveSession,
-            onManualPause: _onManualPause,
-            onFallbackSubmit: _onFallbackTextSubmit,
-            // 「讲题结束」按钮：只要正在听就允许学生主动收束当前语音段。
-            // 不再等待 ASR 字数，也不再根据静音自动触发。
-            canManualPause:
-                (_liveStatus == _LiveStatus.listening ||
-                    _liveStatus == _LiveStatus.paused),
-            shouldHighlightManualPause: false,
-            failureReason: _liveFailureReason,
+          Positioned(
+            left: 8,
+            top: topPad + 6,
+            right: 76,
+            child: _buildTopChrome(order: order, total: total),
           ),
-          if (_debugOcr) ...[const SizedBox(height: 12), _buildDebugOcrPanel()],
-          if (_kShowLegacyTextInputByDefault ||
-              _liveStatus == _LiveStatus.disconnected ||
-              _liveStatus == _LiveStatus.permissionDenied ||
-              _liveStatus == _LiveStatus.failed) ...[
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 240),
-              child: SingleChildScrollView(
-                child: AnimatedBuilder(
-                  animation: _canvasController,
-                  builder: (context, _) => _buildSemanticInputsPanel(context),
+          Positioned(
+            right: 10,
+            top: topPad + 72,
+            bottom: MediaQuery.paddingOf(context).bottom + 88,
+            child: AnimatedBuilder(
+              animation: _reasonPlayback,
+              builder:
+                  (context, _) => LecturePeerRail(
+                    assessments: _peerAssessments,
+                    playingRole: _reasonPlayback.playingRole,
+                    activeSpeakingRole: _activeSpeakingRole,
+                    teacherHasMessage: _teacherHasMessage,
+                    onPeerTap: _showAgentMessageDialog,
+                    onConfusedBubbleTap: _showConfusedPeerPopover,
+                    onTeacherTap: () => _showAgentMessageDialog(AgentRole.teacher),
+                  ),
+            ),
+          ),
+          Positioned(
+            left: 12,
+            bottom: MediaQuery.paddingOf(context).bottom + 12,
+            child: _buildOrbToolbar(),
+          ),
+          if (_status == _LectureStatus.submitting ||
+              _liveStatus == _LiveStatus.thinking)
+            Positioned(
+              left: 0,
+              right: 72,
+              bottom: MediaQuery.paddingOf(context).bottom + 72,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppPalette.surface.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _liveStatus == _LiveStatus.thinking
+                            ? '同伴正在想怎么追问…'
+                            : '正在让同学听讲…',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ],
-          const SizedBox(height: 12),
-          AnimatedBuilder(
-            animation: _canvasController,
-            builder: (context, _) {
-              return PrimaryActionBar(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed:
-                        _canvasController.isEmpty || submitting || _hintLoading
-                            ? null
-                            : _onRequestHint,
-                    icon: const Icon(Icons.lightbulb_outline),
-                    label: const Text('需要提示'),
-                  ),
-                  const SizedBox(width: 12),
-                  OutlinedButton.icon(
-                    onPressed:
-                        _canvasController.canUndo && !submitting
-                            ? _canvasController.undo
-                            : null,
-                    icon: const Icon(Icons.undo),
-                    label: const Text('撤销'),
-                  ),
-                  const SizedBox(width: 12),
-                  OutlinedButton.icon(
-                    onPressed:
-                        _canvasController.isEmpty || submitting
-                            ? null
-                            : _canvasController.clear,
-                    icon: const Icon(Icons.cleaning_services_outlined),
-                    label: const Text('清空'),
-                  ),
-                  const Spacer(),
-                  // 第九轮：原"提交讲解"按钮降级为兜底入口，仅当 disconnected /
-                  // permissionDenied / failed / 显式 fallback 模式下可见。
-                  if (_kShowLegacyTextInputByDefault ||
-                      _liveStatus == _LiveStatus.disconnected ||
-                      _liveStatus == _LiveStatus.permissionDenied ||
-                      _liveStatus == _LiveStatus.failed)
-                    FilledButton.icon(
-                      onPressed: canSubmit && !submitting ? _onSubmit : null,
-                      icon:
-                          submitting
-                              ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                              : Icon(
-                                _status == _LectureStatus.error
-                                    ? Icons.replay
-                                    : Icons.send_outlined,
-                              ),
-                      label: Text(_submitLabel(submitting)),
-                    ),
-                ],
-              );
-            },
-          ),
+          if (_status == _LectureStatus.error && _errorMessage != null)
+            Positioned(
+              left: 12,
+              top: topPad + 52,
+              child: LectureOrbButton(
+                icon: Icons.error_outline,
+                accent: AppPalette.error,
+                filled: true,
+                tooltip: '查看错误',
+                onPressed: _showErrorDialog,
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTopChrome({required int order, required int total}) {
+    final repo = MockLectureRepository.instance;
+    final diff = repo.difficultyLabel(_question.difficulty);
+    return Row(
+      children: [
+        LectureOrbButton(
+          icon: Icons.arrow_back,
+          tooltip: '返回',
+          size: 44,
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Material(
+            color: AppPalette.surface.withValues(alpha: 0.92),
+            shape: const StadiumBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: _showQuestionSheet,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _question.prompt,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$diff · $order/$total',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppPalette.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Icon(Icons.expand_more, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        AnimatedBuilder(
+          animation: ProgressRepository.instance,
+          builder: (context, _) {
+            final p = ProgressRepository.instance.progressFor(widget.section.id);
+            return _MasteryBadge(round: _round, progress: p);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOrbToolbar() {
+    final submitting = _status == _LectureStatus.submitting;
+    final canSubmit =
+        (_status == _LectureStatus.idle ||
+            _status == _LectureStatus.awaiting ||
+            _status == _LectureStatus.error) &&
+        !_canvasController.isEmpty;
+    final listening =
+        _liveStatus == _LiveStatus.listening ||
+        _liveStatus == _LiveStatus.paused;
+    final orbs = <Widget>[];
+
+    switch (_panelState) {
+      case RealtimeAudioPanelState.idle:
+        orbs.add(
+          LectureOrbButton(
+            icon: Icons.mic,
+            tooltip: '开始讲题',
+            filled: true,
+            onPressed: submitting ? null : _onStartLive,
+          ),
+        );
+        break;
+      case RealtimeAudioPanelState.listening:
+      case RealtimeAudioPanelState.paused:
+        orbs.addAll([
+          LectureOrbButton(
+            icon: Icons.mic,
+            tooltip: '正在听',
+            filled: true,
+            accent: AppPalette.error,
+            pulse: true,
+            onPressed: _onStopLive,
+          ),
+          LectureOrbButton(
+            icon: Icons.stop_circle_outlined,
+            tooltip: '讲题结束',
+            filled: true,
+            onPressed: listening ? _onManualPause : null,
+          ),
+        ]);
+        break;
+      case RealtimeAudioPanelState.thinking:
+        orbs.add(
+          LectureOrbButton(
+            icon: Icons.mic,
+            tooltip: '思考中',
+            loading: true,
+            onPressed: null,
+          ),
+        );
+        break;
+      case RealtimeAudioPanelState.aiSpeaking:
+        orbs.add(
+          LectureOrbButton(
+            icon: Icons.stop_circle_outlined,
+            tooltip: '结束本题',
+            filled: true,
+            onPressed: _onEndLiveSession,
+          ),
+        );
+        break;
+      case RealtimeAudioPanelState.disconnected:
+        orbs.add(
+          LectureOrbButton(
+            icon: Icons.refresh,
+            tooltip: '重新连接',
+            filled: true,
+            onPressed: _onStartLive,
+          ),
+        );
+        break;
+      case RealtimeAudioPanelState.permissionDenied:
+      case RealtimeAudioPanelState.failed:
+        orbs.add(
+          LectureOrbButton(
+            icon: Icons.mic_off,
+            tooltip: '语音不可用',
+            accent: AppPalette.error,
+            onPressed: _onFallbackTextSubmit,
+          ),
+        );
+        break;
+      case RealtimeAudioPanelState.interrupted:
+        break;
+    }
+
+    orbs.addAll([
+      LectureOrbButton(
+        icon: Icons.lightbulb_outline,
+        tooltip: '需要提示',
+        onPressed:
+            _canvasController.isEmpty || submitting || _hintLoading
+                ? null
+                : _onRequestHint,
+        loading: _hintLoading,
+      ),
+      LectureOrbButton(
+        icon: Icons.undo,
+        tooltip: '撤销',
+        onPressed:
+            _canvasController.canUndo && !submitting
+                ? _canvasController.undo
+                : null,
+      ),
+      LectureOrbButton(
+        icon: Icons.cleaning_services_outlined,
+        tooltip: '清空',
+        onPressed:
+            _canvasController.isEmpty || submitting
+                ? null
+                : _canvasController.clear,
+      ),
+    ]);
+
+    if (_showFallbackOrbs) {
+      orbs.add(
+        LectureOrbButton(
+          icon:
+              _status == _LectureStatus.error
+                  ? Icons.replay
+                  : Icons.send_outlined,
+          tooltip: '文字提交',
+          filled: true,
+          loading: submitting,
+          onPressed:
+              canSubmit && !submitting ? _showFallbackInputSheet : null,
+        ),
+      );
+    }
+
+    if (_status == _LectureStatus.finished &&
+        _lastResponseStatus == 'completed') {
+      orbs.addAll([
+        LectureOrbButton(
+          icon: Icons.history,
+          tooltip: '再讲一遍',
+          onPressed: _onReplay,
+        ),
+        LectureOrbButton(
+          icon: Icons.east,
+          tooltip: '下一题',
+          filled: true,
+          onPressed: _onContinue,
+        ),
+        LectureOrbButton(
+          icon: Icons.celebration_outlined,
+          tooltip: '查看小结',
+          accent: AppPalette.primaryAccent,
+          onPressed: _showCompletionSheet,
+        ),
+      ]);
+    } else if (_status == _LectureStatus.awaiting) {
+      orbs.add(
+        LectureOrbButton(
+          icon: Icons.skip_next,
+          tooltip: '下一题',
+          onPressed: _onContinue,
+        ),
+      );
+    }
+
+    if (_debugOcr) {
+      orbs.add(
+        LectureOrbButton(
+          icon: Icons.bug_report_outlined,
+          tooltip: 'DEBUG OCR',
+          onPressed: () => _showDebugOcrSheet(),
+        ),
+      );
+    }
+
+    return Wrap(spacing: 10, runSpacing: 10, children: orbs);
+  }
+
+  void _showDebugOcrSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: _buildDebugOcrPanel(),
       ),
     );
   }
@@ -2019,18 +2279,9 @@ class _LecturePageState extends State<LecturePage> {
   /// 实时面板的"用文字提交"入口。
   ///
   /// 当 WS / 麦克风 / 录音库出问题时，学生可以手动改用
-  /// `/lecture/submit` 路径提交本题。此入口会**强制**展示底部文字
-  /// 输入区（与 `_kShowLegacyTextInputByDefault` 等效），让学生
-  /// 把口述写进去后点「提交讲解」。
+  /// `/lecture/submit` 路径提交本题（底部 sheet 补充文字，不占白板）。
   void _onFallbackTextSubmit() {
-    if (_canvasController.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('先在白板上写一两行思路，再用文字提交。')));
-      return;
-    }
-    // 直接走原有 _onSubmit：它会根据当前白板 / 文字输入区做一次提交。
-    unawaited(_onSubmit());
+    _showFallbackInputSheet();
   }
 
   Widget _buildDebugOcrPanel() {
@@ -2265,18 +2516,6 @@ class _LecturePageState extends State<LecturePage> {
       ),
     );
   }
-
-  String _submitLabel(bool submitting) {
-    // `/lecture/submit` 内部会真实调用 DeepSeek；实时讲题优先走流式路径。
-    // 文案换成「AI 同伴思考中…」让学生知道这次是真的在等模型。
-    if (submitting) return 'AI 同伴思考中…';
-    if (_status == _LectureStatus.error) return '重新提交';
-    if (_round == 0) return '提交讲解';
-    // 第五轮：如果有 AI 追问待回答，按钮文案切到「回答追问」语境，让学生
-    // 明确「这次提交是在回答 X 的问题」而不是「重头再讲一遍」。
-    if (_pendingAiFollowupTurn != null) return '回答追问';
-    return '再讲一轮';
-  }
 }
 
 /// 输入区上方的「待回答 AI 追问」轻量提示卡：用引号简要复述 AI 上一句话，
@@ -2476,54 +2715,6 @@ class _MasteryDeltaRow extends StatelessWidget {
   }
 }
 
-class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: AppPalette.error.withValues(alpha: 0.08),
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.error.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.error_outline, color: AppPalette.error, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                color: AppPalette.error,
-                fontWeight: FontWeight.w600,
-                height: 1.45,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: onRetry,
-            style: TextButton.styleFrom(
-              foregroundColor: AppPalette.error,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              minimumSize: const Size(0, 40),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            icon: const Icon(Icons.replay, size: 18),
-            label: const Text('重试'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _QuestionCard extends StatelessWidget {
   const _QuestionCard({
     required this.question,
@@ -2709,40 +2900,6 @@ class _TagChip extends StatelessWidget {
   }
 }
 
-class _ThinkingBubble extends StatelessWidget {
-  const _ThinkingBubble();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppPalette.primary.withValues(alpha: 0.06),
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppPalette.primary,
-              backgroundColor: AppPalette.primary.withValues(alpha: 0.15),
-            ),
-          ),
-          const SizedBox(width: 10),
-          const Text(
-            'AI 同伴正在阅读你的步骤、写追问……',
-            style: TextStyle(color: AppPalette.textSecondary, fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 温和「纸张」风格输入框，遵循 `MOBILE_STYLE.md`：
 ///   * 浅米白底 + 1dp 柔和描边，不要冷调灰；
 ///   * 圆角 12，焦点态用 primary 提亮但不过分；
@@ -2885,97 +3042,6 @@ class _MasteryBadge extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
-      ),
-    );
-  }
-}
-
-/// P2：没听懂理由的 TTS 播放控制条。
-class _ReasonPlaybackBar extends StatelessWidget {
-  const _ReasonPlaybackBar({required this.playback});
-
-  final PeerReasonPlaybackService playback;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final current = playback.current;
-    final playing = playback.isPlaying;
-    final atEnd =
-        playback.currentIndex >= 0 &&
-        playback.currentIndex >= playback.queue.length - 1 &&
-        !playing;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '先听完同伴的疑问，再点「再讲一轮」补充说明。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppPalette.textSecondary,
-            ),
-          ),
-          if (playback.lastError != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              playback.lastError!,
-              style: theme.textTheme.bodySmall?.copyWith(color: AppPalette.error),
-            ),
-          ],
-          if (current != null && playing) ...[
-            const SizedBox(height: 6),
-            Text(
-              '正在播放：${current.displayName} 的理由（'
-              '${playback.currentIndex + 1}/${playback.queue.length}）',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppPalette.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ] else if (atEnd) ...[
-            const SizedBox(height: 6),
-            Text(
-              '理由已听完，可以开始再讲一轮。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF16A34A),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed:
-                      playing ? null : () => unawaited(playback.playAll()),
-                  icon: Icon(playing ? Icons.hourglass_top : Icons.playlist_play),
-                  label: Text(playing ? '播放中…' : '依次听取理由'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed:
-                      playing
-                          ? () => unawaited(playback.stop())
-                          : (playback.canPlayNext && !atEnd
-                              ? () => unawaited(playback.playNext())
-                              : null),
-                  child: Text(playing ? '停止' : '下一位'),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

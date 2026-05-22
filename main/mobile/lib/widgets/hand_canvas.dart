@@ -189,11 +189,15 @@ class HandCanvas extends StatefulWidget {
     required this.controller,
     this.backgroundColor = AppPalette.surface,
     this.penStyle = 'default',
+    this.edgeToEdge = false,
   });
 
   final HandCanvasController controller;
   final Color backgroundColor;
   final String penStyle;
+
+  /// 讲题页全屏白板：去掉卡片圆角与粗边框，占满父级区域。
+  final bool edgeToEdge;
 
   @override
   State<HandCanvas> createState() => _HandCanvasState();
@@ -208,10 +212,14 @@ class _HandCanvasState extends State<HandCanvas> {
       child: Container(
         decoration: BoxDecoration(
           color: widget.backgroundColor,
-          borderRadius: AppRadius.cardR,
-          border: Border.all(color: AppPalette.outline),
+          borderRadius:
+              widget.edgeToEdge ? BorderRadius.zero : AppRadius.cardR,
+          border:
+              widget.edgeToEdge
+                  ? null
+                  : Border.all(color: AppPalette.outline),
         ),
-        clipBehavior: Clip.antiAlias,
+        clipBehavior: widget.edgeToEdge ? Clip.hardEdge : Clip.antiAlias,
         child: Listener(
           onPointerDown: _onPointerDown,
           onPointerMove: _onPointerMove,
