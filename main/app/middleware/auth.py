@@ -99,23 +99,46 @@ def user_role(user: User) -> str:
     return (getattr(user, "role", None) or "student").strip() or "student"
 
 
+def session_role_from_credentials(
+    credentials: HTTPAuthorizationCredentials | None,
+    user: User | None = None,
+) -> str:
+    """JWT 里的 role 表示本次登录身份（student / parent），与 DB 固定 role 解耦。"""
+    if credentials:
+        payload = decode_token(credentials.credentials)
+        if payload and payload.get("role"):
+            return str(payload["role"])
+    if user is not None:
+        return user_role(user)
+    return "student"
+
+
+async def get_session_role(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    user: User | None = Depends(get_current_user),
+) -> str:
+    return session_role_from_credentials(credentials, user)
+
+
 async def require_parent_user(
     user: User = Depends(require_user),
+    session_role: str = Depends(get_session_role),
 ) -> User:
-    if user_role(user) != "parent":
+    if session_role != "parent":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Parent account required.",
+            detail="Parent session required.",
         )
     return user
 
 
 async def require_student_user(
     user: User = Depends(require_user),
+    session_role: str = Depends(get_session_role),
 ) -> User:
-    if user_role(user) != "student":
+    if session_role != "student":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Student account required.",
+            detail="Student session required.",
         )
     return user

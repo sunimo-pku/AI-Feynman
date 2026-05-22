@@ -486,7 +486,19 @@ def _run_lightweight_migrations() -> None:
 
 
 def linked_child_profile(db: Session, parent_user: User) -> StudentProfile | None:
-    """家长账号绑定的唯一孩子 profile；未绑定则 None。"""
+    """家长视图对应的孩子 profile。
+
+    统一账号：同一 User 自带 StudentProfile。
+    旧版独立家长账号：经 ParentStudentLink 绑定孩子。
+    """
+
+    own = (
+        db.query(StudentProfile)
+        .filter(StudentProfile.user_id == parent_user.id)
+        .first()
+    )
+    if own is not None:
+        return own
 
     link = (
         db.query(ParentStudentLink)

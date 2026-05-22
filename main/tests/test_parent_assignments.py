@@ -8,19 +8,38 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
 
+DEFAULT_PARENT_PASSWORD = "parent-pass-12345"
+
+
 def _register_student(client: TestClient, username: str | None = None) -> tuple[str, str]:
     username = username or f"stu{uuid.uuid4().hex[:10]}"
     password = "secret-pass-12345"
     resp = client.post(
         "/auth/register",
-        json={"username": username, "password": password, "role": "student"},
+        json={
+            "username": username,
+            "password": password,
+            "parentPassword": DEFAULT_PARENT_PASSWORD,
+            "grade": "八年级",
+        },
     )
     assert resp.status_code == 200, resp.text
     return username, password
 
 
-def _login(client: TestClient, username: str, password: str, *, parent_password: str | None = None) -> str:
-    body: dict[str, str] = {"username": username, "password": password}
+def _login(
+    client: TestClient,
+    username: str,
+    password: str,
+    *,
+    login_as: str = "student",
+    parent_password: str | None = None,
+) -> str:
+    body: dict[str, str] = {
+        "username": username,
+        "password": password,
+        "loginAs": login_as,
+    }
     if parent_password:
         body["parentPassword"] = parent_password
     resp = client.post("/auth/login", json=body)
@@ -28,22 +47,15 @@ def _login(client: TestClient, username: str, password: str, *, parent_password:
     return resp.json()["token"]
 
 
-def _register_parent(client: TestClient, child_username: str) -> tuple[str, str]:
-    username = f"par{uuid.uuid4().hex[:10]}"
+def _register_parent(client: TestClient, account_username: str) -> tuple[str, str]:
     password = "secret-pass-12345"
-    parent_password = "parent-pass-12345"
-    resp = client.post(
-        "/auth/register",
-        json={
-            "username": username,
-            "password": password,
-            "role": "parent",
-            "parentPassword": parent_password,
-            "childUsername": child_username,
-        },
+    token = _login(
+        client,
+        account_username,
+        password,
+        login_as="parent",
+        parent_password=DEFAULT_PARENT_PASSWORD,
     )
-    assert resp.status_code == 200, resp.text
-    token = _login(client, username, password, parent_password=parent_password)
     return token, password
 
 

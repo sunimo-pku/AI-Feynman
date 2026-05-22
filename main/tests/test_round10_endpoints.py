@@ -17,20 +17,42 @@ from datetime import datetime
 from fastapi.testclient import TestClient
 
 
+DEFAULT_PARENT_PASSWORD = "parent-pass-12345"
+
+
 def _register_student(
-    client: TestClient, username: str | None = None, password: str = "secret-pass-12345"
+    client: TestClient,
+    username: str | None = None,
+    password: str = "secret-pass-12345",
+    parent_password: str = DEFAULT_PARENT_PASSWORD,
 ) -> tuple[str, str]:
     username = username or f"stu{uuid.uuid4().hex[:10]}"
     resp = client.post(
         "/auth/register",
-        json={"username": username, "password": password, "role": "student"},
+        json={
+            "username": username,
+            "password": password,
+            "parentPassword": parent_password,
+            "grade": "八年级",
+        },
     )
     assert resp.status_code == 200, resp.text
     return username, password
 
 
-def _login(client: TestClient, username: str, password: str, *, parent_password: str | None = None) -> str:
-    body: dict[str, str] = {"username": username, "password": password}
+def _login(
+    client: TestClient,
+    username: str,
+    password: str,
+    *,
+    login_as: str = "student",
+    parent_password: str | None = None,
+) -> str:
+    body: dict[str, str] = {
+        "username": username,
+        "password": password,
+        "loginAs": login_as,
+    }
     if parent_password:
         body["parentPassword"] = parent_password
     resp = client.post("/auth/login", json=body)
@@ -45,25 +67,18 @@ def _register_and_login(client: TestClient, username: str | None = None) -> str:
 
 def _register_parent(
     client: TestClient,
-    child_username: str,
-    username: str | None = None,
-    password: str = "secret-pass-12345",
-    parent_password: str = "parent-pass-12345",
+    account_username: str,
+    account_password: str = "secret-pass-12345",
+    parent_password: str = DEFAULT_PARENT_PASSWORD,
 ) -> tuple[str, str, str]:
-    username = username or f"par{uuid.uuid4().hex[:10]}"
-    resp = client.post(
-        "/auth/register",
-        json={
-            "username": username,
-            "password": password,
-            "role": "parent",
-            "parentPassword": parent_password,
-            "childUsername": child_username,
-        },
+    token = _login(
+        client,
+        account_username,
+        account_password,
+        login_as="parent",
+        parent_password=parent_password,
     )
-    assert resp.status_code == 200, resp.text
-    token = _login(client, username, password, parent_password=parent_password)
-    return username, password, token
+    return account_username, account_password, token
 
 
 # ------------------------------------------------------------------ #

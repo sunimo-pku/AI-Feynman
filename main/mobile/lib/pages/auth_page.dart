@@ -5,8 +5,7 @@ import '../theme/app_theme.dart';
 
 /// 登录 / 注册页。
 ///
-/// 学生与家长为独立账号：学生仅需账号密码；家长额外需要「家长密码」。
-/// 家长注册时需填写已注册的学生用户名，系统建立 1:1 绑定。
+/// 一个账号两套密码：注册时填写账号密码 + 家长密码；登录时选择进入学生端或家长端。
 class AuthPage extends StatefulWidget {
   const AuthPage({
     super.key,
@@ -25,7 +24,7 @@ class AuthPage extends StatefulWidget {
 
 enum AuthPageMode { login, register }
 
-enum AuthAccountKind { student, parent }
+enum AuthLoginPortal { student, parent }
 
 const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
 
@@ -34,8 +33,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _parentPasswordController = TextEditingController();
-  final TextEditingController _childUsernameController = TextEditingController();
-  AuthAccountKind _accountKind = AuthAccountKind.student;
+  AuthLoginPortal _loginPortal = AuthLoginPortal.student;
   String _selectedGrade = '八年级';
 
   bool _submitting = false;
@@ -61,7 +59,6 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     _usernameController.dispose();
     _passwordController.dispose();
     _parentPasswordController.dispose();
-    _childUsernameController.dispose();
     super.dispose();
   }
 
@@ -70,49 +67,44 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
     final parentPassword = _parentPasswordController.text;
-    final childUsername = _childUsernameController.text.trim();
     if (username.length < 3 || username.length > 32) {
       setState(() => _errorMessage = '用户名 3-32 个字符。');
       return;
     }
     if (password.length < 6) {
-      setState(() => _errorMessage = '密码至少 6 位。');
+      setState(() => _errorMessage = '账号密码至少 6 位。');
       return;
     }
-    if (_accountKind == AuthAccountKind.parent) {
-      if (parentPassword.length < 6) {
-        setState(() => _errorMessage = '家长密码至少 6 位。');
-        return;
-      }
-      if (_tabController.index == 1 && childUsername.length < 3) {
-        setState(() => _errorMessage = '请填写已注册的学生用户名。');
-        return;
-      }
+    final isLogin = _tabController.index == 0;
+    if (!isLogin && parentPassword.length < 6) {
+      setState(() => _errorMessage = '家长密码至少 6 位。');
+      return;
+    }
+    if (isLogin &&
+        _loginPortal == AuthLoginPortal.parent &&
+        parentPassword.length < 6) {
+      setState(() => _errorMessage = '进入家长端需填写家长密码。');
+      return;
     }
     setState(() {
       _submitting = true;
       _errorMessage = null;
     });
-    final isLogin = _tabController.index == 0;
     final AuthResult result;
     if (isLogin) {
       result = await AuthService.instance.login(
         username: username,
         password: password,
+        loginAs:
+            _loginPortal == AuthLoginPortal.parent ? 'parent' : 'student',
         parentPassword:
-            _accountKind == AuthAccountKind.parent ? parentPassword : null,
+            _loginPortal == AuthLoginPortal.parent ? parentPassword : null,
       );
-    } else if (_accountKind == AuthAccountKind.parent) {
-      result = await AuthService.instance.registerParent(
+    } else {
+      result = await AuthService.instance.register(
         username: username,
         password: password,
         parentPassword: parentPassword,
-        childUsername: childUsername,
-      );
-    } else {
-      result = await AuthService.instance.registerStudent(
-        username: username,
-        password: password,
         grade: _selectedGrade,
       );
     }
@@ -132,7 +124,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final isParent = _accountKind == AuthAccountKind.parent;
+    final isLoginParent =
+        _tabController.index == 0 && _loginPortal == AuthLoginPortal.parent;
     return Scaffold(
       backgroundColor: AppPalette.background,
       appBar: AppBar(
@@ -160,28 +153,44 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                       tabs: const [Tab(text: '登录'), Tab(text: '注册')],
                     ),
                     const SizedBox(height: AppSpacing.itemGap),
-                    SegmentedButton<AuthAccountKind>(
-                      segments: const [
-                        ButtonSegment(
-                          value: AuthAccountKind.student,
-                          label: Text('学生账号'),
-                          icon: Icon(Icons.school_outlined, size: 16),
-                        ),
-                        ButtonSegment(
-                          value: AuthAccountKind.parent,
-                          label: Text('家长账号'),
-                          icon: Icon(Icons.family_restroom_outlined, size: 16),
-                        ),
-                      ],
-                      selected: {_accountKind},
-                      onSelectionChanged: (selected) {
-                        setState(() {
-                          _accountKind = selected.first;
-                          _errorMessage = null;
-                        });
+                    AnimatedBuilder(
+                      animation: _tabController,
+                      builder: (context, _) {
+                        if (_tabController.index != 0) {
+                          return const SizedBox.shrink();
+                        }
+                        return SegmentedButton<AuthLoginPortal>(
+                          segments: const [
+                            ButtonSegment(
+                              value: AuthLoginPortal.student,
+                              label: Text('学生端'),
+                              icon: Icon(Icons.school_outlined, size: 16),
+                            ),
+                            ButtonSegment(
+                              value: AuthLoginPortal.parent,
+                              label: Text('家长端'),
+                              icon: Icon(Icons.family_restroom_outlined, size: 16),
+                            ),
+                          ],
+                          selected: {_loginPortal},
+                          onSelectionChanged: (selected) {
+                            setState(() {
+                              _loginPortal = selected.first;
+                              _errorMessage = null;
+                            });
+                          },
+                        );
                       },
                     ),
-                    const SizedBox(height: AppSpacing.moduleGap),
+                    AnimatedBuilder(
+                      animation: _tabController,
+                      builder: (context, _) {
+                        if (_tabController.index != 0) {
+                          return const SizedBox.shrink();
+                        }
+                        return const SizedBox(height: AppSpacing.moduleGap);
+                      },
+                    ),
                     _Field(
                       controller: _usernameController,
                       label: '用户名（3-32 位字母 / 数字）',
@@ -194,75 +203,70 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                       obscure: true,
                       autofillHints: const [AutofillHints.password],
                     ),
-                    if (isParent) ...[
-                      const SizedBox(height: AppSpacing.itemGap),
-                      _Field(
-                        controller: _parentPasswordController,
-                        label: '家长密码（≥ 6 位，仅家长端使用）',
-                        obscure: true,
-                      ),
-                    ],
                     AnimatedBuilder(
                       animation: _tabController,
                       builder: (context, _) {
-                        if (_tabController.index == 0 || !isParent) {
-                          if (_tabController.index == 1 &&
-                              _accountKind == AuthAccountKind.student) {
-                            return Padding(
-                              padding: const EdgeInsets.only(
-                                top: AppSpacing.itemGap,
-                              ),
-                              child: DropdownButtonFormField<String>(
-                                initialValue: _selectedGrade,
-                                decoration: const InputDecoration(
-                                  labelText: '当前年级',
-                                  filled: true,
-                                  fillColor: AppPalette.surface,
-                                  border: OutlineInputBorder(
-                                    borderRadius: AppRadius.buttonR,
-                                    borderSide: BorderSide(
-                                      color: AppPalette.outline,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: AppRadius.buttonR,
-                                    borderSide: BorderSide(
-                                      color: AppPalette.outline,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: AppRadius.buttonR,
-                                    borderSide: BorderSide(
-                                      color: AppPalette.primary,
-                                      width: 1.6,
-                                    ),
-                                  ),
-                                ),
-                                items:
-                                    _gradeOptions
-                                        .map(
-                                          (grade) => DropdownMenuItem(
-                                            value: grade,
-                                            child: Text(grade),
-                                          ),
-                                        )
-                                        .toList(),
-                                onChanged:
-                                    (value) => setState(
-                                      () =>
-                                          _selectedGrade =
-                                              value ?? _selectedGrade,
-                                    ),
-                              ),
-                            );
-                          }
+                        final showParentField =
+                            _tabController.index == 1 || isLoginParent;
+                        if (!showParentField) {
                           return const SizedBox.shrink();
                         }
                         return Padding(
                           padding: const EdgeInsets.only(top: AppSpacing.itemGap),
                           child: _Field(
-                            controller: _childUsernameController,
-                            label: '孩子用户名（须先注册学生账号）',
+                            controller: _parentPasswordController,
+                            label:
+                                _tabController.index == 0
+                                    ? '家长密码（进入家长端）'
+                                    : '家长密码（≥ 6 位，仅家长端使用）',
+                            obscure: true,
+                          ),
+                        );
+                      },
+                    ),
+                    AnimatedBuilder(
+                      animation: _tabController,
+                      builder: (context, _) {
+                        if (_tabController.index != 1) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: AppSpacing.itemGap),
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _selectedGrade,
+                            decoration: const InputDecoration(
+                              labelText: '当前年级',
+                              filled: true,
+                              fillColor: AppPalette.surface,
+                              border: OutlineInputBorder(
+                                borderRadius: AppRadius.buttonR,
+                                borderSide: BorderSide(color: AppPalette.outline),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: AppRadius.buttonR,
+                                borderSide: BorderSide(color: AppPalette.outline),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: AppRadius.buttonR,
+                                borderSide: BorderSide(
+                                  color: AppPalette.primary,
+                                  width: 1.6,
+                                ),
+                              ),
+                            ),
+                            items:
+                                _gradeOptions
+                                    .map(
+                                      (grade) => DropdownMenuItem(
+                                        value: grade,
+                                        child: Text(grade),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) => setState(
+                                  () => _selectedGrade = value ?? _selectedGrade,
+                                ),
                           ),
                         );
                       },
@@ -305,11 +309,18 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                       label: Text(_tabController.index == 0 ? '登录' : '注册并登录'),
                     ),
                     const SizedBox(height: AppSpacing.tightGap),
-                    Text(
-                      isParent
-                          ? '家长账号与孩子账号一一对应。注册家长时需填写已存在的学生用户名。'
-                          : '请先注册学生账号，再为孩子创建对应的家长账号。',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    AnimatedBuilder(
+                      animation: _tabController,
+                      builder: (context, _) {
+                        final hint =
+                            _tabController.index == 0
+                                ? '同一账号：学生端用账号密码；家长端额外填写家长密码。'
+                                : '注册一次即可：账号密码给孩子讲题，家长密码给家长查看报告。';
+                        return Text(
+                          hint,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -350,7 +361,7 @@ class _AuthHeader extends StatelessWidget {
           Text('登录后开始学习', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(
-            '学生与家长均需登录。家长使用独立账号 + 家长密码查看孩子的学习报告。',
+            '一个家庭一个账号。注册时设置账号密码与家长密码；登录时再选学生端或家长端。',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: AppPalette.textSecondary),

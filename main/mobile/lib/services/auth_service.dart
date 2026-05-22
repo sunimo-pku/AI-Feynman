@@ -14,8 +14,7 @@ import 'student_grade_store.dart';
 
 /// 登录/注册 + token 持久化。
 ///
-/// V2 账号模型：学生与家长均为独立账号，必须登录后使用 App（无游客）。
-/// 家长账号登录时需额外提供「家长密码」；注册时需绑定已存在的学生用户名。
+/// 一个家庭一个账号：注册时设置账号密码与家长密码；登录时选择 student / parent 会话。
 class AuthService extends ChangeNotifier {
   AuthService._({http.Client? client}) : _client = client ?? http.Client();
 
@@ -97,61 +96,26 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<AuthResult> registerStudent({
-    required String username,
-    required String password,
-    String? grade,
-  }) {
-    return register(
-      username: username,
-      password: password,
-      role: 'student',
-      grade: grade,
-    );
-  }
-
-  Future<AuthResult> registerParent({
-    required String username,
-    required String password,
-    required String parentPassword,
-    required String childUsername,
-  }) {
-    return register(
-      username: username,
-      password: password,
-      role: 'parent',
-      parentPassword: parentPassword,
-      childUsername: childUsername,
-    );
-  }
-
   Future<AuthResult> register({
     required String username,
     required String password,
-    required String role,
+    required String parentPassword,
     String? grade,
-    String? parentPassword,
-    String? childUsername,
   }) async {
     final body = <String, dynamic>{
       'username': username,
       'password': password,
-      'role': role,
+      'parentPassword': parentPassword,
       if (grade != null) 'grade': grade,
-      if (parentPassword != null) 'parentPassword': parentPassword,
-      if (childUsername != null) 'childUsername': childUsername,
     };
     final outcome = await _post('/auth/register', body: body);
     if (outcome is _ApiSuccess) {
       final loginResult = await login(
         username: username,
         password: password,
-        parentPassword: role == 'parent' ? parentPassword : null,
+        loginAs: 'student',
       );
-      if (loginResult.ok &&
-          role == 'student' &&
-          grade != null &&
-          grade.trim().isNotEmpty) {
+      if (loginResult.ok && grade != null && grade.trim().isNotEmpty) {
         await StudentGradeStore.instance.setGrade(grade.trim());
       }
       return loginResult;
@@ -163,11 +127,13 @@ class AuthService extends ChangeNotifier {
   Future<AuthResult> login({
     required String username,
     required String password,
+    required String loginAs,
     String? parentPassword,
   }) async {
     final body = <String, dynamic>{
       'username': username,
       'password': password,
+      'loginAs': loginAs,
       if (parentPassword != null && parentPassword.isNotEmpty)
         'parentPassword': parentPassword,
     };
@@ -185,8 +151,8 @@ class AuthService extends ChangeNotifier {
             : username;
     final returnedRole =
         userMap is Map<String, dynamic>
-            ? (userMap['role'] as String? ?? 'student')
-            : 'student';
+            ? (userMap['role'] as String? ?? loginAs)
+            : loginAs;
     if (token.isEmpty) {
       return const AuthResult.failure('后端登录成功但没返回 token，请联系开发同学。');
     }
