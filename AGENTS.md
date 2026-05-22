@@ -817,6 +817,11 @@ git push origin main
   cancel/close 旧 subscription/channel，并用 `_connectionEpoch` 忽略迟到的
   `onDone/onError`；否则旧连接关闭会把新连接标成 disconnected，UI 表现为
   红麦 → 刷新箭头 → 灰麦循环。
+- **断连恢复判断要看录音服务真实状态**：WS `onDone` 会先走 `errors` 流再走
+  `connectionState.disconnected`，如果 `_onLiveServiceError` 先把页面改成
+  `failed`，后续断连分支只看 `_liveStatus` 就会漏设
+  `_resumeRecordingAfterReconnect`，重连后停在灰麦。连接类错误在录音中只记录
+  failure 文案，不切 failed；断连分支用 `_isLiveRecording` 判断是否续录。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

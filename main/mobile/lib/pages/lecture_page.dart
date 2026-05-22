@@ -1644,6 +1644,18 @@ class _LecturePageState extends State<LecturePage> {
   void _onLiveServiceError(String message) {
     if (!mounted) return;
     _cancelThinkingWatchdog();
+    final isConnectionDrop =
+        message.startsWith('WebSocket 已关闭') ||
+        message.startsWith('WebSocket 异常') ||
+        message.startsWith('发送事件失败');
+    if (isConnectionDrop && _isLiveRecording) {
+      setState(() {
+        _activeStreamingTurnId = '';
+        _hintLoading = false;
+        _liveFailureReason = message;
+      });
+      return;
+    }
     setState(() {
       _liveStatus = _LiveStatus.failed;
       _activeStreamingTurnId = '';
@@ -1730,7 +1742,8 @@ class _LecturePageState extends State<LecturePage> {
         break;
       case LiveConnectionState.disconnected:
         _cancelThinkingWatchdog();
-        if (_liveStatus == _LiveStatus.listening ||
+        if (_isLiveRecording ||
+            _liveStatus == _LiveStatus.listening ||
             _liveStatus == _LiveStatus.paused ||
             _liveStatus == _LiveStatus.connecting) {
           _resumeRecordingAfterReconnect = true;
