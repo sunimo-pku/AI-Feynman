@@ -567,15 +567,52 @@ class LiveLectureSession:
         order: list[str] = []
         status = "needs_explanation"
         mastery_delta = 0
-        for event in stream_agent_fn(
-            section_id=self.section_id,
-            question_id=self.question_id,
-            question_prompt=self.question_prompt,
-            student_speech_text=speech,
-            steps=steps_payload,
-            round_index=max(1, self.round_index + 1),
-            history=list(self.history),
-        ):
+
+        # 第十二轮：原本写法 `for event in stream_agent_fn(...)` 是**同步 for 循环
+        # 遍历 OpenAI SDK 的同步流**。OpenAI SDK 的 `next(stream)` 阻塞 asyncio
+        # event loop，导致循环里的 `await self._safe_send(...)` 全部排队、无法真正
+        # 把 ws frame 推到客户端 —— 现象就是「整段 LLM 跑完才一次性出现」。
+        #
+        # 修复：把同步 generator 跑在线程里，用 `asyncio.Queue` 把每个事件投回主
+        # 协程；主协程 `await queue.get()` 拿一条立刻 `await self._safe_send(...)`，
+        # event loop 再也不会被 OpenAI SDK 卡住。这样 deepseek 流式 chunk 一进来
+        # 就能立刻翻成 ws delta 推给前端，前端气泡逐字滚动有了。
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        sentinel = object()
+
+        def _producer() -> None:
+            try:
+                for ev in stream_agent_fn(
+                    section_id=self.section_id,
+                    question_id=self.question_id,
+                    question_prompt=self.question_prompt,
+                    student_speech_text=speech,
+                    steps=steps_payload,
+                    round_index=max(1, self.round_index + 1),
+                    history=list(self.history),
+                ):
+                    asyncio.run_coroutine_threadsafe(queue.put(ev), loop)
+            except Exception as exc:  # noqa: BLE001
+                asyncio.run_coroutine_threadsafe(
+                    queue.put(("__producer_error__", exc)), loop
+                )
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put(sentinel), loop)
+
+        producer_future = loop.run_in_executor(None, _producer)
+
+        while True:
+            event = await queue.get()
+            if event is sentinel:
+                break
+            if isinstance(event, tuple) and len(event) == 2 and event[0] == "__producer_error__":
+                # producer 抛了 LectureAgentError 之类，等 future 完成（好释放
+                # thread）再把异常向上抛 —— 调用方会兜底 send error 给客户端。
+                try:
+                    await producer_future
+                finally:
+                    raise event[1]
             if self._interrupt_event.is_set():
                 break
             typ = str(event.get("type") or "")
