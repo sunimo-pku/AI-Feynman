@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../data/curriculum_models.dart';
+import '../data/curriculum_repository.dart';
 import '../data/round12_models.dart';
 import '../services/auth_service.dart';
 import '../services/round12_service.dart';
@@ -36,6 +37,23 @@ class PowerProfilePage extends StatefulWidget {
 class _PowerProfilePageState extends State<PowerProfilePage> {
   final _service = Round12Service();
   late Future<PowerProfile> _future = _service.fetchPowerProfile();
+  Map<String, String> _sectionLabels = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadSectionLabels());
+  }
+
+  Future<void> _loadSectionLabels() async {
+    final map = await CurriculumRepository.instance.sectionLabelIndex();
+    if (!mounted) return;
+    setState(() => _sectionLabels = map);
+  }
+
+  String _sectionTitle(PowerSection section) {
+    return _sectionLabels[section.sectionId] ?? section.sectionId;
+  }
 
   @override
   void dispose() {
@@ -131,7 +149,7 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                     p.sections
                         .map(
                           (s) => StudyDenseTile(
-                            title: s.sectionId,
+                            title: _sectionTitle(s),
                             subtitle: '${s.rankTier} · ${s.powerScore} 战力',
                             icon: Icons.insights_outlined,
                             dense: true,
