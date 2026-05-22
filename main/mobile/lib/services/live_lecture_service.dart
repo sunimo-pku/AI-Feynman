@@ -55,6 +55,7 @@ class LiveLectureService {
   bool _disposed = false;
   int _audioSeq = 0;
   String _sessionId = '';
+  int _connectionEpoch = 0;
 
   /// 当前「未提交」讲解段的 PCM 缓冲：断连时不丢；重连后 [replaySegmentAudio] 补发。
   final SegmentAudioBuffer _segmentAudio = SegmentAudioBuffer();
@@ -156,6 +157,8 @@ class LiveLectureService {
       return true;
     }
     try {
+      await _closePreviousChannelBeforeReconnect();
+      final epoch = ++_connectionEpoch;
       final uri = _buildWsUri();
       _channel = WebSocketChannel.connect(uri);
       // 一些平台（Web）的 channel.ready 不存在，做兼容
@@ -167,11 +170,13 @@ class LiveLectureService {
       _channelSub = _channel!.stream.listen(
         _onWsMessage,
         onError: (Object err, StackTrace st) {
+          if (epoch != _connectionEpoch) return;
           _emitError('WebSocket 异常：$err');
           _markDisconnected();
           _scheduleReconnectIfPossible();
         },
         onDone: () {
+          if (epoch != _connectionEpoch) return;
           _emitError('WebSocket 已关闭，正在尝试重新连接。');
           _markDisconnected();
           _scheduleReconnectIfPossible();
@@ -224,6 +229,23 @@ class LiveLectureService {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempts = 0;
+  }
+
+  Future<void> _closePreviousChannelBeforeReconnect() async {
+    final oldSub = _channelSub;
+    final oldChannel = _channel;
+    _channelSub = null;
+    _channel = null;
+    try {
+      await oldSub?.cancel();
+    } catch (_) {
+      /* swallow */
+    }
+    try {
+      await oldChannel?.sink.close(ws_status.goingAway);
+    } catch (_) {
+      /* swallow */
+    }
   }
 
   /// 在 onDone / onError / 初次握手失败之后调用：按 1s / 2s / 4s / 8s 退避
@@ -405,11 +427,19 @@ class LiveLectureService {
     if (_isConnected && _sessionId.isNotEmpty) {
       _sendJson(LiveClientEvent.sessionEnd(sessionId: _sessionId));
     }
+    ++_connectionEpoch;
+    try {
+      await _channelSub?.cancel();
+    } catch (_) {
+      /* swallow */
+    }
+    _channelSub = null;
     try {
       await _channel?.sink.close(ws_status.normalClosure);
     } catch (_) {
       /* swallow */
     }
+    _channel = null;
     _markDisconnected();
   }
 
@@ -564,6 +594,7 @@ class LiveLectureService {
 
   Future<void> dispose() async {
     _disposed = true;
+    ++_connectionEpoch;
     _ttsFadeTimer?.cancel();
     _ttsFadeTimer = null;
     _clearTtsQueue();

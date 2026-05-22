@@ -812,6 +812,11 @@ git push origin main
   置 `_resumeRecordingAfterReconnect`；自动重连 `connected` 且非用户手动
   `connecting` 态时，补传 segment 后 `AudioStreamService.start()` 恢复录音。
   手动点「重新连接」仍走 `_onStartLive`，避免双启动。
+- **旧 WS 回调必须隔离**：自动/手动重连会创建新 `WebSocketChannel`，但旧
+  channel 可能几秒后才触发 `onDone`。`LiveLectureService` 必须在新建连接前
+  cancel/close 旧 subscription/channel，并用 `_connectionEpoch` 忽略迟到的
+  `onDone/onError`；否则旧连接关闭会把新连接标成 disconnected，UI 表现为
+  红麦 → 刷新箭头 → 灰麦循环。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 
