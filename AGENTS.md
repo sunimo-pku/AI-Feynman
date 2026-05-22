@@ -805,6 +805,10 @@ git push origin main
 - **旧 DB 迁移**：`users.role` / `users.parent_password_hash` 走
   `_run_lightweight_migrations`；老账号默认 `role=student`，需单独注册家长账号
   才能进家长端。
+- **全屏讲题页勿在 `awaiting` 态开放「下一题」**：第十二轮 UI 重构时曾在
+  `_LectureStatus.awaiting` 加 `skip_next` 圆钮，学生可在同伴未听懂时跳题，
+  破坏讲题闭环。正解：「下一题」仅 `finished` 且 `_lastResponseStatus ==
+  'completed'` 时出现；`_onContinue` 内再做同条件校验并 SnackBar 拦截。
 
 ---
 

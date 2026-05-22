@@ -1132,8 +1132,22 @@ class _LecturePageState extends State<LecturePage> {
   /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题
   /// 回到第 1 题），同时清空所有临时态、重置 intro 气泡、引用新题面。
   ///
+  /// 仅在本轮 `completed`（三名同伴都听懂）后允许切题；`awaiting` 时必须
+  /// 先根据右侧追问再讲，不能跳过。
+  ///
   /// 提交失败 / 错误重试时**不**走这里，仍保留输入（见 `_sendRequest` 错误分支）。
   void _onContinue() {
+    if (_status != _LectureStatus.finished ||
+        _lastResponseStatus != 'completed') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '还有同伴没听懂，请根据右侧追问再讲一轮；三名同伴都听懂后才能「下一题」。',
+          ),
+        ),
+      );
+      return;
+    }
     _resetTransientState();
     setState(() {
       if (_questions.isNotEmpty) {
@@ -1319,8 +1333,7 @@ class _LecturePageState extends State<LecturePage> {
     });
   }
 
-  /// 「结束本题」/「session_end」入口：关闭录音 + WS 会话，并切到非实时
-  /// 兜底状态，让学生有机会用「下一题」继续。
+  /// 「结束本题」/「session_end」入口：关闭录音 + WS 会话，回到可重新讲题状态。
   Future<void> _onEndLiveSession() async {
     _inkSnapshotDebounce?.cancel();
     _cancelThinkingWatchdog();
@@ -2269,14 +2282,6 @@ class _LecturePageState extends State<LecturePage> {
           onPressed: _showCompletionSheet,
         ),
       ]);
-    } else if (_status == _LectureStatus.awaiting) {
-      orbs.add(
-        LectureOrbButton(
-          icon: Icons.skip_next,
-          tooltip: '下一题',
-          onPressed: _onContinue,
-        ),
-      );
     }
 
     if (_debugOcr) {
