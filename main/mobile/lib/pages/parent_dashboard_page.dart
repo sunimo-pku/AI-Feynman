@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/parent_models.dart';
 import '../data/round12_models.dart';
 import '../services/auth_service.dart';
+import '../services/learning_sync_service.dart';
 import '../services/parent_service.dart';
 import '../services/replay_service.dart';
 import '../theme/app_theme.dart';
@@ -137,12 +140,27 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                     if (!widget.embedded) {
                       Navigator.of(innerCtx).pop();
                     }
+                  } else if (key == 'switch_student') {
+                    final messenger = ScaffoldMessenger.of(innerCtx);
+                    final result = await AuthService.instance.switchToStudent();
+                    if (!innerCtx.mounted) return;
+                    if (!result.ok) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text(result.message)),
+                      );
+                      return;
+                    }
+                    unawaited(LearningSyncService.instance.pullAndMerge());
                   } else if (key == 'edit_profile') {
                     await _editProfile(innerCtx);
                   }
                 },
                 itemBuilder:
                     (_) => const [
+                      PopupMenuItem(
+                        value: 'switch_student',
+                        child: Text('切换到学生端'),
+                      ),
                       PopupMenuItem(
                         value: 'edit_profile',
                         child: Text('编辑孩子资料'),
