@@ -199,23 +199,27 @@ class _LecturePageState extends State<LecturePage> {
   Timer? _voiceDebounceTimer;
   bool _interruptOnCooldown = false;
 
-  /// thinking 状态的「看门狗」：发出 pause_detected 后启动，
-  /// [_thinkingWatchdogTimeout] 内仍未收到任何 [LiveServerEventType.thinking]
-  /// / [agentTurnStart] / [error] / [warning] 事件，则前端主动把状态切回
-  /// listening + 显示一句友好提示，避免 UI 永远卡在「AI 正在想问题」。
+  /// thinking 状态的「看门狗」：发出 pause_detected 后启动，超时仍未收到
+  /// [agentTurnStart] / [roundDone] / [error] / [warning] 事件就主动把状态
+  /// 切回 listening + 显示友好提示，避免 UI 永远卡在「AI 正在想问题」。
   ///
-  /// 触发场景：
-  ///   * 后端发了 warning + listening，但 listening 在网络层丢失（罕见）；
-  ///   * 后端 LLM 调用挂在 connect / 流式 yield 期间，pause_detected 后没有
-  ///     任何下行事件；
-  ///   * WebSocket 在 pause_detected 之后立刻断（NAT 超时 / 服务端进程
-  ///     重启），onError / onDone 已经把 _isConnected 切 false，但 setState
-  ///     还停留在 thinking。
+  /// 后端真实时间预算：
+  ///   * `lecture_agent_stream` 流式首 token timeout=2s
+  ///   * `lecture_agent` 非流式备用 timeout=6s
+  ///   * 知识检索 + ASR flush + 网络往返 ≤ 1s
+  /// 实测端到端 1-3s 出第一条 agent_turn_start。
   ///
-  /// 14 秒是经验值：DeepSeek-V4-Flash 关思考模式实测 1-8s 一轮，留出充足
-  /// 余量；超过这个时间几乎可以判定后端无响应。
+  /// 9 秒看门狗 = 后端最坏路径 (2s 流式失败 + 6s 备用) + 网络余量 1s。
+  /// 第十二轮初版给到 14s 太保守了：用户反馈体感像"AI 死机"，且实际
+  /// 上 8s 没回基本可以判定真挂了。
+  ///
+  /// 触发场景（罕见，但是必须有兜底）：
+  ///   * 后端发了 warning + listening，但 listening 在网络层丢失；
+  ///   * LLM 调用挂在 connect / yield 期间，pause_detected 后没有下行；
+  ///   * WS 在 pause_detected 之后立刻断（NAT 超时 / 服务端重启），
+  ///     onError / onDone 已经把 _isConnected 切 false，但 UI 还在 thinking。
   Timer? _thinkingWatchdogTimer;
-  static const Duration _thinkingWatchdogTimeout = Duration(seconds: 14);
+  static const Duration _thinkingWatchdogTimeout = Duration(seconds: 9);
 
   /// 本轮 (上次 round_done 之后) 累计的 ASR 文本字符数。用来作为
   /// 「自动追问触发」的最后一道门槛 —— 学生开口讲了 ≥ 5 个字之后再
