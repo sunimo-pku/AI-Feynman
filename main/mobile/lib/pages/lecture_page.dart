@@ -230,7 +230,6 @@ class _LecturePageState extends State<LecturePage> {
   late final StreamSubscription _liveEventsSub;
   late final StreamSubscription _liveErrorsSub;
   late final StreamSubscription _liveConnSub;
-  late final StreamSubscription _liveTtsPlaybackSub;
   late final StreamSubscription _audioChunksSub;
   late final StreamSubscription _audioPausesSub;
   late final StreamSubscription _audioVoiceSub;
@@ -322,7 +321,6 @@ class _LecturePageState extends State<LecturePage> {
     _liveEventsSub = _liveService.events.listen(_onLiveEvent);
     _liveErrorsSub = _liveService.errors.listen(_onLiveServiceError);
     _liveConnSub = _liveService.connectionState.listen(_onLiveConnection);
-    _liveTtsPlaybackSub = _liveService.ttsPlayback.listen(_onLiveTtsPlayback);
     _audioChunksSub = _audioService.chunks.listen(_onAudioChunk);
     _audioPausesSub = _audioService.pauses.listen(_onAudioPause);
     _audioVoiceSub = _audioService.voiceActivity.listen(_onAudioVoice);
@@ -368,7 +366,6 @@ class _LecturePageState extends State<LecturePage> {
     unawaited(_liveEventsSub.cancel());
     unawaited(_liveErrorsSub.cancel());
     unawaited(_liveConnSub.cancel());
-    unawaited(_liveTtsPlaybackSub.cancel());
     unawaited(_audioChunksSub.cancel());
     unawaited(_audioPausesSub.cancel());
     unawaited(_audioVoiceSub.cancel());
@@ -380,19 +377,6 @@ class _LecturePageState extends State<LecturePage> {
 
   void _onReasonPlaybackChanged() {
     if (mounted) setState(() {});
-  }
-
-  void _onLiveTtsPlayback(TtsPlaybackInfo info) {
-    if (!mounted || !info.playing || info.role.isEmpty) return;
-    setState(() {
-      _expandedPeerBubble = parseAgentRole(info.role);
-    });
-  }
-
-  AgentRole? get _liveTtsSpeakingRole {
-    final info = _liveService.currentTtsPlayback;
-    if (!info.playing || info.role.isEmpty) return null;
-    return parseAgentRole(info.role);
   }
 
   /// 监听手写板变化：
@@ -1025,9 +1009,6 @@ class _LecturePageState extends State<LecturePage> {
           _turns.removeLast();
         }
         _turns.add(response.turn);
-        if (response.turn.role == AgentRole.teacher) {
-          _expandedPeerBubble = AgentRole.teacher;
-        }
         _history.add(_agentTurnToHistory(response.turn));
         if (_history.length > _maxHistoryItems) {
           _history.removeRange(0, _history.length - _maxHistoryItems);
@@ -1472,7 +1453,6 @@ class _LecturePageState extends State<LecturePage> {
           _activeStreamingTurnId = p.turnId;
           if (role == AgentRole.teacher) {
             _hintLoading = false;
-            _expandedPeerBubble = AgentRole.teacher;
           }
           _turns.add(
             AgentTurn(
@@ -1536,19 +1516,6 @@ class _LecturePageState extends State<LecturePage> {
           _history.add(_agentTurnToHistory(doneTurn));
           if (_history.length > _maxHistoryItems) {
             _history.removeRange(0, _history.length - _maxHistoryItems);
-          }
-          // 第十二轮第三轮：流式 TTS 优先。LLM 流式 delta 在后端逐句切句、
-          // 边合成边推 `agent_tts_chunk`，前端 LiveLectureService 已经按
-          // 队列播过了。这里如果再调一次整段 requestTts → 同一段话播两遍。
-          // 用 didStreamTtsForTurn 判断；只有当流式 TTS 完全没出过段（极少
-          // 见的"turn done 时连一段都没合成出来"）才 fallback 到整段合成。
-          if (!_liveService.didStreamTtsForTurn(p.turnId)) {
-            unawaited(
-              _liveService.requestTts(
-                doneTurn.text,
-                role: agentRoleWire(doneTurn.role),
-              ),
-            );
           }
         }
         if (_activeStreamingTurnId == p.turnId) {
@@ -1816,12 +1783,29 @@ class _LecturePageState extends State<LecturePage> {
       _expandedPeerBubble = collapsing ? null : role;
     });
     if (collapsing) {
+      unawaited(_liveService.clearPendingTts());
+      unawaited(_liveService.stopTts());
       unawaited(_reasonPlayback.stop());
       return;
     }
-    unawaited(_liveService.clearPendingTts());
-    unawaited(_liveService.stopTts());
-    unawaited(_reasonPlayback.playPeer(role));
+    unawaited(_playExpandedRoleAudio(role));
+  }
+
+  /// 学生点开「有话要说」/ 头像展开后，才播放该同伴（或李老师）的语音。
+  Future<void> _playExpandedRoleAudio(AgentRole role) async {
+    await _liveService.clearPendingTts();
+    await _liveService.stopTts();
+    await _reasonPlayback.stop();
+    if (!mounted) return;
+
+    if (_reasonPlayback.queue.any((a) => a.role == role)) {
+      await _reasonPlayback.playPeer(role);
+      return;
+    }
+
+    final msg = _peerInlineMessage(role);
+    if (msg == null || msg.text.trim().isEmpty) return;
+    await _reasonPlayback.playText(role: role, text: msg.text);
   }
 
   void _showQuestionSheet() {
@@ -1997,16 +1981,12 @@ class _LecturePageState extends State<LecturePage> {
                     physics: const BouncingScrollPhysics(),
                     child: LecturePeerRail(
                       assessments: _peerAssessments,
-                      playingRole:
-                          _reasonPlayback.playingRole ?? _liveTtsSpeakingRole,
-                      activeSpeakingRole:
-                          _activeSpeakingRole ?? _liveTtsSpeakingRole,
+                      playingRole: _reasonPlayback.playingRole,
+                      activeSpeakingRole: _activeSpeakingRole,
                       teacherHasMessage: _teacherHasMessage,
                       expandedRole: _expandedPeerBubble,
                       messageForRole: _peerInlineMessage,
                       onAvatarTap: _onPeerAvatarTap,
-                      onPlayAudio:
-                          (role) => unawaited(_reasonPlayback.playPeer(role)),
                       onHighlightSteps: (_, ids) {
                         _canvasController.setHighlight(ids);
                       },

@@ -84,19 +84,8 @@ class LiveLectureService {
   Timer? _ttsFadeTimer;
   int _currentTtsToken = 0;
 
-  /// 第十二轮第三轮（流式 TTS）：把后端 `agent_tts_chunk` 推过来的每段 mp3
-  /// bytes 排队，按到达顺序播放。流式 TTS 让 LLM 第一句还在打字时就能听见
-  /// 第一段声音；只要流式 TTS 在该 turn 上至少送出一段，前端就**不再**调
-  /// 整段 `requestTts`（避免双播）。
-  ///
-  /// 设计：
-  ///   * `_ttsQueue` 严格按到达顺序入队；audioplayers 没有 append API，
-  ///     只能"播完一段→拿下一段"。短句间隙人感知大约 50-150ms，可接受。
-  ///   * `_streamedTtsTurnIds` 记录哪些 turn 已经在流式 TTS 路径上；
-  ///     [didStreamTtsForTurn] 暴露给 page 用来跳过重复整段 TTS。
-  ///   * 学生打断 / 关闭 session / dispose 时清空队列并立即 stop。
-  final List<_TtsQueueItem> _ttsQueue = [];
-  bool _ttsQueueBusy = false;
+  /// 后端 `agent_tts_chunk` 仅用于 [didStreamTtsForTurn] 标记；V2 不在未展开
+  /// 时自动播放，同伴语音由 [PeerReasonPlaybackService] 在用户点开气泡后触发。
   final Set<String> _streamedTtsTurnIds = <String>{};
   StreamSubscription? _ttsCompleteSub;
 
@@ -389,91 +378,16 @@ class LiveLectureService {
   }
 
   /// 把后端流式 TTS 推过来的一段 mp3 入队 + 触发消费。
+  ///
+  /// V2 产品口径：同伴语音**只在学生点开「有话要说」展开后**才播；
+  /// 这里只记录 turn 已收到流式 TTS，**不**自动播放（避免未展开就出声）。
   void _onTtsChunk(LiveAgentTtsChunkPayload p) {
     if (_disposed) return;
     if (p.audioBase64.isEmpty) return;
-    final Uint8List bytes;
-    try {
-      bytes = base64Decode(p.audioBase64);
-    } catch (_) {
-      return;
-    }
-    if (bytes.isEmpty) return;
     _streamedTtsTurnIds.add(p.turnId);
-    _ttsQueue.add(_TtsQueueItem(
-      turnId: p.turnId,
-      role: p.role,
-      seq: p.seq,
-      chunkIndex: p.chunkIndex,
-      bytes: bytes,
-    ));
-    _ttsQueue.sort((a, b) {
-      final turnCmp = a.turnId.compareTo(b.turnId);
-      if (turnCmp != 0) return turnCmp;
-      final seqCmp = a.seq.compareTo(b.seq);
-      if (seqCmp != 0) return seqCmp;
-      return a.chunkIndex.compareTo(b.chunkIndex);
-    });
-    unawaited(_consumeTtsQueue());
-  }
-
-  Future<void> _consumeTtsQueue() async {
-    if (_ttsQueueBusy) return;
-    if (_ttsQueue.isEmpty) return;
-    _ttsQueueBusy = true;
-    try {
-      while (_ttsQueue.isNotEmpty && !_disposed) {
-        final item = _ttsQueue.removeAt(0);
-        // 取消可能正在跑的 fade timer，把音量复位。
-        _ttsFadeTimer?.cancel();
-        _ttsFadeTimer = null;
-        final myToken = ++_currentTtsToken;
-        try {
-          await _audioPlayer.stop();
-        } catch (_) {}
-        try {
-          await _audioPlayer.setVolume(1.0);
-        } catch (_) {}
-        if (myToken != _currentTtsToken) {
-          // 中途被新的 stopTts / 下一段 enqueue 抢走 token
-          continue;
-        }
-        if (!_ttsStateController.isClosed) {
-          _ttsStateController.add(TtsState.playing);
-        }
-        _emitTtsPlayback(
-          TtsPlaybackInfo(
-            turnId: item.turnId,
-            role: item.role,
-            playing: true,
-          ),
-        );
-        try {
-          await _audioPlayer.play(
-            BytesSource(item.bytes, mimeType: 'audio/mpeg'),
-          );
-          // 等播放完成；onPlayerComplete 是 Stream，每段播完都会 emit。
-          await _audioPlayer.onPlayerComplete.first;
-        } catch (e) {
-          _emitError('TTS 段播放失败：$e');
-        }
-      }
-    } finally {
-      _ttsQueueBusy = false;
-      if (_ttsQueue.isEmpty && !_ttsStateController.isClosed) {
-        _ttsStateController.add(TtsState.idle);
-      }
-      if (_ttsQueue.isEmpty) {
-        _emitTtsPlayback(TtsPlaybackInfo.idle);
-      } else if (_ttsQueue.isNotEmpty) {
-        // 队列在 finally 期间又来了新 item，重新驱动。
-        unawaited(_consumeTtsQueue());
-      }
-    }
   }
 
   void _clearTtsQueue() {
-    _ttsQueue.clear();
     _streamedTtsTurnIds.clear();
     _emitTtsPlayback(TtsPlaybackInfo.idle);
   }
@@ -723,19 +637,4 @@ class TtsPlaybackInfo {
   final String turnId;
   final String role;
   final bool playing;
-}
-
-class _TtsQueueItem {
-  const _TtsQueueItem({
-    required this.turnId,
-    required this.role,
-    required this.seq,
-    required this.chunkIndex,
-    required this.bytes,
-  });
-  final String turnId;
-  final String role;
-  final int seq;
-  final int chunkIndex;
-  final Uint8List bytes;
 }

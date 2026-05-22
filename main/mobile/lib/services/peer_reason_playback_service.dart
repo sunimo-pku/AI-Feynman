@@ -9,7 +9,7 @@ import '../config/api_config.dart';
 import '../data/lecture_models.dart';
 import '../utils/tts_text.dart';
 
-/// P2：没听懂理由的依次 TTS 播放（文字提交路径 + 可复用于 live）。
+/// P2：同伴「有话要说」理由的 TTS —— **仅**在学生点头像展开后播放。
 class PeerReasonPlaybackService extends ChangeNotifier {
   PeerReasonPlaybackService({http.Client? client, AudioPlayer? player})
     : _client = client ?? http.Client(),
@@ -24,6 +24,7 @@ class PeerReasonPlaybackService extends ChangeNotifier {
   bool _disposed = false;
   int _token = 0;
   String? _lastError;
+  AgentRole? _playingRoleOverride;
 
   List<PeerAssessment> get queue => _queue;
   bool get isPlaying => _busy;
@@ -35,7 +36,10 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     return _queue[_index];
   }
 
-  AgentRole? get playingRole => current?.role;
+  AgentRole? get playingRole {
+    if (!_busy) return null;
+    return _playingRoleOverride ?? current?.role;
+  }
 
   bool get hasQueue => _queue.isNotEmpty;
 
@@ -48,6 +52,7 @@ class PeerReasonPlaybackService extends ChangeNotifier {
             .where((a) => !a.understood && a.reason.trim().isNotEmpty)
             .toList(growable: false);
     _index = -1;
+    _playingRoleOverride = null;
     _lastError = null;
     notifyListeners();
   }
@@ -55,6 +60,7 @@ class PeerReasonPlaybackService extends ChangeNotifier {
   void clearQueue() {
     _queue = const [];
     _index = -1;
+    _playingRoleOverride = null;
     _lastError = null;
     notifyListeners();
   }
@@ -77,17 +83,61 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     await _playSequential(fromIndex: next);
   }
 
-  /// 播放指定同伴的理由。
+  /// 只播放 [role] 对应的一位同伴，**不**连带播后面的人。
   Future<void> playPeer(AgentRole role) async {
     final idx = _queue.indexWhere((a) => a.role == role);
     if (idx < 0) return;
     if (_busy) await stop();
-    await _playSequential(fromIndex: idx);
+    await _playSingleAt(idx);
+  }
+
+  /// 播放任意文案（李老师提示 / 未入队的单条气泡）。
+  Future<void> playText({
+    required AgentRole role,
+    required String text,
+  }) async {
+    if (text.trim().isEmpty) return;
+    if (_busy) await stop();
+    final myToken = ++_token;
+    _busy = true;
+    _index = -1;
+    _playingRoleOverride = role;
+    _lastError = null;
+    notifyListeners();
+
+    final played = await _fetchAndPlay(
+      text: text,
+      role: agentRoleWire(role),
+      token: myToken,
+    );
+    if (!played || myToken != _token) {
+      if (myToken == _token) {
+        _busy = false;
+        _playingRoleOverride = null;
+        notifyListeners();
+      }
+      return;
+    }
+
+    try {
+      await _player.onPlayerComplete.first.timeout(const Duration(minutes: 2));
+    } on TimeoutException {
+      // swallow
+    } catch (_) {
+      // swallow
+    }
+
+    if (myToken == _token) {
+      _busy = false;
+      _playingRoleOverride = null;
+      notifyListeners();
+    }
   }
 
   Future<void> stop() async {
     _token++;
     _busy = false;
+    _playingRoleOverride = null;
     try {
       await _player.stop();
     } catch (_) {}
@@ -97,9 +147,47 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _playSingleAt(int index) async {
+    if (index < 0 || index >= _queue.length) return;
+    final myToken = ++_token;
+    _busy = true;
+    _playingRoleOverride = null;
+    _lastError = null;
+    _index = index;
+    notifyListeners();
+
+    final item = _queue[index];
+    final played = await _fetchAndPlay(
+      text: item.reason,
+      role: agentRoleWire(item.role),
+      token: myToken,
+    );
+    if (!played || myToken != _token) {
+      if (myToken == _token) {
+        _busy = false;
+        notifyListeners();
+      }
+      return;
+    }
+
+    try {
+      await _player.onPlayerComplete.first.timeout(const Duration(minutes: 2));
+    } on TimeoutException {
+      // swallow
+    } catch (_) {
+      // swallow
+    }
+
+    if (myToken == _token) {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> _playSequential({required int fromIndex}) async {
     final myToken = ++_token;
     _busy = true;
+    _playingRoleOverride = null;
     _lastError = null;
     notifyListeners();
 

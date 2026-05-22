@@ -864,6 +864,9 @@ git push origin main
   离屏裁切笔迹；`/ocr/ink mode=hwr` 在 `ALIYUN_API_KEY` 存在时调
   `qwen_vision.recognize_ink_step`，**禁止**把 `referenceSteps` 回填成
   学生 latex。OCR 失败仍走「笔画数 + 语音」，不阻塞讲题。
+- **同伴 TTS 只在展开「有话要说」后播放**：`agent_tts_chunk` 与
+  `agent_turn_done` 不再自动出声；`PeerReasonPlaybackService.playPeer`
+  只播当前点击的一位，禁止连带播队列里后面的人。
 
 ---
 
