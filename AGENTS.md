@@ -827,6 +827,14 @@ git push origin main
   WebSocket receive loop 会被 ASR 背压压住，表现为几乎每次录音十几秒后断连。
   V2 手动「讲题结束」模式下，`audio_chunk` 只入 `LiveAsrBuffer`，点
   `pause_detected` 时再一次性 `flush_to_text(force=True)`。
+- **下一题必须重发 `session_start`**：`LiveLectureService.connectAndStart()`
+  在 WS 已连接时会复用 channel 并发送新的 `session_start`。`LecturePage`
+  不能因为 `_liveService.isConnected` 就直接 `AudioStreamService.start()`，
+  否则后端 `LiveLectureSession.question_prompt` 仍是上一题，同伴 prompt 会串题。
+- **WS send 要串行且断连要落库**：`lecture_live.py` 的 heartbeat task 与
+  事件 handler 都会 `send_json`，必须用 `asyncio.Lock` 串行发送，避免并发
+  ASGI send 造成连接异常。内层 `WebSocketDisconnect` / receive 失败返回前也要
+  调 `_persist_live_session_if_needed`，否则正常断线不会保存已完成实时讲题记录。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

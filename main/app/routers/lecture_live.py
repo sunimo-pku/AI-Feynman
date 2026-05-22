@@ -80,9 +80,11 @@ async def lecture_live(websocket: WebSocket) -> None:
     await websocket.accept()
     user = _extract_user_from_ws(websocket)
     session = LiveLectureSession()
+    send_lock = asyncio.Lock()
 
     async def send(payload: dict[str, Any]) -> None:
-        await websocket.send_json(payload)
+        async with send_lock:
+            await websocket.send_json(payload)
 
     async def heartbeat() -> None:
         while True:
@@ -107,6 +109,7 @@ async def lecture_live(websocket: WebSocket) -> None:
                     "[lecture-live] websocket disconnected session=%s",
                     session.session_id or "(no session)",
                 )
+                _persist_live_session_if_needed(user, session)
                 return
             except Exception as e:  # noqa: BLE001
                 # 非 JSON / 解码失败：通知客户端但不断开。
@@ -118,6 +121,7 @@ async def lecture_live(websocket: WebSocket) -> None:
                         "message": "invalid_json",
                     })
                 except Exception:  # noqa: BLE001
+                    _persist_live_session_if_needed(user, session)
                     return
                 continue
 

@@ -1177,7 +1177,31 @@ class _LecturePageState extends State<LecturePage> {
     if (!mounted) return;
     final acknowledged = await PrivacyNoticePage.ensureAcknowledged(context);
     if (!mounted || !acknowledged) return;
+    final sessionId =
+        'sess-${DateTime.now().millisecondsSinceEpoch}-'
+        '${widget.section.id}-${_question.questionId}';
     if (_liveService.isConnected) {
+      _replayService.startSession(
+        sessionId: sessionId,
+        sectionId: widget.section.id,
+        questionId: _question.questionId,
+        questionPrompt: _question.prompt,
+      );
+      final sessionStarted = await _liveService.connectAndStart(
+        sessionId: sessionId,
+        sectionId: widget.section.id,
+        questionId: _question.questionId,
+        questionPrompt: _question.prompt,
+        referenceSteps: _question.referenceSteps,
+      );
+      if (!mounted) return;
+      if (!sessionStarted) {
+        setState(() {
+          _liveStatus = _LiveStatus.disconnected;
+          _liveFailureReason = '连不上后端 WebSocket，请点「重新连接」再试。';
+        });
+        return;
+      }
       final audioStarted = await _audioService.start();
       if (!mounted) return;
       if (!audioStarted) {
@@ -1203,9 +1227,6 @@ class _LecturePageState extends State<LecturePage> {
       _liveStatus = _LiveStatus.connecting;
       _liveFailureReason = null;
     });
-    final sessionId =
-        'sess-${DateTime.now().millisecondsSinceEpoch}-'
-        '${widget.section.id}-${_question.questionId}';
     _replayService.startSession(
       sessionId: sessionId,
       sectionId: widget.section.id,
