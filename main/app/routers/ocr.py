@@ -1,19 +1,15 @@
 """白板 OCR / Ink Parser（第十轮）。
 
-V1 没有真实手写识别引擎，本端点用「方案 B（前端辅助结构化）」+「方案 A
-（规则匹配）」混合实现：
+V1 没有真实手写识别引擎时，**禁止**把题目的 `referenceSteps` 当成学生
+手写内容回填到 `latex` / `plainText`——否则同伴会把「写出已知」这类
+解题框架标签误说成「你白板上写了…」。
 
-- 前端可以在 `referenceSteps` 字段里把当前题目的参考步骤 LaTeX 顺手送上来；
-- 后端按 `steps` 的顺序把 `referenceSteps[i]` 映射给第 i 步，作为最大概率
-  的「学生可能写的内容」；
-- 没有 referenceSteps 时不编造 LaTeX，返回空识别结果；
-- 永远返回 200，OCR 失败时 `latex` / `plainText` 留空，调用方可继续走
-  「白板坐标 + 音频」追问，不会让前端拿到 500。
-
-注意：本端点**不**是真正的 HWR；它的存在是让 `/lecture/live` 的 prompt
-里的 `steps[].latex / plainText` 不再永远是空，让 LLM 拿到比纯笔画
-更密集的语义证据。后续真正接入 HWR 引擎时只需替换 `recognize_steps`
-函数即可。
+- `mode=rule`（默认）：只上报 step 结构（stepId / strokeCount），识别
+  字段留空；
+- `mode=hwr`：仅在配置了 `OCR_HWR_API_KEY` 且接入真实 HWR 后才应写入
+  识别结果；未配置或失败时同样返回空，不拿 referenceSteps 凑数；
+- 永远返回 200，失败 step 的 `latex` / `plainText` 留空，调用方继续走
+  「笔画数 + 音频」追问。
 """
 
 from __future__ import annotations
@@ -89,12 +85,8 @@ def _plain_for(latex: str) -> str:
 def recognize_steps(req: InkRequest) -> list[InkStepOut]:
     """V1 OCR 主入口。
 
-    顺序匹配：
-      1. 优先按 `reference_steps[i]` 给 `steps[i]` 配对（高 confidence）；
-      2. 没参考步骤时返回空 latex（让 LLM 只依据题面、语音和笔画数量）。
-
-    任何阶段 confidence 都保持 < 1.0：明确告诉调用方这是辅助识别而非
-    真正手写体识别。
+    无真实 HWR 结果时一律返回空 latex/plainText。`referenceSteps` 仅作
+    未来 HWR 引擎的 optional hint，**不得**写入学生 step 字段。
     """
 
     out: list[InkStepOut] = []
@@ -108,24 +100,19 @@ def recognize_steps(req: InkRequest) -> list[InkStepOut]:
         latex = ""
         source = "empty"
         confidence = 0.0
-        if req.mode == "hwr" and Config.OCR_HWR_API_KEY and step.image_base64:
-            if idx < len(refs):
-                latex = refs[idx]
-            source = "hwr"
-            confidence = 0.58 if latex else 0.0
-        elif req.mode == "hwr" and step.image_base64 and not Config.OCR_HWR_API_KEY:
-            if idx < len(refs):
-                latex = refs[idx]
-                source = "reference_step"
-                confidence = 0.4
-            logger.info("[ocr-ink] hwr_unavailable reason=no_key step=%s", step.step_id)
-        elif refs:
-            if idx < len(refs):
-                latex = refs[idx]
-            else:
-                latex = refs[-1]
-            source = "reference_step"
-            confidence = 0.72
+
+        # 预留真实 HWR 接入点：只有 mode=hwr + 有 key + 有出图时才允许写入。
+        if (
+            req.mode == "hwr"
+            and Config.OCR_HWR_API_KEY
+            and step.image_base64
+        ):
+            # TODO: 调用商业 HWR；当前未接入，保持空结果。
+            logger.info(
+                "[ocr-ink] hwr_pending step=%s refs=%d",
+                step.step_id,
+                len(refs),
+            )
 
         out.append(
             InkStepOut(

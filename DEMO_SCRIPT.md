@@ -150,7 +150,7 @@
 - **一句话描述**：学生端完成一次实时讲题后，进度、回顾、白板语义与讲题摘要同步到后端；家长端随后能看到孩子的弱项、最近讲题、下一步建议与总结海报，形成 V1 完整闭环。
 - **演示要点**：
   - **账号与同步**：学生账号登录后进入首页，讲题完成触发 `LearningSyncService.syncNow()` 上传进度/回顾。家长用**独立账号**登录（账号密码 + 家长密码），刷新看板即可见绑定孩子服务端数据。
-  - **OCR 兜底注入**：进入 16.3 第 2 题，边写边讲；白板每次新增 / 撤销后 480ms debounce 上送 `ink_snapshot`；`LiveLectureService` 内部先调一次 `POST /ocr/ink`，按当前题目的 `referenceSteps` 顺序给每个 step 配 `latex` + `plainText`（confidence=0.72），后端 prompt 里的 step 不再永远空，LLM 体感「真的在看我写的步骤」。
+  - **OCR 结构上报**：讲题时白板 step 只上送 stepId + 笔画数；`/ocr/ink` **不再**把题目 `referenceSteps` 伪造进 latex（避免同伴误报「你写了写出已知」）；真实 HWR 接入前 LLM 依据口述 + 笔画追问。
   - **真实流式追问 + 手动收束录音**：学生点「讲题结束」触发 `pause_detected`，后端拆 ~20 字 / 段 `agent_turn_delta` 流式推送；停顿、开口、落笔都不再自动触发追问或打断 TTS。
   - **完成态双端同步**：AI 推 `round_done(status=completed, masteryDelta=1)`，前端复用第六/八轮逻辑写本地 `SectionProgress` + `LectureReviewRecord` + 弹小结卡；**学生账号**额外触发 `LearningSyncService.syncNow()`，把进度 / 回顾按 client id 幂等 upsert 到后端表。
   - **家长端 dashboard**（家长独立账号登录后即为 App 根页面）：

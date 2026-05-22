@@ -740,6 +740,10 @@ git push origin main
 - **商业 OCR/HWR 失败不能编造公式**：`/ocr/ink mode=hwr` 没 key 或供应商失败时，
   有 `referenceSteps` 才回 `reference_step`，否则返回空 `latex/plainText`
   和 `source=empty`，供 debug 面板和日志核对。
+- **`referenceSteps` 禁止回填为学生 step 文字**：V1 规则 OCR 曾把题目里的
+  「写出已知 / 列出关键步骤」等框架标签按 step 顺序塞进 `latex/plainText`，
+  同伴 LLM 会误报「白板上只写了…」。现 `/ocr/ink` 无真实 HWR 时一律返回空
+  识别；框架标签仅留题库/metadata，不得进入【学生白板步骤】。
 
 ### 第十二轮 · V2 产品闭环与 App 接线
 

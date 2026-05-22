@@ -9,7 +9,10 @@ import '../config/api_config.dart';
 
 /// 调用后端 `/ocr/ink` 的辅助 service（第十轮）。
 ///
-/// 把当前题目的 `referenceSteps` + 学生白板的 step 列表送给后端，拿到
+/// 把当前题目的 step 列表送给 `/ocr/ink`。
+///
+/// V1 无真实 HWR 时后端返回空 latex；`referenceSteps` 不再被伪造为学生
+/// 手写内容（避免同伴误报「你写了写出已知」）。
 /// 推断的 `latex / plainText`，回写到 ink_snapshot / lecture submit 的 step。
 ///
 /// 失败语义：所有异常都被吞掉 → 返回 null，调用方按「OCR 失败、白板坐标

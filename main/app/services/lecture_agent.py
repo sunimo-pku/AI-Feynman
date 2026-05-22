@@ -314,9 +314,11 @@ def _build_user_prompt(
         lines.append("【学生口述】（本轮学生没有有效语音转写；不要假装学生说过什么）")
     lines.append("")
     lines.append(
-        "【学生白板步骤】下列 plainText / LaTeX 来自手写板旁文字或 OCR 识别，"
-        "**不是**语音口述；描述时用「你写的」「白板上」等，禁止用「你说」除非"
-        "引用上方【学生口述】区块的原话："
+        "【学生白板步骤】下列 plainText / LaTeX 来自学生手敲说明或真实 OCR；"
+        "**不是**语音口述，也**不是**题目自带的 referenceSteps 解题框架。"
+        "描述时用「你写的」「白板上」；只有【学生口述】区块才能用「你说」。"
+        "若某步只有笔画数、无文字/LaTeX，只能说「这一步有手写」，"
+        "**禁止**猜测具体算式或把框架标签当成学生写的内容："
     )
     lines.append("按提交顺序，每行一条：")
     if not steps:
@@ -333,7 +335,9 @@ def _build_user_prompt(
             if latex:
                 descr_bits.append(f"步骤 LaTeX=`{latex}`")
             if not plain and not latex:
-                descr_bits.append("（学生未补充文字说明）")
+                descr_bits.append(
+                    "（仅有手写笔画，无文字/OCR；禁止猜测具体写了什么）"
+                )
             descr_bits.append(f"笔画数={strokes}")
             lines.append(f"- {sid}: " + "; ".join(descr_bits))
 
@@ -376,7 +380,10 @@ def _build_user_prompt(
             "① 只有【学生口述】区块里的词句才能用「你说『…』」；"
             "② 步骤内容只能说「你写的」「白板上」；"
             "③ 【历史】里上一轮学生发言不要当成「本轮刚说的」；"
-            "④ OCR 识别可能有误，勿把识别结果当成学生亲口说过。"
+            "④ OCR 未识别出文字时，只能说「有手写/第几步有笔迹」，"
+            "禁止把题目 referenceSteps 或解题框架标签（如「写出已知」）"
+            "说成学生白板上写的内容；"
+            "⑤ OCR 识别可能有误，勿把识别结果当成学生亲口说过。"
         )
     elif purpose == "teacher":
         lines.append(

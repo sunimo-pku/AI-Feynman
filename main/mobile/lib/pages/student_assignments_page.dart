@@ -76,7 +76,7 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
         sectionLabel: opened.sectionLabel,
         prompt: opened.questionPrompt,
         hint: opened.note.isNotEmpty ? opened.note : '这是家长布置的作业，请完整讲清思路。',
-        referenceSteps: const ['写出已知', '列出关键步骤', '总结易错点'],
+        referenceSteps: const [],
         difficulty: opened.difficulty,
         tags: opened.sourceType == 'custom' ? const ['家长自定义'] : const ['家长布置'],
       );

@@ -362,32 +362,34 @@ def test_parent_poster_includes_week_stats(client: TestClient) -> None:
 # ------------------------------------------------------------------ #
 
 
-def test_ocr_ink_returns_latex_for_each_step(client: TestClient) -> None:
+def test_ocr_ink_does_not_fabricate_from_reference_steps(
+    client: TestClient,
+) -> None:
+    """referenceSteps 是解题框架，不能当成学生 OCR 结果回填。"""
     resp = client.post(
         "/ocr/ink",
         json={
             "sectionId": "pep-g8-down-s16-3",
             "questionId": "q-s16-3-001",
             "referenceSteps": [
+                "写出已知",
+                "列出关键步骤",
                 r"$\sqrt{12} = 2\sqrt{3}$",
-                r"$\sqrt{27} = 3\sqrt{3}$",
-                r"$2\sqrt{3} - 3\sqrt{3} = -\sqrt{3}$",
             ],
             "steps": [
                 {"stepId": "step_1", "strokeCount": 5},
                 {"stepId": "step_2", "strokeCount": 5},
-                {"stepId": "step_3", "strokeCount": 4},
             ],
         },
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["steps"]) == 3
-    assert body["steps"][0]["stepId"] == "step_1"
-    assert body["steps"][0]["latex"]  # 非空
-    assert body["steps"][0]["confidence"] > 0
-    # plainText 经过粗翻译应当含「根号」
-    assert "根号" in body["steps"][0]["plainText"]
+    assert len(body["steps"]) == 2
+    for step in body["steps"]:
+        assert step["latex"] == ""
+        assert step["plainText"] == ""
+        assert step["source"] == "empty"
+        assert step["confidence"] == 0.0
 
 
 def test_ocr_ink_without_reference_does_not_invent_latex(client: TestClient) -> None:
