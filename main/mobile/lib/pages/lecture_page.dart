@@ -23,7 +23,6 @@ import '../services/replay_service.dart';
 import '../services/review_repository.dart';
 import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
-import '../widgets/agent_message_bubble.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
 import '../widgets/lecture_orb_button.dart';
@@ -982,15 +981,34 @@ class _LecturePageState extends State<LecturePage> {
       );
       return;
     }
-    if (_hintLoading ||
-        _status == _LectureStatus.submitting ||
-        _liveStatus == _LiveStatus.thinking) {
+    if (_hintLoading || _status == _LectureStatus.submitting) {
+      return;
+    }
+    if (_liveStatus == _LiveStatus.thinking) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('同伴正在思考，请稍候再点「需要提示」。')),
+      );
       return;
     }
 
     if (_liveService.isConnected) {
-      _pushInkSnapshotNow();
+      if (_liveService.sessionId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先点「开始讲题」，再向李老师要提示。')),
+        );
+        return;
+      }
+      setState(() => _hintLoading = true);
+      // 必须先同步 ink_snapshot，否则后端 latest_steps 为空会直接 no_steps_yet。
+      await _pushInkSnapshotNow();
+      if (!mounted) return;
       _liveService.sendRequestHint();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已请李老师帮忙，请看右侧李老师头像旁的提示。'),
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
 
@@ -1020,6 +1038,9 @@ class _LecturePageState extends State<LecturePage> {
           _turns.removeLast();
         }
         _turns.add(response.turn);
+        if (response.turn.role == AgentRole.teacher) {
+          _expandedPeerBubble = AgentRole.teacher;
+        }
         _history.add(_agentTurnToHistory(response.turn));
         if (_history.length > _maxHistoryItems) {
           _history.removeRange(0, _history.length - _maxHistoryItems);
@@ -1030,6 +1051,14 @@ class _LecturePageState extends State<LecturePage> {
       });
       if (response.turn.highlightStepIds.isNotEmpty) {
         _canvasController.setHighlight(response.turn.highlightStepIds);
+      }
+      if (response.turn.role == AgentRole.teacher && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('李老师的提示在右侧头像旁，可点击展开全文。'),
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
       _scrollToBottomSoon();
     } on LectureApiException catch (e) {
@@ -1414,6 +1443,10 @@ class _LecturePageState extends State<LecturePage> {
         setState(() {
           _liveStatus = _LiveStatus.aiSpeaking;
           _activeStreamingTurnId = p.turnId;
+          if (role == AgentRole.teacher) {
+            _hintLoading = false;
+            _expandedPeerBubble = AgentRole.teacher;
+          }
           _turns.add(
             AgentTurn(
               turnId: p.turnId,
@@ -1463,6 +1496,11 @@ class _LecturePageState extends State<LecturePage> {
           }
         }
         if (doneTurn != null) {
+          if (doneTurn.role == AgentRole.teacher) {
+            if (mounted) {
+              setState(() => _hintLoading = false);
+            }
+          }
           _replayService.appendTurn(
             role: agentRoleWire(doneTurn.role),
             displayName: doneTurn.displayName,
@@ -1530,12 +1568,25 @@ class _LecturePageState extends State<LecturePage> {
         final wmsg = (event.payload as LiveWarningPayload).message;
         _cancelThinkingWatchdog();
         if (wmsg == 'no_steps_yet' && mounted) {
+          final wasHint = _hintLoading;
           setState(() {
+            _hintLoading = false;
             if (_liveStatus == _LiveStatus.thinking) {
               _liveStatus = _LiveStatus.idle;
             }
-            _liveFailureReason = '请先在白板写两步，或重新开始讲一段后再点「讲题结束」';
+            _liveFailureReason =
+                wasHint
+                    ? '请先在白板写几步思路，再点「需要提示」。'
+                    : '请先在白板写两步，或重新开始讲一段后再点「讲题结束」';
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_liveFailureReason!)),
+          );
+        } else if (wmsg == 'thinking_in_progress' && mounted) {
+          setState(() => _hintLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('同伴正在思考，请稍候再点「需要提示」。')),
+          );
         } else if (wmsg == 'heartbeat') {
           // 应用层心跳，安静吃掉。
         }
@@ -1545,6 +1596,7 @@ class _LecturePageState extends State<LecturePage> {
         setState(() {
           _liveStatus = _LiveStatus.failed;
           _activeStreamingTurnId = '';
+          _hintLoading = false;
           _liveFailureReason = (event.payload as LiveErrorPayload).message;
         });
         break;
@@ -1559,6 +1611,7 @@ class _LecturePageState extends State<LecturePage> {
     setState(() {
       _liveStatus = _LiveStatus.failed;
       _activeStreamingTurnId = '';
+      _hintLoading = false;
       _liveFailureReason = message;
     });
   }
