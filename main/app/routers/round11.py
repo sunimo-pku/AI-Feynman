@@ -36,7 +36,12 @@ from app.db import (
     linked_child_profile,
     load_json,
 )
-from app.middleware.auth import require_parent_user, require_student_user, require_user, user_role
+from app.middleware.auth import (
+    get_session_role,
+    require_parent_user,
+    require_student_user,
+    require_user,
+)
 from app.services import knowledge_index
 from app.services.qwen_vision import recognize_question_image
 
@@ -166,8 +171,8 @@ def _power_payload(row: SectionPower) -> dict[str, Any]:
     }
 
 
-def _replay_subject_profile(db: Session, user: User) -> StudentProfile:
-    if user_role(user) == "parent":
+def _replay_subject_profile(db: Session, user: User, session_role: str) -> StudentProfile:
+    if session_role == "parent":
         profile = linked_child_profile(db, user)
         if profile is None:
             raise HTTPException(
@@ -414,6 +419,41 @@ def _bounty_status(attempt: BountyAttempt | None) -> str:
     return "inProgress"
 
 
+def _day_bounty_completed(
+    db: Session,
+    profile: StudentProfile,
+    *,
+    date_key: str,
+) -> bool:
+    challenges = _select_today_bounties(db, profile, date_key=date_key)
+    if not challenges:
+        return False
+    for item in challenges:
+        challenge_id = str(item.get("challengeId") or "")
+        attempt = _attempt_for(
+            db,
+            profile,
+            challenge_id=challenge_id,
+            date_key=date_key,
+        )
+        if attempt is None or attempt.reward_granted_at is None:
+            return False
+    return True
+
+
+def _bounty_streak_days(db: Session, profile: StudentProfile) -> int:
+    """连续打卡：按 UTC 自然日计，当日 3 题全完成算打卡成功；今日未完成则从昨日往前数。"""
+    today = datetime.utcnow().date()
+    cursor = today
+    if not _day_bounty_completed(db, profile, date_key=today.isoformat()):
+        cursor = today - timedelta(days=1)
+    streak = 0
+    while _day_bounty_completed(db, profile, date_key=cursor.isoformat()):
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
+
+
 def _bounty_public(challenge: dict[str, Any], attempt: BountyAttempt | None) -> dict[str, Any]:
     feedback = load_json(attempt.feedback_json, {}) if attempt else {}
     return {
@@ -549,12 +589,14 @@ async def bounty_today(user: User = Depends(require_student_user), db: Session =
         ).all()
     }
     public = [_bounty_public(item, attempts.get(str(item.get("challengeId") or ""))) for item in challenges]
+    streak_days = _bounty_streak_days(db, profile)
     return {
         "date": date_key,
         "dateKey": date_key,
         "completedCount": sum(1 for item in public if item["status"] == "completed"),
         "totalCount": len(public),
         "totalCrystals": sum(int(item["rewardCrystals"] or 0) for item in public),
+        "streakDays": streak_days,
         "challenges": public,
     }
 
@@ -756,9 +798,10 @@ async def create_replay(req: ReplayRequest, user: User = Depends(require_student
 @router.get("/parent/replays")
 async def parent_replays(
     user: User = Depends(require_parent_user),
+    session_role: str = Depends(get_session_role),
     db: Session = Depends(get_db),
 ):
-    profile = _replay_subject_profile(db, user)
+    profile = _replay_subject_profile(db, user, session_role)
     rows = db.query(LectureReplayRecord).filter(LectureReplayRecord.student_id == profile.id).order_by(LectureReplayRecord.created_at.desc()).limit(20).all()
     return {"replays": [_replay_payload(r, include_timeline=False) for r in rows]}
 
@@ -767,9 +810,10 @@ async def parent_replays(
 async def get_replay(
     session_id: str,
     user: User = Depends(require_user),
+    session_role: str = Depends(get_session_role),
     db: Session = Depends(get_db),
 ):
-    profile = _replay_subject_profile(db, user)
+    profile = _replay_subject_profile(db, user, session_role)
     row = db.query(LectureReplayRecord).filter(
         LectureReplayRecord.student_id == profile.id,
         LectureReplayRecord.session_id == session_id,

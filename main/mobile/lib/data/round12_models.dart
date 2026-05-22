@@ -231,6 +231,7 @@ class BountyToday {
     required this.completedCount,
     required this.totalCount,
     required this.totalCrystals,
+    required this.streakDays,
     required this.challenges,
   });
 
@@ -238,6 +239,7 @@ class BountyToday {
   final int completedCount;
   final int totalCount;
   final int totalCrystals;
+  final int streakDays;
   final List<BountyChallenge> challenges;
 
   factory BountyToday.fromJson(Map<String, dynamic> json) {
@@ -255,6 +257,7 @@ class BountyToday {
       totalCount: (json['totalCount'] as num?)?.toInt() ?? challenges.length,
       totalCrystals: (json['totalCrystals'] as num?)?.toInt() ??
           challenges.fold<int>(0, (sum, c) => sum + c.rewardCrystals),
+      streakDays: (json['streakDays'] as num?)?.toInt() ?? 0,
       challenges: challenges,
     );
   }

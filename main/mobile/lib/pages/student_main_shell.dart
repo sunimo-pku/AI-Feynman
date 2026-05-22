@@ -194,10 +194,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
                 index: _tabIndex,
                 children: [
                   HomeDashboardTab(
-                    studentGradeLabel: gradeLabel,
-                    books: visibleBooks,
                     pendingAssignments: _pendingAssignments,
-                    onSectionTap: _onSectionTap,
                     onAssignmentsTap: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
@@ -206,6 +203,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
                       );
                       await _loadPendingAssignments();
                     },
+                    onOpenCurriculum: () => setState(() => _tabIndex = 1),
                   ),
                   CurriculumTabPage(
                     studentGradeLabel: gradeLabel,

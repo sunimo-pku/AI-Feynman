@@ -1,139 +1,188 @@
 import 'package:flutter/material.dart';
 
-import '../data/curriculum_models.dart';
-import '../data/mock_lecture_repository.dart';
+import '../data/round12_models.dart';
 import '../services/auth_service.dart';
-import '../services/progress_repository.dart';
+import '../services/round12_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/study_layout.dart';
 import 'daily_challenge_page.dart';
-import 'student_assignments_page.dart';
 import 'v2_pages.dart';
 
-/// 学生端「今日」Tab：自习室叙事首页，仅展示账号年级下的推荐小节。
-class HomeDashboardTab extends StatelessWidget {
+/// 学生端「今日」Tab：问候 + 每日挑战主卡片 + 快捷入口。
+class HomeDashboardTab extends StatefulWidget {
   const HomeDashboardTab({
     super.key,
-    required this.studentGradeLabel,
-    required this.books,
     required this.pendingAssignments,
-    required this.onSectionTap,
     required this.onAssignmentsTap,
+    required this.onOpenCurriculum,
   });
 
-  final String studentGradeLabel;
-  final List<CurriculumBook> books;
   final int pendingAssignments;
-  final ValueChanged<CurriculumSection> onSectionTap;
   final VoidCallback onAssignmentsTap;
+  final VoidCallback onOpenCurriculum;
+
+  @override
+  State<HomeDashboardTab> createState() => _HomeDashboardTabState();
+}
+
+class _HomeDashboardTabState extends State<HomeDashboardTab> {
+  final Round12Service _bountyService = Round12Service();
+  BountyToday? _bountyToday;
+  bool _loadingBounty = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBountySummary();
+  }
+
+  @override
+  void dispose() {
+    _bountyService.close();
+    super.dispose();
+  }
+
+  Future<void> _loadBountySummary() async {
+    if (!AuthService.instance.isLoggedIn) {
+      if (mounted) setState(() => _loadingBounty = false);
+      return;
+    }
+    setState(() => _loadingBounty = true);
+    try {
+      final today = await _bountyService.fetchBountyToday();
+      if (!mounted) return;
+      setState(() {
+        _bountyToday = today;
+        _loadingBounty = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingBounty = false);
+    }
+  }
+
+  Future<void> _openDailyChallenge() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const DailyChallengePage()),
+    );
+    if (mounted) await _loadBountySummary();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final recommended = _recommendedSection();
-    final questionCount =
-        recommended == null
-            ? 0
-            : MockLectureRepository.instance.questionCountForSection(
-              recommended.id,
-            );
+    final bounty = _bountyToday;
+    final total = bounty?.totalCount ?? 3;
+    final done = bounty?.completedCount ?? 0;
+    final streak = bounty?.streakDays ?? 0;
+    final todayDone = total > 0 && done >= total;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.pageEdge,
-        16,
+        12,
         AppSpacing.pageEdge,
-        32,
+        24,
       ),
       children: [
-        _CompactGreeting(gradeLabel: studentGradeLabel),
-        if (pendingAssignments > 0) ...[
-          const SizedBox(height: AppSpacing.itemGap),
+        const _CompactGreeting(),
+        if (widget.pendingAssignments > 0) ...[
+          const SizedBox(height: 10),
           _PendingAssignmentsBanner(
-            count: pendingAssignments,
-            onTap: onAssignmentsTap,
+            count: widget.pendingAssignments,
+            onTap: widget.onAssignmentsTap,
           ),
         ],
-        const SizedBox(height: AppSpacing.moduleGap),
+        const SizedBox(height: 14),
         StudyPanel(
-          tone: StudyPanelTone.surface,
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+          tone: StudyPanelTone.accent,
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SectionHeader(
-                title: recommended == null ? '今天想练哪一节？' : '今天想继续练',
-                subtitle:
-                    recommended == null
-                        ? '题库准备中，先去「课程」看看'
-                        : recommended.label,
-                accent: AppPalette.primaryAccent,
-                action:
-                    recommended == null
-                        ? null
-                        : FilledButton(
-                          onPressed: () => onSectionTap(recommended),
-                          child: const Text('开始讲题'),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppPalette.primaryAccent.withValues(alpha: 0.14),
+                      borderRadius: AppRadius.buttonR,
+                    ),
+                    child: const Icon(
+                      Icons.edit_outlined,
+                      color: AppPalette.primaryAccent,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '每日挑战',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          streak > 0
+                              ? '帮同学找错 · 已连续打卡 $streak 天'
+                              : '帮同学找错 · 完成今日挑战开始打卡',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppPalette.textSecondary,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              if (recommended != null) ...[
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    StudySoftTag(
-                      text:
-                          questionCount > 0 ? '本节 $questionCount 道题' : '本节可练',
-                      accent: AppPalette.primary,
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  StudySoftTag(
+                    text:
+                        _loadingBounty
+                            ? '加载今日进度…'
+                            : '今日 $done / $total 题',
+                    accent: AppPalette.primary,
+                  ),
+                  if (!_loadingBounty && todayDone)
+                    const StudySoftTag(
+                      text: '今日已打卡',
+                      accent: AppPalette.primaryAccent,
                     ),
-                    AnimatedBuilder(
-                      animation: ProgressRepository.instance,
-                      builder: (context, _) {
-                        final progress = ProgressRepository.instance
-                            .progressFor(recommended.id);
-                        return StudySoftTag(
-                          text:
-                              !progress.hasAnyCompletion
-                                  ? '还没开始讲'
-                                  : '已练 ${progress.completedRounds} 轮',
-                          accent: AppPalette.primaryAccent,
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                const StudyCompanionRow(),
-              ],
+                ],
+              ),
+              const SizedBox(height: 14),
+              FilledButton(
+                onPressed: _loadingBounty ? null : _openDailyChallenge,
+                child: Text(todayDone ? '再练一遍' : '开始挑战'),
+              ),
             ],
           ),
         ),
-        const SizedBox(height: AppSpacing.moduleGap),
+        const SizedBox(height: 16),
         const StudySectionTitle(title: '快捷入口'),
         StudyToolGrid(
           cells: [
             StudyToolCell(
-              label: '每日挑战',
-              subtitle: '帮同学找错',
-              icon: Icons.edit_outlined,
-              color: AppPalette.primaryAccent,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const DailyChallengePage(),
-                    ),
-                  ),
+              label: '选课讲题',
+              subtitle: '按章节开练',
+              icon: Icons.menu_book_outlined,
+              color: AppPalette.primary,
+              onTap: widget.onOpenCurriculum,
             ),
             StudyToolCell(
               label: '我的作业',
               subtitle: '家长布置的',
               icon: Icons.description_outlined,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const StudentAssignmentsPage(),
-                    ),
-                  ),
+              onTap: widget.onAssignmentsTap,
             ),
             StudyToolCell(
               label: '晶石商城',
@@ -158,33 +207,8 @@ class HomeDashboardTab extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.moduleGap),
-        Text(
-          '完整章节目录在「课程」；换年级请去「我的」→ 编辑资料。',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: AppPalette.textSecondary,
-            height: 1.5,
-          ),
-        ),
       ],
     );
-  }
-
-  CurriculumSection? _recommendedSection() {
-    for (final book in books) {
-      for (final chapter in book.chapters) {
-        for (final section in chapter.sections) {
-          if (section.isAvailable ||
-              MockLectureRepository.instance.questionCountForSection(
-                    section.id,
-                  ) >
-                  0) {
-            return section;
-          }
-        }
-      }
-    }
-    return null;
   }
 }
 
@@ -197,9 +221,7 @@ String _timeGreeting() {
 }
 
 class _CompactGreeting extends StatelessWidget {
-  const _CompactGreeting({required this.gradeLabel});
-
-  final String gradeLabel;
+  const _CompactGreeting();
 
   @override
   Widget build(BuildContext context) {
@@ -208,26 +230,9 @@ class _CompactGreeting extends StatelessWidget {
       builder: (context, _) {
         final name = AuthService.instance.currentUsername;
         final who = name.isEmpty ? '同学' : name;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${_timeGreeting()}，$who',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '找一节想讲的题，讲给同伴听就好',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppPalette.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 10),
-            StudySoftTag(
-              text: gradeLabel,
-              accent: AppPalette.primary,
-            ),
-          ],
+        return Text(
+          '${_timeGreeting()}，$who',
+          style: Theme.of(context).textTheme.headlineSmall,
         );
       },
     );
@@ -249,7 +254,7 @@ class _PendingAssignmentsBanner extends StatelessWidget {
         onTap: onTap,
         borderRadius: AppRadius.cardR,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
               Icon(

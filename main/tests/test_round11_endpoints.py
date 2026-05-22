@@ -89,7 +89,10 @@ def test_bounty_and_parent_registration(client: TestClient) -> None:
     assert client.get("/bounty/today").status_code == 401
     today = client.get("/bounty/today", headers=student_headers)
     assert today.status_code == 200
-    challenge = today.json()["challenges"][0]
+    today_body = today.json()
+    assert isinstance(today_body.get("streakDays"), int)
+    assert today_body["streakDays"] >= 0
+    challenge = today_body["challenges"][0]
     quizzes = challenge.get("stepQuizzes") or []
     assert len(quizzes) >= 2
     answers = [
