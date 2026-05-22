@@ -147,9 +147,6 @@ class _StudentMainShellState extends State<StudentMainShell> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _onLogout() async {
-    await AuthService.instance.logout();
-  }
 
   List<CurriculumBook> _booksForGrade(
     MathCurriculum curriculum,
@@ -166,24 +163,6 @@ class _StudentMainShellState extends State<StudentMainShell> {
       backgroundColor: AppPalette.background,
       appBar: AppBar(
         title: Text('AI 费曼 · ${_tabTitles[_tabIndex]}'),
-        actions: [
-          AnimatedBuilder(
-            animation: AuthService.instance,
-            builder: (_, __) {
-              final username = AuthService.instance.currentUsername;
-              return Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Center(
-                  child: _StudentAccountChip(
-                    label: username.isEmpty ? '学生' : username,
-                    onLogout: _onLogout,
-                  ),
-                ),
-              );
-            },
-          ),
-          // 隐私说明已下沉到「工具」Tab，AppBar 保持简洁。
-        ],
       ),
       body: AnimatedBuilder(
         animation: StudentGradeStore.instance,
@@ -280,51 +259,6 @@ class _StudentMainShellState extends State<StudentMainShell> {
             label: '我的',
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _StudentAccountChip extends StatelessWidget {
-  const _StudentAccountChip({required this.label, required this.onLogout});
-
-  final String label;
-  final VoidCallback onLogout;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      tooltip: '账号',
-      onSelected: (key) {
-        if (key == 'logout') onLogout();
-      },
-      itemBuilder:
-          (_) => const [PopupMenuItem(value: 'logout', child: Text('退出登录'))],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppPalette.warmTint.withValues(alpha: 0.6),
-          borderRadius: AppRadius.capsuleR,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.person_outline,
-              size: 14,
-              color: AppPalette.primary.withValues(alpha: 0.85),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: AppPalette.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

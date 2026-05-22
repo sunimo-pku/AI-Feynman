@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/round12_models.dart';
+import '../services/auth_service.dart';
 import '../services/round12_service.dart';
 import '../services/student_grade_store.dart';
 import '../theme/app_theme.dart';
@@ -137,6 +139,36 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                         )
                         .toList(),
               ),
+            if (widget.embeddedInTab) ...[
+              const SizedBox(height: 20),
+              const StudySectionTitle(title: '账号'),
+              AnimatedBuilder(
+                animation: AuthService.instance,
+                builder: (context, _) {
+                  final username = AuthService.instance.currentUsername;
+                  return StudyGroupedPanel(
+                    children: [
+                      StudyDenseTile(
+                        title: username.isEmpty ? '当前账号' : username,
+                        subtitle: '学生端',
+                        icon: Icons.person_outline,
+                        showIconBox: true,
+                      ),
+                      StudyListRow(
+                        title: '切换到家长账号',
+                        subtitle: '查看学习报告与作业',
+                        onTap: () => _showSwitchParentDialog(context),
+                      ),
+                      StudyListRow(
+                        title: '退出账号',
+                        subtitle: '退出后需重新登录',
+                        onTap: () => unawaited(_logoutAccount()),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
           ],
         );
       },
@@ -146,6 +178,133 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
     }
     return _ScaffoldShell(title: '我的战力', child: body);
   }
+}
+
+Future<void> _logoutAccount() async {
+  await AuthService.instance.logout();
+}
+
+Future<void> _showSwitchParentDialog(BuildContext context) async {
+  final username = AuthService.instance.currentUsername;
+  if (username.isEmpty) return;
+
+  final accountPasswordController = TextEditingController();
+  final parentPasswordController = TextEditingController();
+  var submitting = false;
+  String? errorMessage;
+
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          Future<void> submit() async {
+            final accountPassword = accountPasswordController.text;
+            final parentPassword = parentPasswordController.text;
+            if (accountPassword.length < 6) {
+              setDialogState(
+                () => errorMessage = '请填写账号密码（至少 6 位）。',
+              );
+              return;
+            }
+            if (parentPassword.length < 6) {
+              setDialogState(
+                () => errorMessage = '请填写家长密码（至少 6 位）。',
+              );
+              return;
+            }
+            setDialogState(() {
+              submitting = true;
+              errorMessage = null;
+            });
+            final result = await AuthService.instance.login(
+              username: username,
+              password: accountPassword,
+              loginAs: 'parent',
+              parentPassword: parentPassword,
+            );
+            if (!ctx.mounted) return;
+            if (!result.ok) {
+              setDialogState(() {
+                submitting = false;
+                errorMessage = result.message;
+              });
+              return;
+            }
+            Navigator.of(ctx).pop();
+          }
+
+          return AlertDialog(
+            title: const Text('切换到家长账号'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '账号：$username',
+                    style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                      color: AppPalette.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: accountPasswordController,
+                    obscureText: true,
+                    enabled: !submitting,
+                    decoration: const InputDecoration(
+                      labelText: '账号密码',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: parentPasswordController,
+                    obscureText: true,
+                    enabled: !submitting,
+                    decoration: const InputDecoration(
+                      labelText: '家长密码',
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => unawaited(submit()),
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorMessage!,
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: AppPalette.error,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: submitting ? null : () => Navigator.of(ctx).pop(),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: submitting ? null : () => unawaited(submit()),
+                child:
+                    submitting
+                        ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Text('进入家长端'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+
+  accountPasswordController.dispose();
+  parentPasswordController.dispose();
 }
 
 class LeaderboardPage extends StatefulWidget {
