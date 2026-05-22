@@ -37,3 +37,4 @@ flutter:
     - assets/curriculum/pep-junior-math.json
     - assets/questions/pep-junior-math-questions.json
     - assets/questions/diagrams/
+    - assets/agents/

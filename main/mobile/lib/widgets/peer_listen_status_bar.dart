@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/lecture_models.dart';
 import '../theme/app_theme.dart';
+import 'agent_avatar.dart';
 
 /// 三名同伴的「听懂 / 没听懂」头像状态条（P1）。
 class PeerListenStatusBar extends StatelessWidget {
@@ -106,41 +107,26 @@ class _PeerStatusChip extends StatelessWidget {
     final chip = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: palette.accent.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: borderColor,
-              width: isPlaying || (hasData && !understood) ? 2.4 : 1,
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            AgentAvatar(
+              role: role,
+              size: 44,
+              ringColor: borderColor,
+              ringWidth: isPlaying || (hasData && !understood) ? 2.4 : 1,
             ),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Text(
-                palette.avatar,
-                style: TextStyle(
-                  color: palette.accent,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
+            if (isPlaying)
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Icon(
+                  Icons.volume_up,
+                  size: 14,
+                  color: AppPalette.primary,
                 ),
               ),
-              if (isPlaying)
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Icon(
-                    Icons.volume_up,
-                    size: 14,
-                    color: AppPalette.primary,
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
@@ -186,45 +172,22 @@ class _PeerStatusChip extends StatelessWidget {
   }
 
   _ChipPalette _palette(AgentRole role) {
-    switch (role) {
-      case AgentRole.xiaoming:
-        return const _ChipPalette(
-          accent: AppPalette.secondary,
-          avatar: '明',
-          label: '小明',
-        );
-      case AgentRole.daxiong:
-        return const _ChipPalette(
-          accent: Color(0xFFD97706),
-          avatar: '雄',
-          label: '大雄',
-        );
-      case AgentRole.classLeader:
-      case AgentRole.monitor:
-        return const _ChipPalette(
-          accent: AppPalette.primaryAccent,
-          avatar: '长',
-          label: '班长',
-        );
-      case AgentRole.teacher:
-      case AgentRole.system:
-        return const _ChipPalette(
-          accent: AppPalette.primary,
-          avatar: '师',
-          label: '老师',
-        );
-    }
+    return _ChipPalette(
+      accent: AgentAvatar.accentFor(role),
+      label: switch (role) {
+        AgentRole.xiaoming => '小明',
+        AgentRole.daxiong => '大雄',
+        AgentRole.classLeader || AgentRole.monitor => '班长',
+        AgentRole.teacher => '李老师',
+        AgentRole.system => '系统',
+      },
+    );
   }
 }
 
 class _ChipPalette {
-  const _ChipPalette({
-    required this.accent,
-    required this.avatar,
-    required this.label,
-  });
+  const _ChipPalette({required this.accent, required this.label});
 
   final Color accent;
-  final String avatar;
   final String label;
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/lecture_models.dart';
 import '../theme/app_theme.dart';
+import 'agent_avatar.dart';
 import 'formula_text.dart';
 
 /// 头像旁内联追问文案（由讲题页传入）。
@@ -149,8 +150,8 @@ class _PeerRailRow extends StatelessWidget {
         ],
         GestureDetector(
           onTap: onAvatarTap,
-          child: _AvatarDisc(
-            palette: palette,
+          child: AgentAvatar(
+            role: role,
             ringColor: ringColor,
             ringWidth: isSpeaking || (hasData && !understood) ? 3 : 1.5,
             pulse: isSpeaking,
@@ -299,141 +300,22 @@ class _InlinePeerBubble extends StatelessWidget {
   }
 }
 
-class _AvatarDisc extends StatelessWidget {
-  const _AvatarDisc({
-    required this.palette,
-    required this.ringColor,
-    required this.ringWidth,
-    this.pulse = false,
-  });
-
-  final _PeerPalette palette;
-  final Color ringColor;
-  final double ringWidth;
-  final bool pulse;
-
-  @override
-  Widget build(BuildContext context) {
-    final disc = Container(
-      width: 52,
-      height: 52,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: palette.accent.withValues(alpha: 0.12),
-        shape: BoxShape.circle,
-        border: Border.all(color: ringColor, width: ringWidth),
-      ),
-      child: Text(
-        palette.avatar,
-        style: TextStyle(
-          color: palette.accent,
-          fontWeight: FontWeight.w800,
-          fontSize: 18,
-        ),
-      ),
-    );
-    if (!pulse) return disc;
-    return _PulseWrapper(color: ringColor, child: disc);
-  }
-}
-
-class _PulseWrapper extends StatefulWidget {
-  const _PulseWrapper({required this.color, required this.child});
-
-  final Color color;
-  final Widget child;
-
-  @override
-  State<_PulseWrapper> createState() => _PulseWrapperState();
-}
-
-class _PulseWrapperState extends State<_PulseWrapper>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: widget.color.withValues(alpha: 0.25 + 0.2 * _c.value),
-                blurRadius: 8 + 6 * _c.value,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: child,
-        );
-      },
-      child: widget.child,
-    );
-  }
-}
-
 class _PeerPalette {
-  const _PeerPalette({
-    required this.accent,
-    required this.avatar,
-    required this.label,
-  });
+  const _PeerPalette({required this.accent, required this.label});
 
   final Color accent;
-  final String avatar;
   final String label;
 
   static _PeerPalette forRole(AgentRole role) {
-    switch (role) {
-      case AgentRole.xiaoming:
-        return const _PeerPalette(
-          accent: AppPalette.secondary,
-          avatar: '明',
-          label: '小明',
-        );
-      case AgentRole.daxiong:
-        return const _PeerPalette(
-          accent: Color(0xFFD97706),
-          avatar: '雄',
-          label: '大雄',
-        );
-      case AgentRole.classLeader:
-      case AgentRole.monitor:
-        return const _PeerPalette(
-          accent: AppPalette.primaryAccent,
-          avatar: '长',
-          label: '班长',
-        );
-      case AgentRole.teacher:
-        return const _PeerPalette(
-          accent: AppPalette.primary,
-          avatar: '师',
-          label: '李老师',
-        );
-      case AgentRole.system:
-        return const _PeerPalette(
-          accent: AppPalette.textSecondary,
-          avatar: '系',
-          label: '系统',
-        );
-    }
+    return _PeerPalette(
+      accent: AgentAvatar.accentFor(role),
+      label: switch (role) {
+        AgentRole.xiaoming => '小明',
+        AgentRole.daxiong => '大雄',
+        AgentRole.classLeader || AgentRole.monitor => '班长',
+        AgentRole.teacher => '李老师',
+        AgentRole.system => '系统',
+      },
+    );
   }
 }

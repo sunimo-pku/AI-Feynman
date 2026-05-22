@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/lecture_models.dart';
 import '../theme/app_theme.dart';
+import 'agent_avatar.dart';
 import 'formula_text.dart';
 
 /// 单条多 Agent 对话气泡：左侧头像 + 右侧昵称 / 文本 / 步骤标签。
@@ -37,7 +38,7 @@ class AgentMessageBubble extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Avatar(palette: palette, label: palette.avatar),
+          AgentAvatar(role: turn.role, size: 40),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -111,14 +112,12 @@ class AgentMessageBubble extends StatelessWidget {
           surface: Color(0xFFF1F5FF),
           accent: AppPalette.secondary,
           roleLabel: '基础不牢型',
-          avatar: '明',
         );
       case AgentRole.daxiong:
         return const _RolePalette(
           surface: Color(0xFFFFF7ED),
           accent: Color(0xFFD97706),
           roleLabel: '计算粗心型',
-          avatar: '雄',
         );
       case AgentRole.classLeader:
       case AgentRole.monitor:
@@ -130,21 +129,18 @@ class AgentMessageBubble extends StatelessWidget {
           surface: Color(0xFFF0FDFA),
           accent: AppPalette.primaryAccent,
           roleLabel: '总结建议型',
-          avatar: '长',
         );
       case AgentRole.teacher:
         return const _RolePalette(
           surface: Color(0xFFEFF6FF),
           accent: AppPalette.primary,
           roleLabel: '老师 · 把控者',
-          avatar: '师',
         );
       case AgentRole.system:
         return const _RolePalette(
           surface: Color(0xFFF8FAFC),
           accent: AppPalette.textSecondary,
           roleLabel: '系统提示',
-          avatar: '系',
         );
     }
   }
@@ -155,42 +151,11 @@ class _RolePalette {
     required this.surface,
     required this.accent,
     required this.roleLabel,
-    required this.avatar,
   });
 
   final Color surface;
   final Color accent;
   final String roleLabel;
-  final String avatar;
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.palette, required this.label});
-
-  final _RolePalette palette;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 40,
-      height: 40,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: palette.accent.withValues(alpha: 0.12),
-        shape: BoxShape.circle,
-        border: Border.all(color: palette.accent.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: palette.accent,
-          fontWeight: FontWeight.w700,
-          fontSize: 16,
-        ),
-      ),
-    );
-  }
 }
 
 class _StepChip extends StatelessWidget {
