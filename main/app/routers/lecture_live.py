@@ -238,10 +238,13 @@ def _persist_live_session_if_needed(
         )
         db.add(row)
 
-        # 实时会话默认按「完成 1 轮 + 加 8 分」记一次本地进度，
-        # 避免学生用了实时讲题模式却看不到任何后端进度。前端会再次走
-        # /learning/progress/sync 把精确分数（含 100 上限）拉齐。
-        if session.section_id:
+        progress_delta = int(session.last_mastery_delta or 0)
+        should_update_progress = (
+            (session.last_status or "") == "completed"
+            and progress_delta > 0
+            and bool(session.section_id)
+        )
+        if should_update_progress:
             progress = (
                 db.query(LearningProgress)
                 .filter(
@@ -250,8 +253,7 @@ def _persist_live_session_if_needed(
                 )
                 .first()
             )
-            delta = int(session.last_mastery_delta or 0)
-            score_gain = max(8, delta * 8) if delta > 0 else 8
+            score_gain = progress_delta * 8
             if progress is None:
                 progress = LearningProgress(
                     student_id=profile.id,
@@ -273,7 +275,7 @@ def _persist_live_session_if_needed(
                 if transcript:
                     progress.last_summary = transcript[:200]
 
-        if (session.last_status or "") == "completed" and session.question_id:
+        if should_update_progress and session.question_id:
             from app.services.assignment_service import mark_assignments_completed
 
             summary_text = turns_payload[-1].get("text", "") if turns_payload else transcript[:200]
@@ -283,7 +285,7 @@ def _persist_live_session_if_needed(
                 section_id=session.section_id or "",
                 question_id=session.question_id or "",
                 summary=summary_text,
-                mastery_delta=int(session.last_mastery_delta or 0),
+                mastery_delta=progress_delta,
                 round_count=session.round_index,
             )
 

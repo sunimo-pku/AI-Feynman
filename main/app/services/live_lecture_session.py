@@ -148,6 +148,7 @@ class LiveLectureSession:
     _tts_seq_by_turn: dict[str, int] = field(default_factory=dict)
     _tts_role_by_turn: dict[str, str] = field(default_factory=dict)
     _tts_tail_by_turn: dict[str, asyncio.Task] = field(default_factory=dict)
+    _tts_generation: int = 0
     # 每轮「讲题结束」只消费此索引之后的 ASR 片段，避免上一轮语音混入本轮。
     _transcript_round_start: int = 0
 
@@ -244,6 +245,7 @@ class LiveLectureSession:
             )
             return True
         if evt_type == EVT_SESSION_END:
+            self._cancel_tts_tasks()
             return False
         return True
 
@@ -257,19 +259,32 @@ class LiveLectureSession:
         *,
         send: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> None:
+        next_section_id = str(event.get("sectionId") or "").strip()
+        next_question_id = str(event.get("questionId") or "").strip()
+        next_question_prompt = str(event.get("questionPrompt") or "").strip()
+        is_same_question = (
+            self._started
+            and next_section_id == self.section_id
+            and next_question_id == self.question_id
+        )
+
+        self._cancel_tts_tasks()
         self.session_id = str(event.get("sessionId") or self.session_id or uuid.uuid4().hex)
-        self.section_id = str(event.get("sectionId") or "").strip()
-        self.question_id = str(event.get("questionId") or "").strip()
-        self.question_prompt = str(event.get("questionPrompt") or "").strip()
+        self.section_id = next_section_id
+        self.question_id = next_question_id
+        self.question_prompt = next_question_prompt
         self._started = True
-        self.round_index = 0
-        self.history.clear()
-        self.transcript_segments.clear()
-        self._transcript_round_start = 0
-        self.latest_steps.clear()
-        self.board_latex = ""
-        self.board_plain_text = ""
-        self.asr_buffer.reset()
+        self.last_status = "needs_explanation"
+        self.last_mastery_delta = 0
+        if not is_same_question:
+            self.round_index = 0
+            self.history.clear()
+            self.transcript_segments.clear()
+            self._transcript_round_start = 0
+            self.latest_steps.clear()
+            self.board_latex = ""
+            self.board_plain_text = ""
+            self.asr_buffer.reset()
         self.is_thinking = False
         self._interrupt_event.clear()
         await self._safe_send(send, {
@@ -413,7 +428,7 @@ class LiveLectureSession:
             })
             return
         pause_t0 = time.monotonic()
-        await self._maybe_flush_asr(
+        asr_ok = await self._maybe_flush_asr(
             send=send,
             recognize_fn=recognize_fn,
             force=True,
@@ -424,6 +439,12 @@ class LiveLectureSession:
             asr_ms,
             self.session_id,
         )
+        if not asr_ok:
+            await self._safe_send(send, {
+                "type": EVT_LISTENING,
+                "sessionId": self.session_id,
+            })
+            return
         has_speech = any(seg.strip() for seg in self.transcript_segments)
         if not self.latest_steps and not has_speech:
             await self._safe_send(send, {
@@ -554,9 +575,9 @@ class LiveLectureSession:
         send: Callable[[dict[str, Any]], Awaitable[None]],
         recognize_fn: Callable[[str, str], dict],
         force: bool = False,
-    ) -> None:
+    ) -> bool:
         if not force:
-            return
+            return True
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
@@ -566,14 +587,15 @@ class LiveLectureSession:
             ),
         )
         if result is not None:
-            await self._handle_asr_result(result, send=send)
+            return await self._handle_asr_result(result, send=send)
+        return True
 
     async def _handle_asr_result(
         self,
         result: dict[str, Any],
         *,
         send: Callable[[dict[str, Any]], Awaitable[None]],
-    ) -> None:
+    ) -> bool:
         if result.get("error"):
             logger.warning(
                 "[live-session] ASR failed session=%s err=%s",
@@ -581,16 +603,17 @@ class LiveLectureSession:
                 result.get("error"),
             )
             await self._send_error(send, f"asr_failed:{result.get('error')}")
-            return
+            return False
         text = (result.get("text") or "").strip()
         if not text:
-            return
+            return True
         self.transcript_segments.append(text)
         await self._safe_send(send, {
             "type": EVT_ASR_SEGMENT,
             "sessionId": self.session_id,
             "text": text,
         })
+        return True
 
     async def _invoke_peer_assessments_streaming(
         self,
@@ -1095,6 +1118,7 @@ class LiveLectureSession:
         seq = self._tts_seq_by_turn.get(turn_id, 0)
         self._tts_seq_by_turn[turn_id] = seq + 1
         role = self._tts_role_by_turn.get(turn_id, "teacher")
+        generation = self._tts_generation
 
         async def _run() -> None:
             await self._stream_tts_for_sentence(
@@ -1103,6 +1127,7 @@ class LiveLectureSession:
                 seq=seq,
                 role=role,
                 sentence=sentence,
+                generation=generation,
             )
 
         prev = self._tts_tail_by_turn.get(turn_id)
@@ -1118,6 +1143,16 @@ class LiveLectureSession:
         task = asyncio.create_task(_chained())
         self._tts_tail_by_turn[turn_id] = task
 
+    def _cancel_tts_tasks(self) -> None:
+        self._tts_generation += 1
+        for task in self._tts_tail_by_turn.values():
+            if not task.done():
+                task.cancel()
+        self._tts_tail_by_turn.clear()
+        self._tts_buffer_by_turn.clear()
+        self._tts_seq_by_turn.clear()
+        self._tts_role_by_turn.clear()
+
     async def _stream_tts_for_sentence(
         self,
         *,
@@ -1126,6 +1161,7 @@ class LiveLectureSession:
         seq: int,
         role: str,
         sentence: str,
+        generation: int,
     ) -> None:
         from app.config import Config
         from app.services import volc_tts
@@ -1151,7 +1187,11 @@ class LiveLectureSession:
 
         chunk_index = 0
         while True:
+            if generation != self._tts_generation:
+                return
             item = await queue.get()
+            if generation != self._tts_generation:
+                return
             if item is sentinel:
                 break
             if isinstance(item, tuple) and len(item) == 2 and item[0] == "__error__":

@@ -10,8 +10,8 @@ import 'auth_service.dart';
 
 class ReplayService {
   ReplayService({http.Client? client, Duration? timeout})
-      : _client = client ?? http.Client(),
-        _timeout = timeout ?? const Duration(seconds: 12);
+    : _client = client ?? http.Client(),
+      _timeout = timeout ?? const Duration(seconds: 12);
 
   final http.Client _client;
   final Duration _timeout;
@@ -72,23 +72,37 @@ class ReplayService {
   }
 
   Future<void> finishAndUpload() async {
-    if (_sessionId.isEmpty || !AuthService.instance.isLoggedIn) return;
+    if (_sessionId.isEmpty) return;
     final durationMs = _tMs;
+    final sessionId = _sessionId;
+    final sectionId = _sectionId;
+    final questionId = _questionId;
+    final questionPrompt = _questionPrompt;
+    final audioChunks = List<String>.unmodifiable(_audioChunks);
+    final inkTimeline = List<Map<String, dynamic>>.unmodifiable(
+      _inkTimeline.map(Map.unmodifiable),
+    );
+    final turnsTimeline = List<Map<String, dynamic>>.unmodifiable(
+      _turnsTimeline.map(Map.unmodifiable),
+    );
     try {
+      if (!AuthService.instance.isLoggedIn) return;
       final resp = await _client
           .post(
             ApiConfig.uri('/replays'),
             headers: AuthService.instance.authHeaders(),
-            body: utf8.encode(jsonEncode({
-              'sessionId': _sessionId,
-              'sectionId': _sectionId,
-              'questionId': _questionId,
-              'questionPrompt': _questionPrompt,
-              'audioBase64Chunks': _audioChunks,
-              'inkTimeline': _inkTimeline,
-              'turnsTimeline': _turnsTimeline,
-              'durationMs': durationMs,
-            })),
+            body: utf8.encode(
+              jsonEncode({
+                'sessionId': sessionId,
+                'sectionId': sectionId,
+                'questionId': questionId,
+                'questionPrompt': questionPrompt,
+                'audioBase64Chunks': audioChunks,
+                'inkTimeline': inkTimeline,
+                'turnsTimeline': turnsTimeline,
+                'durationMs': durationMs,
+              }),
+            ),
           )
           .timeout(_timeout);
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
@@ -104,7 +118,20 @@ class ReplayService {
         error: e,
         stackTrace: st,
       );
+    } finally {
+      _clearCurrentSession();
     }
+  }
+
+  void _clearCurrentSession() {
+    _sessionId = '';
+    _sectionId = '';
+    _questionId = '';
+    _questionPrompt = '';
+    _startedAt = null;
+    _inkTimeline.clear();
+    _turnsTimeline.clear();
+    _audioChunks.clear();
   }
 
   Future<List<ReplaySummary>> fetchParentReplays({int? studentId}) async {
@@ -112,7 +139,9 @@ class ReplayService {
     if (studentId != null && studentId > 0) {
       params['studentId'] = '$studentId';
     }
-    final uri = ApiConfig.uri('/parent/replays').replace(queryParameters: params);
+    final uri = ApiConfig.uri(
+      '/parent/replays',
+    ).replace(queryParameters: params);
     final decoded = await _getMap(uri);
     final raw = decoded['replays'];
     return raw is List

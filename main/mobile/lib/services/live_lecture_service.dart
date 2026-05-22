@@ -14,6 +14,8 @@ import 'auth_service.dart';
 import 'ocr_service.dart';
 import 'segment_audio_buffer.dart';
 
+typedef LiveWebSocketConnector = WebSocketChannel Function(Uri uri);
+
 /// 实时讲题服务（第九轮）。
 ///
 /// 责任：
@@ -35,13 +37,17 @@ class LiveLectureService {
     http.Client? httpClient,
     AudioPlayer? audioPlayer,
     OcrService? ocrService,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _audioPlayer = audioPlayer ?? AudioPlayer(),
-        _ocrService = ocrService ?? OcrService();
+    LiveWebSocketConnector? webSocketConnector,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _audioPlayer = audioPlayer ?? AudioPlayer(),
+       _ocrService = ocrService ?? OcrService(),
+       _webSocketConnector =
+           webSocketConnector ?? ((uri) => WebSocketChannel.connect(uri));
 
   final http.Client _httpClient;
   final AudioPlayer _audioPlayer;
   final OcrService _ocrService;
+  final LiveWebSocketConnector _webSocketConnector;
 
   /// 第十轮：当前题目相关上下文，供 [sendInkSnapshot] 调用 OCR 兜底。
   /// 由调用方在 [connectAndStart] 时一并传入。
@@ -98,7 +104,8 @@ class LiveLectureService {
       _streamedTtsTurnIds.contains(turnId);
 
   final _eventsController = StreamController<LiveServerEvent>.broadcast();
-  final _connectionController = StreamController<LiveConnectionState>.broadcast();
+  final _connectionController =
+      StreamController<LiveConnectionState>.broadcast();
   final _errorsController = StreamController<String>.broadcast();
   final _ttsStateController = StreamController<TtsState>.broadcast();
   final _ttsPlaybackController = StreamController<TtsPlaybackInfo>.broadcast();
@@ -148,19 +155,21 @@ class LiveLectureService {
       // 已连接：发送 session_start 切换到新会话。
       _sessionId = sessionId;
       _audioSeq = 0;
-      _sendJson(LiveClientEvent.sessionStart(
-        sessionId: sessionId,
-        sectionId: sectionId,
-        questionId: questionId,
-        questionPrompt: questionPrompt,
-      ));
+      _sendJson(
+        LiveClientEvent.sessionStart(
+          sessionId: sessionId,
+          sectionId: sectionId,
+          questionId: questionId,
+          questionPrompt: questionPrompt,
+        ),
+      );
       return true;
     }
     try {
       await _closePreviousChannelBeforeReconnect();
       final epoch = ++_connectionEpoch;
       final uri = _buildWsUri();
-      _channel = WebSocketChannel.connect(uri);
+      _channel = _webSocketConnector(uri);
       // 一些平台（Web）的 channel.ready 不存在，做兼容
       try {
         await _channel!.ready;
@@ -188,12 +197,14 @@ class LiveLectureService {
       _audioSeq = 0;
       _reconnectAttempts = 0;
       _connectionController.add(LiveConnectionState.connected);
-      _sendJson(LiveClientEvent.sessionStart(
-        sessionId: sessionId,
-        sectionId: sectionId,
-        questionId: questionId,
-        questionPrompt: questionPrompt,
-      ));
+      _sendJson(
+        LiveClientEvent.sessionStart(
+          sessionId: sessionId,
+          sectionId: sectionId,
+          questionId: questionId,
+          questionPrompt: questionPrompt,
+        ),
+      );
       _startAppPing();
       return true;
     } catch (e) {
@@ -211,9 +222,9 @@ class LiveLectureService {
       // 故意不走 _sendJson 的 _markDisconnected 链路：ping 失败时让
       // onError / onDone 自然触发，避免双路径断连。
       try {
-        _channel?.sink.add(jsonEncode(
-          LiveClientEvent.ping(sessionId: _sessionId),
-        ));
+        _channel?.sink.add(
+          jsonEncode(LiveClientEvent.ping(sessionId: _sessionId)),
+        );
       } catch (_) {
         // swallow：失败也不需要立刻断，下一次 audio_chunk 会自然检测。
       }
@@ -268,7 +279,8 @@ class LiveLectureService {
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(seconds: delaySec), () async {
       if (_disposed || _isConnected) return;
-      final sessionId = 'sess-${DateTime.now().millisecondsSinceEpoch}-'
+      final sessionId =
+          'sess-${DateTime.now().millisecondsSinceEpoch}-'
           '$_lastSectionId-$_lastQuestionId';
       await connectAndStart(
         sessionId: sessionId,
@@ -299,10 +311,13 @@ class LiveLectureService {
     if (!_isConnected || _sessionId.isEmpty || _segmentAudio.isEmpty) {
       return;
     }
-    for (final chunk in _segmentAudio.chunks) {
+    var sent = 0;
+    for (final chunk in _segmentAudio.replayPendingChunks) {
       if (!_isConnected || _sessionId.isEmpty) break;
       _transmitAudioChunk(chunk, sampleRate: sampleRate);
+      sent += 1;
     }
+    _segmentAudio.markReplaySent(sent);
   }
 
   void clearSegmentAudio() => _segmentAudio.clear();
@@ -311,13 +326,15 @@ class LiveLectureService {
     if (!_isConnected || _sessionId.isEmpty || data.isEmpty) return;
     final seq = _audioSeq++;
     final base64Data = base64Encode(data);
-    _sendJson(LiveClientEvent.audioChunk(
-      sessionId: _sessionId,
-      seq: seq,
-      base64Data: base64Data,
-      sampleRate: sampleRate,
-      format: 'pcm16',
-    ));
+    _sendJson(
+      LiveClientEvent.audioChunk(
+        sessionId: _sessionId,
+        seq: seq,
+        base64Data: base64Data,
+        sampleRate: sampleRate,
+        format: 'pcm16',
+      ),
+    );
   }
 
   void sendInkSnapshot(
@@ -325,21 +342,34 @@ class LiveLectureService {
     String boardImageBase64 = '',
   }) {
     if (!_isConnected || _sessionId.isEmpty) return;
+    final sessionId = _sessionId;
+    final sectionId = _currentSectionId;
+    final questionId = _currentQuestionId;
+    final referenceSteps = List<String>.unmodifiable(_currentReferenceSteps);
     if (steps.isEmpty && boardImageBase64.isEmpty) {
-      _sendJson(LiveClientEvent.inkSnapshot(
-        sessionId: _sessionId,
-        steps: steps,
-      ));
+      _sendJson(
+        LiveClientEvent.inkSnapshot(sessionId: sessionId, steps: steps),
+      );
       return;
     }
-    unawaited(_enrichAndSendSnapshot(
-      steps,
-      boardImageBase64: boardImageBase64,
-    ));
+    unawaited(
+      _enrichAndSendSnapshot(
+        steps,
+        sessionId: sessionId,
+        sectionId: sectionId,
+        questionId: questionId,
+        referenceSteps: referenceSteps,
+        boardImageBase64: boardImageBase64,
+      ),
+    );
   }
 
   Future<void> _enrichAndSendSnapshot(
     List<Map<String, dynamic>> steps, {
+    required String sessionId,
+    required String sectionId,
+    required String questionId,
+    required List<String> referenceSteps,
     String boardImageBase64 = '',
   }) async {
     var boardLatex = '';
@@ -353,22 +383,22 @@ class LiveLectureService {
       final plain = (s['plainText'] as String? ?? '').trim();
       return latex.isNotEmpty || plain.isNotEmpty;
     });
-    if (!hasManualText &&
-        boardImageBase64.isNotEmpty &&
-        _currentSectionId.isNotEmpty) {
+    if (!hasManualText && boardImageBase64.isNotEmpty && sectionId.isNotEmpty) {
       try {
         final board = await _ocrService.recognizeBoard(
-          sectionId: _currentSectionId,
-          questionId: _currentQuestionId,
-          referenceSteps: _currentReferenceSteps,
+          sectionId: sectionId,
+          questionId: questionId,
+          referenceSteps: referenceSteps,
           boardImageBase64: boardImageBase64,
           totalStrokeCount: totalStrokes,
           steps: steps
-              .map((s) => OcrStepInput(
-                    stepId: s['stepId'] as String? ?? '',
-                    strokeCount: (s['strokeCount'] as int?) ?? 0,
-                    boundingBox: s['boundingBox'] as Map<String, dynamic>?,
-                  ))
+              .map(
+                (s) => OcrStepInput(
+                  stepId: s['stepId'] as String? ?? '',
+                  strokeCount: (s['strokeCount'] as int?) ?? 0,
+                  boundingBox: s['boundingBox'] as Map<String, dynamic>?,
+                ),
+              )
               .toList(growable: false),
         );
         if (board != null) {
@@ -379,30 +409,40 @@ class LiveLectureService {
         _emitError('OCR 调用失败：$e');
       }
     }
-    if (!_isConnected || _sessionId.isEmpty) return;
+    if (!_isConnected ||
+        _sessionId != sessionId ||
+        _currentQuestionId != questionId) {
+      return;
+    }
     final payloadSteps = steps
-        .map((s) => <String, dynamic>{
-              'stepId': s['stepId'],
-              'strokeCount': s['strokeCount'],
-              if (s['boundingBox'] != null) 'boundingBox': s['boundingBox'],
-              'latex': '',
-              'plainText': '',
-            })
+        .map(
+          (s) => <String, dynamic>{
+            'stepId': s['stepId'],
+            'strokeCount': s['strokeCount'],
+            if (s['boundingBox'] != null) 'boundingBox': s['boundingBox'],
+            'latex': '',
+            'plainText': '',
+          },
+        )
         .toList(growable: false);
-    _sendJson(LiveClientEvent.inkSnapshot(
-      sessionId: _sessionId,
-      steps: payloadSteps,
-      boardLatex: boardLatex,
-      boardPlainText: boardPlain,
-    ));
+    _sendJson(
+      LiveClientEvent.inkSnapshot(
+        sessionId: sessionId,
+        steps: payloadSteps,
+        boardLatex: boardLatex,
+        boardPlainText: boardPlain,
+      ),
+    );
   }
 
   void sendPauseDetected({required int silenceMs}) {
     if (!_isConnected || _sessionId.isEmpty) return;
-    _sendJson(LiveClientEvent.pauseDetected(
-      sessionId: _sessionId,
-      silenceMs: silenceMs,
-    ));
+    _sendJson(
+      LiveClientEvent.pauseDetected(
+        sessionId: _sessionId,
+        silenceMs: silenceMs,
+      ),
+    );
   }
 
   void sendRequestHint() {
@@ -412,10 +452,9 @@ class LiveLectureService {
 
   void sendStudentInterrupt({String reason = 'voice'}) {
     if (!_isConnected || _sessionId.isEmpty) return;
-    _sendJson(LiveClientEvent.studentInterrupt(
-      sessionId: _sessionId,
-      reason: reason,
-    ));
+    _sendJson(
+      LiveClientEvent.studentInterrupt(sessionId: _sessionId, reason: reason),
+    );
   }
 
   Future<void> endSession() async {
@@ -524,9 +563,7 @@ class LiveLectureService {
         await _audioPlayer.setVolume(1.0);
       } catch (_) {}
       if (myToken != _currentTtsToken) return; // 中途被新一轮覆盖
-      _emitTtsPlayback(
-        TtsPlaybackInfo(turnId: '', role: role, playing: true),
-      );
+      _emitTtsPlayback(TtsPlaybackInfo(turnId: '', role: role, playing: true));
       _ttsStateController.add(TtsState.playing);
       await _audioPlayer.play(BytesSource(bytes, mimeType: 'audio/mpeg'));
       // 监听播放完成：audioplayers 的 onPlayerComplete 是 Stream
@@ -552,7 +589,9 @@ class LiveLectureService {
   ///
   /// 不阻塞调用方：方法本身仍是 Future，但内部 tick 走异步 Timer，
   /// 学生白板继续可写（brief 第 11 节）。
-  Future<void> stopTts({Duration fadeDuration = const Duration(milliseconds: 220)}) async {
+  Future<void> stopTts({
+    Duration fadeDuration = const Duration(milliseconds: 220),
+  }) async {
     // 学生打断 / 主动 stop：把流式 TTS 的剩余段全清掉，否则 fade 完毕后
     // 队列里下一段又会自动接着播。
     _clearTtsQueue();
@@ -645,7 +684,8 @@ class LiveLectureService {
     // 解出当前 student，把实时会话写进 LectureSessionRecord 并更新进度。
     // 未登录时不带，后端走匿名 demo 路径，不影响第九轮链路。
     final token = AuthService.instance.currentToken;
-    final query = token.isNotEmpty ? '?token=${Uri.encodeQueryComponent(token)}' : '';
+    final query =
+        token.isNotEmpty ? '?token=${Uri.encodeQueryComponent(token)}' : '';
     return Uri.parse('$wsBase/lecture/live$query');
   }
 
@@ -667,6 +707,9 @@ class LiveLectureService {
       final decoded = jsonDecode(message);
       if (decoded is! Map<String, dynamic>) return;
       final event = LiveServerEvent.fromJson(decoded);
+      if (_sessionId.isNotEmpty && event.sessionId != _sessionId) {
+        return;
+      }
       // 流式 TTS chunk：不流出去给 page 处理，service 内部排队播放即可。
       // 同时仍 emit 一次 agent_tts_chunk 让上层有机会做日志 / debug 面板。
       if (event.type == LiveServerEventType.agentTtsChunk) {

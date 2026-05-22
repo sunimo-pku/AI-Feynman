@@ -835,6 +835,19 @@ git push origin main
   事件 handler 都会 `send_json`，必须用 `asyncio.Lock` 串行发送，避免并发
   ASGI send 造成连接异常。内层 `WebSocketDisconnect` / receive 失败返回前也要
   调 `_persist_live_session_if_needed`，否则正常断线不会保存已完成实时讲题记录。
+- **同题多轮不能清 history，换题必须清旧任务**：`session_start` 若 section/question
+  没变，只是新一段录音，后端必须保留 `history/round_index` 才能递进追问；若换题，
+  才清 history/ASR/白板，并取消旧 TTS task。ASR flush 失败必须发 error/listening
+  后中止 LLM，不能继续 peer assessment。
+- **完成进度只按 completed + 正 delta 落库**：实时 WS 断连可保存
+  `LectureSessionRecord`，但 `LearningProgress` / 作业完成只能在
+  `last_status=completed && last_mastery_delta>0` 时更新，避免“没听懂/断线”
+  也涨掌握度。
+- **前端讲题事件必须按 session/generation 过滤**：`LiveLectureService` 先按
+  `sessionId` 丢掉旧 WS 事件，`LecturePage` 再按 `_activeLiveSessionId` +
+  `_questionGeneration` 防迟到响应污染当前题。题库未加载完成前禁止开麦；
+  「讲题结束」要先 await 录音 stop 再发 `pause_detected`；切题/再讲前先
+  `finishAndUpload` replay、停录音、停 WS/TTS 并取消 snapshot/watchdog timer。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

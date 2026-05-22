@@ -88,7 +88,10 @@ void main() {
         'message': 'minor_protocol_warning',
       });
       expect(e.type, LiveServerEventType.warning);
-      expect((e.payload as LiveWarningPayload).message, 'minor_protocol_warning');
+      expect(
+        (e.payload as LiveWarningPayload).message,
+        'minor_protocol_warning',
+      );
     });
 
     test('error fallback message when missing', () {
@@ -144,6 +147,11 @@ void main() {
       );
       expect(p['type'], 'student_interrupt');
       expect(p['reason'], 'pen');
+    });
+
+    test('ping carries only heartbeat session contract', () {
+      final p = LiveClientEvent.ping(sessionId: 'sess-1');
+      expect(p, {'type': 'ping', 'sessionId': 'sess-1'});
     });
   });
 }

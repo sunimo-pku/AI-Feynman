@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from app.db import LearningProgress, LectureSessionRecord
+from app.routers.lecture_live import _persist_live_session_if_needed
 from app.services.live_lecture_session import (
     EVT_LISTENING,
     EVT_PEER_ASSESSMENTS,
@@ -269,6 +272,69 @@ async def test_audio_chunk_buffers_without_streaming_asr_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pause_stops_pipeline_when_asr_flush_fails(monkeypatch) -> None:
+    called = False
+
+    def fail_if_peer_called(*, role: str, **kwargs: Any) -> dict[str, Any]:
+        nonlocal called
+        called = True
+        raise AssertionError("peer assessment should not run after ASR failure")
+
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.assess_one_peer",
+        fail_if_peer_called,
+    )
+    session = LiveLectureSession()
+    session.asr_buffer.stream_client.enabled = True
+    session.asr_buffer.stream_client.recognize_window = (  # type: ignore[method-assign]
+        lambda **_kwargs: StreamAsrResult(
+            text="",
+            is_final=True,
+            mode="stream",
+            error="volc unavailable",
+        )
+    )
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-asr-fail",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    await session.handle_event(
+        {"type": "ink_snapshot",
+         "steps": [{"stepId": "step_1", "strokeCount": 1}]},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    await session.handle_event(
+        {"type": "audio_chunk", "seq": 0, "base64": _b64_pcm(2.6)},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    sent.clear()
+
+    await session.handle_event(
+        {"type": "pause_detected", "silenceMs": 1600},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    types = [s["type"] for s in sent]
+    assert EVT_ERROR in types
+    assert EVT_LISTENING in types
+    assert EVT_THINKING not in types
+    assert EVT_PEER_ASSESSMENTS not in types
+    assert EVT_ROUND_DONE not in types
+    assert session.round_index == 0
+    assert called is False
+
+
+@pytest.mark.asyncio
 async def test_pause_without_steps_emits_warning() -> None:
     session = LiveLectureSession()
     session.asr_buffer.stream_client.enabled = True
@@ -355,6 +421,14 @@ async def test_all_understood_emits_completed_round_done_and_summary(
         _fake_all,
     )
     session = LiveLectureSession()
+    session.asr_buffer.stream_client.enabled = True
+    session.asr_buffer.stream_client.recognize_window = (  # type: ignore[method-assign]
+        lambda **_kwargs: StreamAsrResult(
+            text="我把前提条件讲清楚了",
+            is_final=True,
+            mode="stream",
+        )
+    )
     sent: list[dict[str, Any]] = []
 
     async def send(payload: dict[str, Any]) -> None:
@@ -396,6 +470,114 @@ async def test_all_understood_emits_completed_round_done_and_summary(
     assert round_done["masteryDelta"] == 1
     assert round_done["allUnderstood"] is True
     assert session.last_status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_multi_round_same_question_passes_incremental_round_and_history(
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_assess_one(*, role: str, **kwargs: Any) -> dict[str, Any]:
+        calls.append({"role": role, **kwargs})
+        return _assessment_dict_from_bulk(
+            role,
+            _fake_peer_assessment_not_all_understood(),
+        )
+
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.assess_one_peer",
+        fake_assess_one,
+    )
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    async def run_round(step_id: str) -> None:
+        await session.handle_event(
+            {"type": "ink_snapshot",
+             "steps": [{"stepId": step_id, "strokeCount": 2,
+                        "latex": "", "plainText": ""}]},
+            send=send, recognize_fn=_fake_recognize,
+            peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+        )
+        await session.handle_event(
+            {"type": "pause_detected", "silenceMs": 1600},
+            send=send, recognize_fn=_fake_recognize,
+            peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+        )
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-same-rounds",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1",
+         "questionPrompt": "化简：\\sqrt{12}"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    await run_round("step_1")
+    await run_round("step_2")
+
+    assert session.round_index == 2
+    assert len(calls) == 6
+    first_round = calls[:3]
+    second_round = calls[3:]
+    assert {c["round_index"] for c in first_round} == {1}
+    assert {c["round_index"] for c in second_round} == {2}
+    assert all(c["history"] == [] for c in first_round)
+    assert all(
+        any(item.get("role") == "student" for item in c["history"])
+        for c in second_round
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_start_preserves_same_question_history_and_clears_tts() -> None:
+    session = LiveLectureSession(
+        session_id="sess-same",
+        section_id="pep-g8-down-s16-3",
+        question_id="q1",
+        question_prompt="old prompt",
+        round_index=2,
+        last_status="completed",
+        last_mastery_delta=1,
+    )
+    session._started = True
+    session.history.append({"role": "student", "text": "first round"})
+    session.transcript_segments.append("第一轮讲解")
+    session._transcript_round_start = 1
+    session._tts_buffer_by_turn["t1"] = "旧题尾句"
+    session._tts_seq_by_turn["t1"] = 2
+    session._tts_role_by_turn["t1"] = "teacher"
+    pending_tts = asyncio.create_task(asyncio.sleep(60))
+    session._tts_tail_by_turn["t1"] = pending_tts
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-same",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1",
+         "questionPrompt": "new prompt"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    await asyncio.sleep(0)
+
+    assert session.round_index == 2
+    assert session.history == [{"role": "student", "text": "first round"}]
+    assert session.transcript_segments == ["第一轮讲解"]
+    assert session.last_status == "needs_explanation"
+    assert session.last_mastery_delta == 0
+    assert session._tts_buffer_by_turn == {}
+    assert session._tts_seq_by_turn == {}
+    assert session._tts_role_by_turn == {}
+    assert session._tts_tail_by_turn == {}
+    assert pending_tts.cancelled()
+    assert any(s["type"] == EVT_LISTENING for s in sent)
 
 
 def _fake_teacher_hint(**kwargs: Any) -> dict[str, Any]:
@@ -454,3 +636,109 @@ def test_split_text_into_deltas_basic() -> None:
 def test_split_text_empty_or_zero() -> None:
     assert _split_text_into_deltas("", chunk_chars=3) == []
     assert _split_text_into_deltas("abc", chunk_chars=0) == ["abc"]
+
+
+class _FakeQuery:
+    def __init__(self, result: Any = None) -> None:
+        self._result = result
+
+    def filter(self, *args: Any, **kwargs: Any) -> "_FakeQuery":
+        return self
+
+    def first(self) -> Any:
+        return self._result
+
+
+class _FakeDb:
+    def __init__(self, existing_progress: Any = None) -> None:
+        self.existing_progress = existing_progress
+        self.added: list[Any] = []
+        self.committed = False
+        self.closed = False
+
+    def add(self, row: Any) -> None:
+        self.added.append(row)
+
+    def query(self, model: Any) -> _FakeQuery:
+        if model is LearningProgress:
+            return _FakeQuery(self.existing_progress)
+        return _FakeQuery()
+
+    def commit(self) -> None:
+        self.committed = True
+
+    def rollback(self) -> None:
+        pass
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_persist_live_session_does_not_update_progress_when_not_completed(
+    monkeypatch,
+) -> None:
+    fake_db = _FakeDb()
+    monkeypatch.setattr("app.routers.lecture_live.SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(
+        "app.routers.lecture_live.ensure_student_profile",
+        lambda _db, _user: SimpleNamespace(id=42),
+    )
+    session = LiveLectureSession(
+        session_id="sess-progress-0",
+        section_id="pep-g8-down-s16-3",
+        question_id="q1",
+        question_prompt="题目",
+        round_index=1,
+        last_status="needs_explanation",
+        last_mastery_delta=0,
+    )
+
+    _persist_live_session_if_needed(SimpleNamespace(username="student"), session)
+
+    assert fake_db.committed is True
+    assert fake_db.closed is True
+    assert any(isinstance(row, LectureSessionRecord) for row in fake_db.added)
+    assert not any(isinstance(row, LearningProgress) for row in fake_db.added)
+
+
+def test_persist_live_session_updates_progress_only_for_completed_positive_delta(
+    monkeypatch,
+) -> None:
+    fake_db = _FakeDb()
+    marked: list[dict[str, Any]] = []
+    monkeypatch.setattr("app.routers.lecture_live.SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(
+        "app.routers.lecture_live.ensure_student_profile",
+        lambda _db, _user: SimpleNamespace(id=42),
+    )
+    monkeypatch.setattr(
+        "app.services.assignment_service.mark_assignments_completed",
+        lambda *args, **kwargs: marked.append(kwargs),
+    )
+    session = LiveLectureSession(
+        session_id="sess-progress-1",
+        section_id="pep-g8-down-s16-3",
+        question_id="q1",
+        question_prompt="题目",
+        round_index=2,
+        last_status="completed",
+        last_mastery_delta=1,
+    )
+    session.transcript_segments.append("我讲清楚了")
+
+    _persist_live_session_if_needed(SimpleNamespace(username="student"), session)
+
+    progress_rows = [
+        row for row in fake_db.added if isinstance(row, LearningProgress)
+    ]
+    assert len(progress_rows) == 1
+    assert progress_rows[0].completed_rounds == 1
+    assert progress_rows[0].mastery_score == 8
+    assert marked == [{
+        "student_id": 42,
+        "section_id": "pep-g8-down-s16-3",
+        "question_id": "q1",
+        "summary": "我讲清楚了",
+        "mastery_delta": 1,
+        "round_count": 2,
+    }]

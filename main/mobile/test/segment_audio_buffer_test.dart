@@ -18,5 +18,22 @@ void main() {
 
     buffer.clear();
     expect(buffer.isEmpty, isTrue);
+    expect(buffer.replayPendingCount, 0);
+  });
+
+  test('SegmentAudioBuffer only replays chunks not already replayed', () {
+    final buffer = SegmentAudioBuffer();
+
+    buffer.add(Uint8List.fromList([1]));
+    buffer.add(Uint8List.fromList([2]));
+    expect(buffer.replayPendingChunks.map((c) => c.first), [1, 2]);
+
+    buffer.markReplaySent(2);
+    expect(buffer.replayPendingCount, 0);
+    expect(buffer.replayPendingChunks, isEmpty);
+
+    buffer.add(Uint8List.fromList([3]));
+    expect(buffer.replayPendingCount, 1);
+    expect(buffer.replayPendingChunks.single, Uint8List.fromList([3]));
   });
 }

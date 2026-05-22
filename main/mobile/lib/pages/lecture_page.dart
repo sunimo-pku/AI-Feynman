@@ -141,6 +141,9 @@ class _LecturePageState extends State<LecturePage> {
   int _questionIndex = 0;
   late LectureQuestion _question;
   bool _questionsLoading = true;
+  bool _questionsReady = false;
+  Future<void>? _questionsBootstrapFuture;
+  int _questionGeneration = 0;
 
   final List<AgentTurn> _turns = <AgentTurn>[];
 
@@ -199,6 +202,9 @@ class _LecturePageState extends State<LecturePage> {
   _LiveStatus _liveStatus = _LiveStatus.idle;
   String? _liveFailureReason;
   bool _segmentReplayInProgress = false;
+  String _activeLiveSessionId = '';
+  int _activeLiveGeneration = 0;
+
   /// 断连时若正在录音（listening/paused/connecting），重连后自动开麦。
   bool _resumeRecordingAfterReconnect = false;
 
@@ -244,6 +250,7 @@ class _LecturePageState extends State<LecturePage> {
     final repo = MockLectureRepository.instance;
     if (widget.questionOverride != null) {
       _questionsLoading = false;
+      _questionsReady = true;
       _questions = [widget.questionOverride!];
       _questionIndex = 0;
       _question = widget.questionOverride!;
@@ -259,7 +266,8 @@ class _LecturePageState extends State<LecturePage> {
     _reasonPlayback.addListener(_onReasonPlaybackChanged);
     _wireLiveServices();
     UserCosmeticsPrefs.instance.load();
-    unawaited(_bootstrapQuestions());
+    _questionsBootstrapFuture = _bootstrapQuestions();
+    unawaited(_questionsBootstrapFuture);
   }
 
   /// 必须 await 全册 JSON，否则首帧拿到 stub 题（无 `image`）且配图永远不出现。
@@ -276,7 +284,10 @@ class _LecturePageState extends State<LecturePage> {
     if (!mounted) return;
     final fresh = repo.questionsForSection(widget.section.id);
     if (fresh.isEmpty) {
-      setState(() => _questionsLoading = false);
+      setState(() {
+        _questionsLoading = false;
+        _questionsReady = false;
+      });
       return;
     }
     final idx = _resolveQuestionIndex(fresh);
@@ -286,8 +297,25 @@ class _LecturePageState extends State<LecturePage> {
       _questionIndex = idx;
       _question = next;
       _questionsLoading = false;
+      _questionsReady = true;
     });
     await _precacheQuestionImage(next);
+  }
+
+  Future<bool> _ensureQuestionsReadyForLive() async {
+    if (_questionsReady && !_questionsLoading) return true;
+    _showLiveSnack('题库正在加载，请稍候再开始讲题。');
+    await _questionsBootstrapFuture;
+    if (!mounted) return false;
+    if (_questionsReady && !_questionsLoading) return true;
+    _showLiveSnack('题库还没加载成功，请稍后重试。');
+    return false;
+  }
+
+  void _advanceQuestionGeneration() {
+    _questionGeneration += 1;
+    _activeLiveGeneration = _questionGeneration;
+    _activeLiveSessionId = '';
   }
 
   int _resolveQuestionIndex(List<LectureQuestion> questions) {
@@ -414,23 +442,40 @@ class _LecturePageState extends State<LecturePage> {
   ///   * 任何其它「立刻让后端拿到当前白板」的场景。
   void _scheduleInkSnapshot({bool immediate = false}) {
     _inkSnapshotDebounce?.cancel();
+    final generation = _questionGeneration;
+    final sessionId = _liveService.sessionId;
     if (immediate) {
-      unawaited(_pushInkSnapshotNow());
+      unawaited(
+        _pushInkSnapshotNow(generation: generation, sessionId: sessionId),
+      );
       return;
     }
     _inkSnapshotDebounce = Timer(const Duration(milliseconds: 480), () async {
-      await _pushInkSnapshotNow();
+      await _pushInkSnapshotNow(generation: generation, sessionId: sessionId);
     });
   }
 
-  Future<void> _pushInkSnapshotNow() async {
+  Future<void> _pushInkSnapshotNow({int? generation, String? sessionId}) async {
     if (!mounted) return;
     if (!_liveService.isConnected) return;
+    if (generation != null && generation != _questionGeneration) return;
+    if (sessionId != null &&
+        sessionId.isNotEmpty &&
+        sessionId != _liveService.sessionId) {
+      return;
+    }
     final stepInfos = _canvasController.collectStepInfos();
     if (stepInfos.isEmpty) return;
     final boardPng = await _canvasController.exportBoardPng(
       penStyle: UserCosmeticsPrefs.instance.penStyle,
     );
+    if (!mounted) return;
+    if (generation != null && generation != _questionGeneration) return;
+    if (sessionId != null &&
+        sessionId.isNotEmpty &&
+        sessionId != _liveService.sessionId) {
+      return;
+    }
     final steps = <Map<String, dynamic>>[];
     for (final info in stepInfos) {
       steps.add({
@@ -586,9 +631,15 @@ class _LecturePageState extends State<LecturePage> {
 
   String _assessmentRoundSummary(List<PeerAssessment> assessments) {
     final understood =
-        assessments.where((a) => a.understood).map((a) => a.displayName).toList();
+        assessments
+            .where((a) => a.understood)
+            .map((a) => a.displayName)
+            .toList();
     final confused =
-        assessments.where((a) => !a.understood).map((a) => a.displayName).toList();
+        assessments
+            .where((a) => !a.understood)
+            .map((a) => a.displayName)
+            .toList();
     if (confused.isEmpty) {
       return '小明、大雄、班长都听懂了！';
     }
@@ -643,9 +694,7 @@ class _LecturePageState extends State<LecturePage> {
       _reasonPlayback.clearQueue();
     } else {
       for (final a in assessments.where((x) => !x.understood)) {
-        _turns.add(
-          a.toReasonTurn(turnId: 'reason_${agentRoleWire(a.role)}'),
-        );
+        _turns.add(a.toReasonTurn(turnId: 'reason_${agentRoleWire(a.role)}'));
       }
       _status = _LectureStatus.awaiting;
       _reasonPlayback.setQueue(assessments);
@@ -664,10 +713,11 @@ class _LecturePageState extends State<LecturePage> {
       _history.removeRange(0, _history.length - _maxHistoryItems);
     }
 
-    final highlightIds = assessments
-        .where((a) => !a.understood)
-        .expand((a) => a.highlightStepIds)
-        .toSet();
+    final highlightIds =
+        assessments
+            .where((a) => !a.understood)
+            .expand((a) => a.highlightStepIds)
+            .toSet();
     if (highlightIds.isNotEmpty) {
       _canvasController.setHighlight(highlightIds);
     } else if (teacherSummary != null &&
@@ -739,8 +789,7 @@ class _LecturePageState extends State<LecturePage> {
       final enriched = await _lectureService.enrichWithOcr(
         request,
         referenceSteps: _question.referenceSteps,
-        boardImageBase64:
-            boardPng == null ? '' : base64Encode(boardPng),
+        boardImageBase64: boardPng == null ? '' : base64Encode(boardPng),
       );
       final response = await _lectureService.submit(enriched);
       if (!mounted) return;
@@ -960,17 +1009,17 @@ class _LecturePageState extends State<LecturePage> {
       return;
     }
     if (_liveStatus == _LiveStatus.thinking) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('同伴正在思考，请稍候再点「需要提示」。')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('同伴正在思考，请稍候再点「需要提示」。')));
       return;
     }
 
     if (_liveService.isConnected) {
       if (_liveService.sessionId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请先点「开始讲题」，再向李老师要提示。')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请先点「开始讲题」，再向李老师要提示。')));
         return;
       }
       setState(() => _hintLoading = true);
@@ -1105,6 +1154,37 @@ class _LecturePageState extends State<LecturePage> {
     _cancelThinkingWatchdog();
     _liveService.clearSegmentAudio();
     _resumeRecordingAfterReconnect = false;
+    _activeLiveSessionId = '';
+    _activeLiveGeneration = _questionGeneration;
+  }
+
+  void _rollbackPendingLiveRound() {
+    if (_turns.isNotEmpty &&
+        _turns.last.role == AgentRole.system &&
+        _turns.last.text.startsWith('已收到第 ') &&
+        _turns.last.text.contains('轮讲解')) {
+      _turns.removeLast();
+      if (_round > 0) _round -= 1;
+    }
+  }
+
+  Future<void> _prepareForQuestionReset() async {
+    _advanceQuestionGeneration();
+    _inkSnapshotDebounce?.cancel();
+    _stuckHintTimer?.cancel();
+    _wrapUpTimer?.cancel();
+    _cancelThinkingWatchdog();
+    _segmentReplayInProgress = false;
+    _resumeRecordingAfterReconnect = false;
+    await _replayService.finishAndUpload();
+    await _audioService.stop();
+    await _reasonPlayback.stop();
+    _reasonPlayback.clearQueue();
+    await _liveService.endSession();
+    await _liveService.stopTts();
+    _activeStreamingTurnId = '';
+    _liveStatus = _LiveStatus.idle;
+    _liveFailureReason = null;
   }
 
   /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题
@@ -1114,22 +1194,21 @@ class _LecturePageState extends State<LecturePage> {
   /// 先根据右侧追问再讲，不能跳过。
   ///
   /// 提交失败 / 错误重试时**不**走这里，仍保留输入（见 `_sendRequest` 错误分支）。
-  void _onContinue() {
+  Future<void> _onContinue() async {
     if (!_canShowCompletionOrbs) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            '还有同伴没听懂，请根据右侧追问再讲一轮；三名同伴都听懂后才能「下一题」。',
-          ),
-        ),
+        const SnackBar(content: Text('还有同伴没听懂，请根据右侧追问再讲一轮；三名同伴都听懂后才能「下一题」。')),
       );
       return;
     }
+    await _prepareForQuestionReset();
+    if (!mounted) return;
     _resetTransientState();
     setState(() {
       if (_questions.isNotEmpty) {
         _questionIndex = (_questionIndex + 1) % _questions.length;
         _question = _questions[_questionIndex];
+        _advanceQuestionGeneration();
       }
       _turns
         ..clear()
@@ -1143,8 +1222,11 @@ class _LecturePageState extends State<LecturePage> {
   ///
   /// 与 [_onContinue] 的关键差异：题目索引 [_questionIndex] **不**变化，
   /// 题面、难度、标签都保持上一轮的内容。
-  void _onReplay() {
+  Future<void> _onReplay() async {
+    await _prepareForQuestionReset();
+    if (!mounted) return;
     _resetTransientState();
+    _advanceQuestionGeneration();
     setState(() {
       _turns
         ..clear()
@@ -1177,9 +1259,14 @@ class _LecturePageState extends State<LecturePage> {
     if (!mounted) return;
     final acknowledged = await PrivacyNoticePage.ensureAcknowledged(context);
     if (!mounted || !acknowledged) return;
+    final questionsReady = await _ensureQuestionsReadyForLive();
+    if (!mounted || !questionsReady) return;
+    final generation = _questionGeneration;
     final sessionId =
         'sess-${DateTime.now().millisecondsSinceEpoch}-'
         '${widget.section.id}-${_question.questionId}';
+    _activeLiveSessionId = sessionId;
+    _activeLiveGeneration = generation;
     if (_liveService.isConnected) {
       _replayService.startSession(
         sessionId: sessionId,
@@ -1196,14 +1283,25 @@ class _LecturePageState extends State<LecturePage> {
       );
       if (!mounted) return;
       if (!sessionStarted) {
+        _activeLiveSessionId = '';
         setState(() {
           _liveStatus = _LiveStatus.disconnected;
           _liveFailureReason = '连不上后端 WebSocket，请点「重新连接」再试。';
         });
         return;
       }
+      if (generation != _questionGeneration ||
+          sessionId != _activeLiveSessionId) {
+        await _liveService.endSession();
+        return;
+      }
       final audioStarted = await _audioService.start();
       if (!mounted) return;
+      if (generation != _questionGeneration ||
+          sessionId != _activeLiveSessionId) {
+        await _audioService.stop();
+        return;
+      }
       if (!audioStarted) {
         final next =
             _audioService.status == AudioStreamStatus.permissionDenied
@@ -1242,14 +1340,25 @@ class _LecturePageState extends State<LecturePage> {
     );
     if (!mounted) return;
     if (!connected) {
+      _activeLiveSessionId = '';
       setState(() {
         _liveStatus = _LiveStatus.disconnected;
         _liveFailureReason = '连不上后端 WebSocket，请点「重新连接」再试。';
       });
       return;
     }
+    if (generation != _questionGeneration ||
+        sessionId != _activeLiveSessionId) {
+      await _liveService.endSession();
+      return;
+    }
     final audioStarted = await _audioService.start();
     if (!mounted) return;
+    if (generation != _questionGeneration ||
+        sessionId != _activeLiveSessionId) {
+      await _audioService.stop();
+      return;
+    }
     if (!audioStarted) {
       // 录音失败：保留 WS 让学生还能补写白板后重试，但状态切到失败态。
       final next =
@@ -1306,7 +1415,7 @@ class _LecturePageState extends State<LecturePage> {
   /// 当前实时讲题改成类似微信群聊发语音：学生点「开始讲题」后持续录音，
   /// 不根据停顿/间隔自动判断讲完；只有学生明确点「讲题结束」才发
   /// pause_detected 进入 LLM 追问。
-  void _onManualPause() {
+  Future<void> _onManualPause() async {
     if (_segmentReplayInProgress) {
       _showLiveSnack('正在恢复断连前的讲解，请稍候…');
       return;
@@ -1320,7 +1429,8 @@ class _LecturePageState extends State<LecturePage> {
     // 像发语音一样，学生点结束后立即停掉本段录音；AI 追问完成后再让
     // 学生手动开始下一段。
     if (_isLiveRecording) {
-      unawaited(_audioService.stop());
+      await _audioService.stop();
+      if (!mounted) return;
     }
     if (!_liveService.isConnected) {
       setState(() {
@@ -1364,6 +1474,7 @@ class _LecturePageState extends State<LecturePage> {
       if (!mounted) return;
       if (_liveStatus != _LiveStatus.thinking) return;
       setState(() {
+        _rollbackPendingLiveRound();
         _liveStatus = _LiveStatus.idle;
         _liveFailureReason = '后端暂时没回，请再讲两句或重新点「讲题结束」';
       });
@@ -1468,6 +1579,13 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   void _onLiveEvent(LiveServerEvent event) {
+    if (_activeLiveSessionId.isNotEmpty &&
+        event.sessionId != _activeLiveSessionId) {
+      return;
+    }
+    if (_activeLiveGeneration != _questionGeneration) {
+      return;
+    }
     switch (event.type) {
       case LiveServerEventType.listening:
         if (mounted) {
@@ -1601,8 +1719,7 @@ class _LecturePageState extends State<LecturePage> {
             teacherSummary: peerPayload.teacherSummary,
             committedStudent: _buildLiveStudentHistoryItem(),
             omitTeacherTurn:
-                peerPayload.allUnderstood &&
-                peerPayload.teacherSummary != null,
+                peerPayload.allUnderstood && peerPayload.teacherSummary != null,
           );
           _liveStatus = _LiveStatus.idle;
         });
@@ -1628,22 +1745,23 @@ class _LecturePageState extends State<LecturePage> {
           final wasHint = _hintLoading;
           setState(() {
             _hintLoading = false;
+            if (!wasHint) {
+              _rollbackPendingLiveRound();
+            }
             if (_liveStatus == _LiveStatus.thinking) {
               _liveStatus = _LiveStatus.idle;
             }
             _liveFailureReason =
-                wasHint
-                    ? '请先在白板写几步思路，再点「需要提示」。'
-                    : '请先在白板写两步，或重新开始讲一段后再点「讲题结束」';
+                wasHint ? '请先在白板写几步思路，再点「需要提示」。' : '请先在白板写两步，或重新开始讲一段后再点「讲题结束」';
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_liveFailureReason!)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(_liveFailureReason!)));
         } else if (wmsg == 'thinking_in_progress' && mounted) {
           setState(() => _hintLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('同伴正在思考，请稍候再点「需要提示」。')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('同伴正在思考，请稍候再点「需要提示」。')));
         } else if (wmsg == 'heartbeat') {
           // 应用层心跳，安静吃掉。
         }
@@ -1873,10 +1991,9 @@ class _LecturePageState extends State<LecturePage> {
     return null;
   }
 
-  bool get _teacherHasMessage =>
-      _turns.any(
-        (t) => t.role == AgentRole.teacher && t.text.trim().isNotEmpty,
-      );
+  bool get _teacherHasMessage => _turns.any(
+    (t) => t.role == AgentRole.teacher && t.text.trim().isNotEmpty,
+  );
 
   /// 点「开始讲题」后才允许落笔；思考 / AI 发言时仍可补写。
   bool get _canDrawOnCanvas =>
@@ -1956,7 +2073,9 @@ class _LecturePageState extends State<LecturePage> {
                 (_, scroll) => Container(
                   decoration: const BoxDecoration(
                     color: AppPalette.surface,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
                   ),
                   child: ListView(
                     controller: scroll,
@@ -2005,7 +2124,7 @@ class _LecturePageState extends State<LecturePage> {
                       tooltip: '再讲一遍',
                       onPressed: () {
                         Navigator.of(ctx).pop();
-                        _onReplay();
+                        unawaited(_onReplay());
                       },
                     ),
                     const SizedBox(width: 16),
@@ -2015,7 +2134,7 @@ class _LecturePageState extends State<LecturePage> {
                       filled: true,
                       onPressed: () {
                         Navigator.of(ctx).pop();
-                        _onContinue();
+                        unawaited(_onContinue());
                       },
                     ),
                   ],
@@ -2268,6 +2387,7 @@ class _LecturePageState extends State<LecturePage> {
 
   Widget _buildOrbToolbar() {
     final submitting = _status == _LectureStatus.submitting;
+    final canStartLive = !submitting && !_questionsLoading && _questionsReady;
     final listening = _isLiveRecording;
     final orbs = <Widget>[];
 
@@ -2276,9 +2396,9 @@ class _LecturePageState extends State<LecturePage> {
         orbs.add(
           LectureOrbButton(
             icon: Icons.mic,
-            tooltip: '开始讲题',
+            tooltip: _questionsLoading ? '题库加载中' : '开始讲题',
             filled: true,
-            onPressed: submitting ? null : _onStartLive,
+            onPressed: canStartLive ? _onStartLive : null,
           ),
         );
         if (_canSubmitRecoveredSegment) {
@@ -2287,7 +2407,7 @@ class _LecturePageState extends State<LecturePage> {
               icon: Icons.stop_circle_outlined,
               tooltip: '讲题结束',
               filled: true,
-              onPressed: _onManualPause,
+              onPressed: () => unawaited(_onManualPause()),
             ),
           );
         }
@@ -2307,13 +2427,13 @@ class _LecturePageState extends State<LecturePage> {
             icon: Icons.stop_circle_outlined,
             tooltip: '讲题结束',
             filled: true,
-            onPressed: listening ? _onManualPause : null,
+            onPressed: listening ? () => unawaited(_onManualPause()) : null,
           ),
         ]);
         break;
       case RealtimeAudioPanelState.thinking:
         orbs.add(
-          LectureOrbButton(
+          const LectureOrbButton(
             icon: Icons.mic,
             tooltip: '思考中',
             loading: true,
@@ -2335,9 +2455,9 @@ class _LecturePageState extends State<LecturePage> {
         orbs.add(
           LectureOrbButton(
             icon: Icons.refresh,
-            tooltip: '重新连接',
+            tooltip: _questionsLoading ? '题库加载中' : '重新连接',
             filled: true,
-            onPressed: _onStartLive,
+            onPressed: canStartLive ? _onStartLive : null,
           ),
         );
         break;
@@ -2346,9 +2466,9 @@ class _LecturePageState extends State<LecturePage> {
         orbs.add(
           LectureOrbButton(
             icon: Icons.refresh,
-            tooltip: '重新连接',
+            tooltip: _questionsLoading ? '题库加载中' : '重新连接',
             filled: true,
-            onPressed: _onStartLive,
+            onPressed: canStartLive ? _onStartLive : null,
           ),
         );
         break;
@@ -2409,13 +2529,13 @@ class _LecturePageState extends State<LecturePage> {
         LectureOrbButton(
           icon: Icons.history,
           tooltip: '再讲一遍',
-          onPressed: _onReplay,
+          onPressed: () => unawaited(_onReplay()),
         ),
         LectureOrbButton(
           icon: Icons.east,
           tooltip: '下一题',
           filled: true,
-          onPressed: _onContinue,
+          onPressed: () => unawaited(_onContinue()),
         ),
         LectureOrbButton(
           icon: Icons.celebration_outlined,
@@ -2442,10 +2562,11 @@ class _LecturePageState extends State<LecturePage> {
   void _showDebugOcrSheet() {
     showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: _buildDebugOcrPanel(),
-      ),
+      builder:
+          (ctx) => Padding(
+            padding: const EdgeInsets.all(16),
+            child: _buildDebugOcrPanel(),
+          ),
     );
   }
 
@@ -2473,7 +2594,9 @@ class _LecturePageState extends State<LecturePage> {
               child: Text(
                 board == null
                     ? '写字后等待 480ms 或提交讲解即可看到整板 source/confidence。'
-                    : '${board.plainText.isEmpty ? board.latex : board.plainText}',
+                    : board.plainText.isEmpty
+                    ? board.latex
+                    : board.plainText,
               ),
             ),
           ],
@@ -2730,9 +2853,9 @@ class _QuestionImage extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     '配图未能加载',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppPalette.error,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: AppPalette.error),
                   ),
                 ],
               );
