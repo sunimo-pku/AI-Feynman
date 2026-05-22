@@ -263,21 +263,21 @@ void main() {
       final out = ReviewRepository.derivCautionPoints(
         tags: const ['非负条件', '取值范围'],
       );
-      expect(out, ['写二次根式前先检查被开方数是否非负。'],
+      expect(out, ['先确认表达式成立所需的取值范围。'],
           reason: '两个等价 tag 只触发一次规则');
     });
 
     test('matches 前提条件', () {
       final out =
           ReviewRepository.derivCautionPoints(tags: const ['前提条件']);
-      expect(out, [r'使用乘除法则时要补充 $a, b$ 的取值前提。']);
+      expect(out, ['使用公式或法则时要补充适用条件。']);
     });
 
-    test('matches 同类二次根式 / 合并同类项', () {
+    test('matches 同类结构 / 合并同类项', () {
       final out = ReviewRepository.derivCautionPoints(
-        tags: const ['同类二次根式', '合并同类项'],
+        tags: const ['同类项', '合并同类项'],
       );
-      expect(out, ['先化成最简二次根式，再合并同类项系数。']);
+      expect(out, ['先整理成同类结构，再合并系数。']);
     });
 
     test('matches 负号', () {

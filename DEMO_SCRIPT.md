@@ -119,17 +119,16 @@
   - **失败容错**：手动把 prefs 里 `ai_feynman.lecture_reviews.v1` 改成乱码 → 重启 App → 回顾页不崩、显示空状态；按下一题再完成一道 → 新记录正常写入。
 - **预估耗时**：120 秒
 
-## 11. 实时双工讲题 · 边写边讲 → 自然停顿 → 流式追问 → TTS → 学生打断（第九轮 · 学生端 MVP 总收口）
-- **一句话描述**：在 16.3 第 1 题点「开始讲题」，孩子一边在右侧白板写 `\sqrt{12}=2\sqrt{3}`、一边口头讲解「我先把 12 拆成 4×3，4 是完全平方数…」；自然停顿 1.5 秒后，左侧逐字流式出现小明追问气泡、对应白板步骤亮起霓虹光晕，紧接着 TTS 真人腔朗读追问；孩子开口或落笔的瞬间 AI 停下来，状态面板切到「你打断了 AI，我继续听你讲」。
+## 11. 手动语音讲题 · 开始讲题 → 讲题结束 → 流式追问 → TTS（第九轮 · 学生端 MVP 总收口）
+- **一句话描述**：在 16.3 第 1 题点「开始讲题」，孩子一边在右侧白板写 `\sqrt{12}=2\sqrt{3}`、一边口头讲解「我先把 12 拆成 4×3，4 是完全平方数…」；讲完后像微信群聊发语音一样点「讲题结束」，左侧逐字流式出现小明追问气泡、对应白板步骤亮起霓虹光晕，紧接着 TTS 真人腔朗读追问。
 - **演示要点**：
-  - **真正实时双工**：右侧白板下方的「实时音频面板」从「开始讲题」→「正在听你讲...」→「检测到停顿，AI 正在想问题...」→「AI 同伴正在说话」→「你打断了 AI，我继续听你讲」连续切换；面板右上角有 1.1s 周期的呼吸点表示「系统活着」；状态文案 ≤18 字符合平板远距阅读要求。
+  - **手动语音段落**：右侧白板下方的「实时音频面板」从「开始讲题」→「正在听你讲...」→「讲题结束」→「AI 正在想问题...」→「AI 同伴正在说话」切换；停顿、犹豫、换气都不会自动触发追问。
   - **底层数据流可观察**：`tail -f main/logs/uvicorn.log` 现场展示 `[live-session] session_start … audio_chunk seq=N … asr_segment text="…" … thinking … agent_turn_start … agent_turn_delta … agent_turn_done … round_done`，每一条都能在前端找到对应反应。
   - **流式气泡逐字增长**：后端把 LLM 输出按 ~20 字一段切成 `agent_turn_delta` 推给前端，气泡随 delta 增长，**不再是「呼吸 10s 后整段一次出现」**。每条 delta 间隔 40ms，前端 setState 平稳不抖。
   - **白板步骤随气泡高亮**：`agent_turn_start.highlightStepIds` 命中谁，对应笔迹立刻换湖青 + 浅黄霓虹光晕；多 turn 时 highlight 切换跟随当前发言角色。
   - **TTS 同步播放**：第一条 `agent_turn_done` 触发 `/tts` 合成 mp3 → `audioplayers` 播放；嗓音是 `zh_female_qingchezizi_moon_bigtts`（火山豆包默认女声）；同一轮内多条 turn 顺序排队播放。
-  - **学生开口打断**：TTS 正在说时，孩子重新开口讲话 → 麦克风 RMS 超过阈值 → 前端发 `student_interrupt(reason=voice)` + 立刻 stopTts()，同时面板切到「你打断了 AI，我继续听你讲」蓝色态；系统气泡补一条「我刚才打断了 AI，它停下来听你讲」给文字佐证。后端不再继续推送剩余 turn 的 delta。
-  - **学生落笔打断**：TTS 正在说时，孩子在白板上写新一笔 → `_onCanvasChanged` 直接走 `_maybeInterruptAi(reason='pen')`，同一套打断流程；学生不需要先停说话再写字。
-  - **手动「我讲到这里」**：孩子写完但没自然停顿（一直在嗯啊地想）时，可以点面板里的「我讲到这里」直接触发 `pause_detected(silenceMs=1500)`，跳过静音等待；后端日志能看到这次是手动触发而非自动。
+  - **无自动打断**：TTS 正在说时，学生开口或落笔都不会发送 `student_interrupt`，AI 会把当前追问播完，避免误触发造成体验割裂。
+  - **手动「讲题结束」**：孩子讲完后点面板里的「讲题结束」才触发 `pause_detected`；前端同时停止本段录音，AI 追问结束后回到「开始讲题」，下一轮再手动录一段。
   - **白板 snapshot 实时同步**：每次新增 / 撤销 / 清空白板后 480ms debounce 触发一次 `ink_snapshot` 上送；后端 prompt 拼装时拿到的是**最新**的 step 列表 + 笔画数 + boundingBox，不是上一次提交时的快照。
   - **完成后仍写本地进度 / 回顾**：当后端推 `round_done(status=completed, masteryDelta=1)`，前端复用第六/八轮逻辑：弹小结卡 + 写 `SectionProgress` + 写 `LectureReviewRecord`，返回首页 16.3 小节 pill 显示「已完成 1 轮 · 10/100」，回顾页多一条新卡片。
   - **故障兜底闭环**：
@@ -147,7 +146,7 @@
 - **演示要点**：
   - **登录入口**：首页 AppBar 右上角「家长端」徽标。未登录时显示「家长端」+ 灰描边，点击进 AuthPage（同页 Tab 切换登录 / 注册，用户名 3-32、密码 ≥ 6）；登录成功后徽标变成「家长端 · xiaoming」深蓝色描边，并立刻触发一次本地 → 后端同步（`LearningSyncService.syncNow`），不阻塞任何 UI。
   - **OCR 兜底注入**：进入 16.3 第 2 题，边写边讲；白板每次新增 / 撤销后 480ms debounce 上送 `ink_snapshot`；`LiveLectureService` 内部先调一次 `POST /ocr/ink`，按当前题目的 `referenceSteps` 顺序给每个 step 配 `latex` + `plainText`（confidence=0.72），后端 prompt 里的 step 不再永远空，LLM 体感「真的在看我写的步骤」。
-  - **真实流式追问 + 200ms TTS 淡出**：自然停顿（≥1.5s 静音）触发 `pause_detected`，后端拆 ~20 字 / 段 `agent_turn_delta` 流式推送；TTS 正在播时，学生开口或在白板落笔触发 `student_interrupt`，前端 `stopTts()` 走 25ms tick × ~9 步 `setVolume(...)` 平滑降到 0 再 `stop()`，**不再生硬截断**；并发打断幂等（`_currentTtsToken` 自增防御）。
+  - **真实流式追问 + 手动收束录音**：学生点「讲题结束」触发 `pause_detected`，后端拆 ~20 字 / 段 `agent_turn_delta` 流式推送；停顿、开口、落笔都不再自动触发追问或打断 TTS。
   - **完成态双端同步**：AI 推 `round_done(status=completed, masteryDelta=1)`，前端复用第六/八轮逻辑写本地 `SectionProgress` + `LectureReviewRecord` + 弹小结卡；登录用户**额外**触发一次 `LearningSyncService.syncNow()`，把进度 / 回顾按 client id 幂等 upsert 到后端表。`/lecture/submit` 本身也已感知 Bearer：带 token 时同步写 `LectureSessionRecord` + 更新 `LearningProgress`（completed → +max(8, masteryDelta*10) 分上限 100）。
   - **家长端 dashboard**：点 AppBar「家长端 · xiaoming」进入：
     - 顶部学生卡片：姓名 + 年级 + 「已练 N 节 · 累计 M 轮」+ 总体掌握度进度条。
@@ -165,13 +164,13 @@
 
 ---
 
-## 13. V1 缺口收口（第十一轮上 · 真流式 + 数据隔离 + 公式 + 礼貌打断）
-- **一句话描述**：补齐第十轮仍缺的 V1 硬项：真 token 级 LLM 流式、账号级本地数据隔离、原生公式渲染、写字不追问/300ms 打断/角色礼貌气泡、四角色 TTS、学习数据 pull+精确覆盖、隐私页、OCR 可观测与 2.5s/4s 断档逻辑。
+## 13. V1 缺口收口（第十一轮上 · 真流式 + 数据隔离 + 公式 + 手动语音）
+- **一句话描述**：补齐第十轮仍缺的 V1 硬项：真 token 级 LLM 流式、账号级本地数据隔离、原生公式渲染、手动语音讲题、四角色 TTS、学习数据 pull+精确覆盖、隐私页、OCR 可观测。
 - **演示要点**（与 `docs/AI_CODE_AGENT_BRIEF_ROUND11.md` §3-N3 一致，**全部**勾完）：
   1. userA 完成 16.3 → sync；logout → userB 无 userA 进度；userA 再登录数据仍在。
   2. Live 讲题日志 `source=llm_stream`，气泡逐字增长。
-  3. 四角色 TTS 音色可区分；≥0.3s 人声打断 + 220ms 淡出 + 角色礼貌气泡。
-  4. 边写不抢问；2.5s 断档提示；4s 自动收束追问。
+  3. 四角色 TTS 音色可区分；学生开口/落笔不打断播报。
+  4. 边写不抢问；停顿不自动收束，学生点「讲题结束」才触发追问。
   5. `FormulaText`（flutter_math_fork）在讲题/回顾/家长端正常。
   6. 家长 dashboard + 海报；展示名编辑后刷新可见。
   7. 隐私说明页先于麦克风权限；`DEBUG_OCR=1` 可看 OCR source/confidence。

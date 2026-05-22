@@ -34,13 +34,12 @@ class RealtimeAudioPanel extends StatelessWidget {
   final VoidCallback onEndQuestion;
   final VoidCallback onManualPause;
 
-  /// "我讲到这里，请 AI 追问"按钮可用条件：state 是 listening 且有最少
-  /// 几秒音频缓冲 —— 由调用方计算后传入。
+  /// "讲题结束，请 AI 追问"按钮可用条件：state 是 listening / paused。
+  /// 当前体验由学生手动收束，不再根据静音自动触发。
   final bool canManualPause;
 
-  /// 是否给「我讲到这里」按钮加呼吸高亮 —— 学生本轮已经讲过 ≥ 5 字
-  /// ASR 时打开，提示学生「现在按这里 AI 就会追问」。视觉上是描边 +
-  /// 低频呼吸，不替换 listening 状态的整体语气。
+  /// 旧版自动追问曾用这里提示「已可追问」；当前默认关闭，保留字段
+  /// 仅避免调用方接口大改。
   final bool shouldHighlightManualPause;
 
   /// 录音失败 / 权限拒绝时的"换一种方式"兜底入口：调用方可以打开传统
@@ -114,23 +113,24 @@ class RealtimeAudioPanel extends StatelessWidget {
         );
       case RealtimeAudioPanelState.listening:
       case RealtimeAudioPanelState.paused:
-        final manualPauseButton = OutlinedButton.icon(
+        final manualPauseButton = FilledButton.icon(
           onPressed: canManualPause ? onManualPause : null,
-          icon: const Icon(Icons.front_hand_outlined),
-          label: const Text('我讲到这里'),
+          icon: const Icon(Icons.stop_circle_outlined),
+          label: const Text('讲题结束'),
         );
         return Row(
           children: [
             Expanded(
-              child: shouldHighlightManualPause && canManualPause
-                  ? _BreathingHighlight(child: manualPauseButton)
-                  : manualPauseButton,
+              child:
+                  shouldHighlightManualPause && canManualPause
+                      ? _BreathingHighlight(child: manualPauseButton)
+                      : manualPauseButton,
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: FilledButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: onEndQuestion,
-                icon: const Icon(Icons.stop_circle_outlined),
+                icon: const Icon(Icons.close),
                 label: const Text('结束本题'),
               ),
             ),
@@ -143,24 +143,10 @@ class RealtimeAudioPanel extends StatelessWidget {
           label: const Text('暂停倾听'),
         );
       case RealtimeAudioPanelState.aiSpeaking:
-        return Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: onManualPause,
-                icon: const Icon(Icons.record_voice_over_outlined),
-                label: const Text('我来回答'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: onEndQuestion,
-                icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('结束本题'),
-              ),
-            ),
-          ],
+        return FilledButton.icon(
+          onPressed: onEndQuestion,
+          icon: const Icon(Icons.stop_circle_outlined),
+          label: const Text('结束本题'),
         );
       case RealtimeAudioPanelState.interrupted:
         return OutlinedButton.icon(
@@ -223,13 +209,13 @@ class RealtimeAudioPanel extends StatelessWidget {
       case RealtimeAudioPanelState.listening:
         return '正在听你讲...';
       case RealtimeAudioPanelState.paused:
-        return '检测到停顿，AI 正在想问题...';
+        return '正在听你讲...';
       case RealtimeAudioPanelState.thinking:
         return 'AI 正在想问题...';
       case RealtimeAudioPanelState.aiSpeaking:
         return 'AI 同伴正在说话';
       case RealtimeAudioPanelState.interrupted:
-        return '你打断了 AI，我继续听你讲';
+        return '继续听你讲';
       case RealtimeAudioPanelState.disconnected:
         return '连接断开，白板还在，可以重新开始';
       case RealtimeAudioPanelState.permissionDenied:
@@ -239,24 +225,20 @@ class RealtimeAudioPanel extends StatelessWidget {
     }
   }
 
-  String _subtitleFor(
-    RealtimeAudioPanelState s, {
-    String? failureReason,
-  }) {
+  String _subtitleFor(RealtimeAudioPanelState s, {String? failureReason}) {
     switch (s) {
       case RealtimeAudioPanelState.idle:
         return '点击「开始讲题」，一边写白板一边口头讲解你的思路。';
       case RealtimeAudioPanelState.listening:
-        return '一边写一边讲。讲完一段就点「我讲到这里」让 AI 追问，'
-            '或者自然静音 ~2 秒后 AI 也会主动追问。';
+        return '像发语音一样：讲完后点「讲题结束」，AI 再开始追问。';
       case RealtimeAudioPanelState.paused:
-        return '保持安静一会儿，AI 同伴马上来追问；想说就直接说话。';
+        return '录音还在继续，停顿不会触发 AI；讲完请点「讲题结束」。';
       case RealtimeAudioPanelState.thinking:
         return 'AI 正在根据你刚才讲的内容写问题。';
       case RealtimeAudioPanelState.aiSpeaking:
-        return '可以直接开口或者落笔，AI 会停下来听你讲。';
+        return 'AI 正在朗读追问；不会被开口或落笔打断。';
       case RealtimeAudioPanelState.interrupted:
-        return 'AI 已经停下来了，等你讲完它再继续。';
+        return '录音继续进行，讲完后手动提交给 AI。';
       case RealtimeAudioPanelState.disconnected:
         return '后端连接断了，你写的内容不会丢失，可以重连。';
       case RealtimeAudioPanelState.permissionDenied:
@@ -361,8 +343,8 @@ class _PulseDot extends StatefulWidget {
   State<_PulseDot> createState() => _PulseDotState();
 }
 
-/// 给「我讲到这里」按钮加一圈低频呼吸描边，仅在学生已经讲过 ≥ 5 字
-/// ASR 时显示。视觉上是 1.4s 一周期的金色描边，不替换按钮本体配色。
+/// 给主行动按钮加一圈低频呼吸描边。当前手动语音体验默认不使用，
+/// 保留组件是为了以后如果需要强调「讲题结束」入口可直接复用。
 class _BreathingHighlight extends StatefulWidget {
   const _BreathingHighlight({required this.child});
 
@@ -401,7 +383,9 @@ class _BreathingHighlightState extends State<_BreathingHighlight>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: AppPalette.primaryAccent.withValues(alpha: 0.35 + 0.45 * t),
+              color: AppPalette.primaryAccent.withValues(
+                alpha: 0.35 + 0.45 * t,
+              ),
               width: 1.5 + 1.0 * t,
             ),
           ),

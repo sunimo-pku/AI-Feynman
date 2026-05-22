@@ -11,10 +11,16 @@ import 'package:flutter_test/flutter_test.dart';
 ///   * `questionForSection(...)` 默认返回第 1 题；
 ///   * `index` 任意整数都能 modulo 循环到合法题目，不抛异常；
 ///   * `difficultyLabel` 把 1/2/3 翻译成「基础/巩固/挑战」，未知值兜底「基础」；
-///   * 未知 sectionId 回退到 16.1 第 1 题；
-///   * `questionCountForSection` 对未知 section 返回 0（首页据此**不**显示题量）。
+///   * 未知 sectionId 生成该 section 自己的通用模板题；
+///   * `questionCountForSection` 对未知 section 返回 1 个通用模板题。
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   final repo = MockLectureRepository.instance;
+
+  setUpAll(() async {
+    await repo.loadAssetBank();
+  });
 
   const sections = <String>[
     'pep-g8-down-s16-1',

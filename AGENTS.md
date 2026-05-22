@@ -151,7 +151,7 @@ git push origin main
 | GitHub 仓库 | ✅ | [AI-Feynman](https://github.com/sunimo-pku/AI-Feynman) |
 | 产品规划 V1 | ✅ | `项目规划/planV1.md` |
 | 初中数学目录数据 | ✅ | 6 册 · 29 章 · 90 节；全册 270 道 seed 题可练，所有章节同等进入多 Agent 追问 |
-| 学生端讲题闭环 | ✅ | 第九轮：实时双工 · 边写边讲 → 自然停顿 → 多 Agent 流式追问 → TTS → 学生打断（全册题库，16.x 知识库增强） |
+| 学生端讲题闭环 | ✅ | 第九轮后续调优：手动语音段 · 开始讲题 → 讲题结束 → 多 Agent 流式追问 → TTS（全册题库，16.x 知识库增强） |
 | 本地掌握度沉淀 | ✅ | 第六轮：`SectionProgress` 落 `shared_preferences`，首页/讲题页徽标实时刷新 |
 | 全册题库与下一题轮换 | ✅ | 第十二轮：90 节 × 3 题（基础/巩固/挑战），讲题页显示题号 + 难度 chip + 知识标签 chip，「下一题」循环切题 |
 | 后端学习数据沉淀 | ✅ | 第十轮：`StudentProfile/LearningProgress/LectureReview/LectureSessionRecord` 四张表 + 轻量迁移；`/lecture/submit` 与 `/lecture/live` 可选 Bearer 自动落库 |
@@ -752,21 +752,12 @@ git push origin main
 - **全册题库以 JSON 为准**：`data/questions/pep-junior-math-questions.json` 由 `scripts/generate_section_questions.py` 生成并同步到 Flutter asset；当前口径是 90 个小节 × 基础/巩固/挑战 3 题，非 16 章用 `quality=generated_seed` 标记，后续逐章教研校对。
 - **题图 SVG 要走 asset 引用**：JSON 只写 `image.asset / image.alt`，SVG 文件放 `assets/questions/diagrams/` 并在 `pubspec.yaml` 声明目录；Flutter 端用 direct dependency `flutter_svg` 渲染，不能指望 `Image.asset` 直接显示 SVG。
 - **Python 生成 LaTeX 的 f-string 要转义花括号**：例如 `rf"$\\sqrt{{x-4}}$"`，否则 `{x-4}` 会被当成 Python 表达式导致生成脚本运行时报 `NameError`。
-- **自动追问触发条件不能太严**：第九轮原始口径"静音 1.5s + 再 2.5s 静默 +
-  3s 内不能落笔"在"边讲边写"的真实场景下几乎从不触发，学生看不到一次自动
-  追问就以为系统挂了。第十二轮口径：
-  - audio_service 仍按 1.5s 静音广播 `pauses`；
-  - 但 lecture_page `_wrapUpTimer` 改成 1000ms（合计 ~2.5s 总静音就追问）；
-  - 笔迹门槛从 3s 缩到 2s；
-  - 加硬门槛：本轮 ASR 累计 ≥ 5 字（`_currentRoundAsrChars`）才允许触发，
-    避免清嗓子 / 翻书就调一次空 LLM。
-  - 这条计数在 `roundDone` / `_resetTransientState` 时清零。
-- **「我讲到这里」按钮必须显眼**：自动追问门槛收紧之后，学生主动按这个按钮
-  仍然是最可靠的触发路径。第十二轮把按钮可点条件放宽（本轮 ASR > 0 即可点），
-  并在 ≥ 5 字之后给一圈金色呼吸描边 (`_BreathingHighlight`)，让学生在感觉
-  "讲完一段了" 的瞬间能看到清晰的视觉指引。听 panel 副文本也改成
-  "讲完一段就点「我讲到这里」让 AI 追问，或者自然静音 ~2 秒后 AI 也会主动
-  追问"。
+- **实时语音改为手动收束，不再自动追问 / 打断**：V2 实测里自动停顿识别与
+  barge-in 误触发体验差，学生只想像微信群聊发语音一样自己控制段落。当前
+  `lecture_page` 只在学生点「讲题结束」时发送 `pause_detected`，点击后立即
+  停掉本段录音；`AudioStreamService.pauses` 只取消旧 timer，不触发 LLM。
+  学生开口或落笔也不再发送 `student_interrupt` / `stopTts()`，AI 追问播完后
+  回到「开始讲题」，下一轮由学生再手动开始录音。
 - **同时只允许一个 8001 uvicorn**：deploy.sh 只杀绑 8001 端口的 uvicorn，
   历史上有人手动 `nohup uvicorn ... --port 8000` 起过老进程不会被它清理。
   排查"反复 disconnect"时务必 `ps -ef | grep uvicorn` 确认只有 8001 在跑，

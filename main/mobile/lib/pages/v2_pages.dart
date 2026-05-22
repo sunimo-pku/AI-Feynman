@@ -43,7 +43,7 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
             children: [
               _InfoCard(
                 title: p.studentName,
-                subtitle: '总战力 $total · ${p.equippedTitle.isEmpty ? '二次根式练习生' : p.equippedTitle} · 晶石 ${p.crystalBalance}',
+                subtitle: '总战力 $total · ${p.equippedTitle.isEmpty ? '数学练习生' : p.equippedTitle} · 晶石 ${p.crystalBalance}',
                 icon: Icons.bolt_outlined,
               ),
               const SizedBox(height: 12),

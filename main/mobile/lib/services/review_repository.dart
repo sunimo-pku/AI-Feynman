@@ -243,9 +243,9 @@ class ReviewRepository extends ChangeNotifier {
   /// 第八轮：按题目标签 + summary 文本生成「待注意点」短句。
   ///
   /// 完全本地规则，不调用 LLM。规则集合（见 brief 第 6 节）：
-  ///   * `非负条件` / `取值范围` → 「写二次根式前先检查被开方数是否非负」
-  ///   * `前提条件` → 「使用乘除法则时要补充 `a, b` 的取值前提」
-  ///   * `同类二次根式` / `合并同类项` → 「先化成最简二次根式，再合并同类项系数」
+  ///   * `非负条件` / `取值范围` → 「先确认表达式成立所需的取值范围」
+  ///   * `前提条件` → 「使用公式或法则时要补充适用条件」
+  ///   * 同类结构 / 合并类标签 → 「先整理成同类结构，再合并系数」
   ///   * `负号` → 「合并系数时留意减号和括号」
   ///   * 都未命中 → 兜底「回看高亮步骤，确认每一步为什么成立」
   ///
@@ -266,13 +266,13 @@ class ReviewRepository extends ChangeNotifier {
     final tagSet = tags.toSet();
 
     if (tagSet.contains('非负条件') || tagSet.contains('取值范围')) {
-      add('写二次根式前先检查被开方数是否非负。');
+      add('先确认表达式成立所需的取值范围。');
     }
     if (tagSet.contains('前提条件')) {
-      add(r'使用乘除法则时要补充 $a, b$ 的取值前提。');
+      add('使用公式或法则时要补充适用条件。');
     }
-    if (tagSet.contains('同类二次根式') || tagSet.contains('合并同类项')) {
-      add('先化成最简二次根式，再合并同类项系数。');
+    if (tagSet.any((tag) => tag.contains('同类')) || tagSet.contains('合并同类项')) {
+      add('先整理成同类结构，再合并系数。');
     }
     if (tagSet.contains('负号')) {
       add('合并系数时留意减号和括号。');

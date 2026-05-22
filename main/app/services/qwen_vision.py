@@ -24,8 +24,8 @@ def recognize_question_image(
     """Recognize a photographed math question using Alibaba Qwen-VL.
 
     Returns a normalized payload compatible with `/questions/upload-image`.
-    Any exception is converted to an `error` field so callers can fall back to
-    the local demo path without breaking the app.
+    Any exception is converted to an `error` field so callers can surface an
+    explicit upstream failure.
     """
 
     if not Config.ALIYUN_API_KEY:
@@ -43,7 +43,7 @@ sectionId 命名规则：pep-g{7|8|9}-{up|down}-s{章号}-{节号}
 例子：
 - 七年级上册 1.3 有理数的加减法：pep-g7-up-s1-3
 - 八年级上册 12.1 全等三角形：pep-g8-up-s12-1
-- 八年级下册 16.3 二次根式的加减：pep-g8-down-s16-3
+- 八年级下册 18.1 平行四边形：pep-g8-down-s18-1
 - 九年级上册 22.1 二次函数的图像和性质：pep-g9-up-s22-1
 - 九年级下册 27.1 图形的相似：pep-g9-down-s27-1
 

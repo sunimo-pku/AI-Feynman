@@ -86,8 +86,8 @@ const bool _debugOcr = bool.fromEnvironment('DEBUG_OCR');
 ///   * `idle`：尚未点击「开始讲题」；
 ///   * `connecting`：WS 握手中；
 ///   * `listening`：WS 已连 + 录音流持续中；
-///   * `paused`：学生静音 ≥ 1.5s（来自 [AudioStreamService.statusStream]）；
-///   * `thinking`：已经发了 `pause_detected`，等 AI 思考；
+///   * `paused`：录音服务检测到静音；当前产品不再用它触发追问；
+///   * `thinking`：学生点「讲题结束」后，已经发了 `pause_detected`，等 AI 思考；
 ///   * `aiSpeaking`：有未完成的 agent_turn / TTS 在播；
 ///   * `disconnected`：WS 断开（保留白板，可重连）；
 ///   * `permissionDenied`：麦克风权限被拒绝；
@@ -191,13 +191,9 @@ class _LecturePageState extends State<LecturePage> {
 
   /// 当前正在被流式增量的 AI turn id；空字符串表示当前没有未完成 turn。
   String _activeStreamingTurnId = '';
-  bool _ttsPlaying = false;
   Timer? _inkSnapshotDebounce;
-  Timer? _interruptCooldownTimer;
   Timer? _stuckHintTimer;
   Timer? _wrapUpTimer;
-  Timer? _voiceDebounceTimer;
-  bool _interruptOnCooldown = false;
 
   /// thinking 状态的「看门狗」：发出 pause_detected 后启动，超时仍未收到
   /// [agentTurnStart] / [roundDone] / [error] / [warning] 事件就主动把状态
@@ -221,18 +217,9 @@ class _LecturePageState extends State<LecturePage> {
   Timer? _thinkingWatchdogTimer;
   static const Duration _thinkingWatchdogTimeout = Duration(seconds: 9);
 
-  /// 本轮 (上次 round_done 之后) 累计的 ASR 文本字符数。用来作为
-  /// 「自动追问触发」的最后一道门槛 —— 学生开口讲了 ≥ 5 个字之后再
-  /// 触发，避免学生只是清嗓子 / 思考几秒就把 LLM 调一次空炮。
-  /// 在 [_onLiveEvent] 收到 asrSegment 时累加，roundDone / start /
-  /// _resetTransientState 时清零。
-  int _currentRoundAsrChars = 0;
-  static const int _minAsrCharsForAutoAsk = 5;
-
   late final StreamSubscription _liveEventsSub;
   late final StreamSubscription _liveErrorsSub;
   late final StreamSubscription _liveConnSub;
-  late final StreamSubscription _liveTtsSub;
   late final StreamSubscription _audioChunksSub;
   late final StreamSubscription _audioPausesSub;
   late final StreamSubscription _audioVoiceSub;
@@ -249,12 +236,14 @@ class _LecturePageState extends State<LecturePage> {
     // 第八轮：优先用 widget.initialQuestionId 定位（来自回顾页「再讲这题」）,
     // 命中失败时回落 widget.initialQuestionIndex，再不行回落第 1 题。
     _questionIndex = _resolveInitialQuestionIndex();
-    if (widget.initialQuestionId == null && widget.initialQuestionIndex == null) {
+    if (widget.initialQuestionId == null &&
+        widget.initialQuestionIndex == null) {
       _questionIndex = _recommendedInitialQuestionIndex();
     }
-    _question = _questions.isEmpty
-        ? repo.questionForSection(widget.section.id)
-        : _questions[_questionIndex];
+    _question =
+        _questions.isEmpty
+            ? repo.questionForSection(widget.section.id)
+            : _questions[_questionIndex];
     _turns.add(_introTurn());
     _canvasController.addListener(_onCanvasChanged);
     _wireLiveServices();
@@ -268,7 +257,6 @@ class _LecturePageState extends State<LecturePage> {
     _liveEventsSub = _liveService.events.listen(_onLiveEvent);
     _liveErrorsSub = _liveService.errors.listen(_onLiveServiceError);
     _liveConnSub = _liveService.connectionState.listen(_onLiveConnection);
-    _liveTtsSub = _liveService.ttsState.listen(_onTtsState);
     _audioChunksSub = _audioService.chunks.listen(_onAudioChunk);
     _audioPausesSub = _audioService.pauses.listen(_onAudioPause);
     _audioVoiceSub = _audioService.voiceActivity.listen(_onAudioVoice);
@@ -324,15 +312,12 @@ class _LecturePageState extends State<LecturePage> {
     // _liveService / _audioService 的 dispose 必须 await 才能真正关闭
     // WS 句柄；这里走 unawaited，因为 dispose 不能是 async。
     _inkSnapshotDebounce?.cancel();
-    _interruptCooldownTimer?.cancel();
     _stuckHintTimer?.cancel();
     _wrapUpTimer?.cancel();
-    _voiceDebounceTimer?.cancel();
     _thinkingWatchdogTimer?.cancel();
     unawaited(_liveEventsSub.cancel());
     unawaited(_liveErrorsSub.cancel());
     unawaited(_liveConnSub.cancel());
-    unawaited(_liveTtsSub.cancel());
     unawaited(_audioChunksSub.cancel());
     unawaited(_audioPausesSub.cancel());
     unawaited(_audioVoiceSub.cancel());
@@ -363,19 +348,16 @@ class _LecturePageState extends State<LecturePage> {
         _stepLatexExpanded.clear();
       }
     }
-    // 第九轮：白板任何更新都 debounce 500ms 后给后端发一次 snapshot；
-    // 同时如果 AI 正在说话，落笔即打断（brief 第 11 节）。
+    // 白板任何更新都 debounce 500ms 后给后端发一次 snapshot。当前体验
+    // 改为「微信语音」式手动收束，落笔不再打断 AI 播报。
     _scheduleInkSnapshot();
-    if (_ttsPlaying || _liveStatus == _LiveStatus.aiSpeaking) {
-      _maybeInterruptAi(reason: 'pen');
-    }
   }
 
   /// 第十二轮：调用方传 [immediate=true] 可以**跳过 480ms debounce** 直接
   /// 发 ink_snapshot。用在：
   ///   * `_onStartLive` 连接成功后立即把白板状态同步给新 session，避免
   ///     学生因为「换题 / 重新连接 → 新 ws + 新 session_start」导致后端
-  ///     latest_steps 重新清零，然后秒按「我讲到这里」时撞 no_steps_yet。
+  ///     latest_steps 重新清零，然后秒按「讲题结束」时撞 no_steps_yet。
   ///   * 任何其它「立刻让后端拿到当前白板」的场景。
   void _scheduleInkSnapshot({bool immediate = false}) {
     _inkSnapshotDebounce?.cancel();
@@ -436,8 +418,7 @@ class _LecturePageState extends State<LecturePage> {
   /// - 在 completed 之后**不再**显示「待回答」提示（此时 status 已 finished，
   ///   输入区在 `awaiting/error` 才暴露给学生，不会出现在收束态）
   AgentTurn? get _pendingAiFollowupTurn {
-    if (_status != _LectureStatus.awaiting &&
-        _status != _LectureStatus.error) {
+    if (_status != _LectureStatus.awaiting && _status != _LectureStatus.error) {
       return null;
     }
     for (final t in _turns.reversed) {
@@ -460,12 +441,14 @@ class _LecturePageState extends State<LecturePage> {
   AgentTurn _introTurn() {
     final order = _questions.isEmpty ? 1 : (_questionIndex + 1);
     final total = _questions.isEmpty ? 1 : _questions.length;
-    final levelLabel = MockLectureRepository.instance
-        .difficultyLabel(_question.difficulty);
+    final levelLabel = MockLectureRepository.instance.difficultyLabel(
+      _question.difficulty,
+    );
     return AgentTurn(
       role: AgentRole.teacher,
       displayName: '李老师',
-      text: '欢迎来到「${_question.sectionLabel}」讲题课，这是本节的第 $order / $total 题（$levelLabel）。'
+      text:
+          '欢迎来到「${_question.sectionLabel}」讲题课，这是本节的第 $order / $total 题（$levelLabel）。'
           '请你在右侧手写板上写出你的解题步骤，边写边想；'
           '写完后点击「提交讲解」，小明和我会和你一起讨论。',
       highlightStepIds: const [],
@@ -516,30 +499,30 @@ class _LecturePageState extends State<LecturePage> {
   /// 取「最近 N 条历史」作为新请求的 history 段。N = [_maxHistoryItems]。
   List<LectureHistoryItem> _historyTail(List<LectureHistoryItem> base) {
     if (base.length <= _maxHistoryItems) return List.unmodifiable(base);
-    return List.unmodifiable(
-      base.sublist(base.length - _maxHistoryItems),
-    );
+    return List.unmodifiable(base.sublist(base.length - _maxHistoryItems));
   }
 
   LectureSubmitRequest _buildRequest() {
     final stepInfos = _canvasController.collectStepInfos();
-    final steps = stepInfos.map((info) {
-      final r = info.bounds;
-      final plain = _stepPlainControllers[info.stepId]?.text.trim() ?? '';
-      final latex = _stepLatexControllers[info.stepId]?.text.trim() ?? '';
-      return LectureStepPayload(
-        stepId: info.stepId,
-        latex: latex,
-        plainText: plain,
-        strokeCount: info.strokeCount,
-        boundingBox: BoundingBoxPayload(
-          x: r.left.isFinite ? r.left : 0,
-          y: r.top.isFinite ? r.top : 0,
-          width: r.width.isFinite && r.width > 0 ? r.width : 1,
-          height: r.height.isFinite && r.height > 0 ? r.height : 1,
-        ),
-      );
-    }).toList(growable: false);
+    final steps = stepInfos
+        .map((info) {
+          final r = info.bounds;
+          final plain = _stepPlainControllers[info.stepId]?.text.trim() ?? '';
+          final latex = _stepLatexControllers[info.stepId]?.text.trim() ?? '';
+          return LectureStepPayload(
+            stepId: info.stepId,
+            latex: latex,
+            plainText: plain,
+            strokeCount: info.strokeCount,
+            boundingBox: BoundingBoxPayload(
+              x: r.left.isFinite ? r.left : 0,
+              y: r.top.isFinite ? r.top : 0,
+              width: r.width.isFinite && r.width > 0 ? r.width : 1,
+              height: r.height.isFinite && r.height > 0 ? r.height : 1,
+            ),
+          );
+        })
+        .toList(growable: false);
 
     // 第五轮：构造请求时**临时**生成本轮 student 历史项（基于当前输入快照）。
     // 这条记录不立刻 push 进 [_history]；只有请求成功后才会和 AI turns 一起
@@ -550,17 +533,13 @@ class _LecturePageState extends State<LecturePage> {
     final pendingStudentItem = LectureHistoryItem(
       role: 'student',
       displayName: '我',
-      text: _composeStudentHistoryText(
-        speech: speech,
-        stepInfos: stepInfos,
-      ),
-      highlightStepIds:
-          stepInfos.map((info) => info.stepId).toList(growable: false),
+      text: _composeStudentHistoryText(speech: speech, stepInfos: stepInfos),
+      highlightStepIds: stepInfos
+          .map((info) => info.stepId)
+          .toList(growable: false),
     );
 
-    final historyForRequest = _historyTail(
-      [..._history, pendingStudentItem],
-    );
+    final historyForRequest = _historyTail([..._history, pendingStudentItem]);
 
     return LectureSubmitRequest(
       sectionId: widget.section.id,
@@ -578,11 +557,9 @@ class _LecturePageState extends State<LecturePage> {
   Future<void> _onSubmit() async {
     if (_status == _LectureStatus.submitting) return;
     if (_canvasController.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('画板还没有内容，先把你的思路写一两行再提交吧。'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('画板还没有内容，先把你的思路写一两行再提交吧。')));
       return;
     }
     final request = _buildRequest();
@@ -604,12 +581,14 @@ class _LecturePageState extends State<LecturePage> {
       _errorMessage = null;
       if (!retry) {
         _round += 1;
-        _turns.add(AgentTurn(
-          role: AgentRole.system,
-          displayName: '系统',
-          text: '已收到第 $_round 轮讲解，AI 同伴正在阅读你的步骤、写追问……',
-          highlightStepIds: const [],
-        ));
+        _turns.add(
+          AgentTurn(
+            role: AgentRole.system,
+            displayName: '系统',
+            text: '已收到第 $_round 轮讲解，AI 同伴正在阅读你的步骤、写追问……',
+            highlightStepIds: const [],
+          ),
+        );
       }
     });
     _scrollToBottomSoon();
@@ -628,17 +607,15 @@ class _LecturePageState extends State<LecturePage> {
       // **最后一条** —— 在 _buildRequest 里临时拼出来的那条）连同 AI 返回的
       // turns 一起一次性落入本地多轮历史。retry 复用同一个 request，所以
       // request.history.last 也是同一条 student 项，不会重复追加。
-      final committedStudent = request.history.isNotEmpty
-          ? request.history.last
-          : null;
+      final committedStudent =
+          request.history.isNotEmpty ? request.history.last : null;
       final isCompleted = response.status == 'completed';
 
       setState(() {
         _turns.addAll(response.turns);
         _lastResponseStatus = response.status;
-        _status = isCompleted
-            ? _LectureStatus.finished
-            : _LectureStatus.awaiting;
+        _status =
+            isCompleted ? _LectureStatus.finished : _LectureStatus.awaiting;
         _errorMessage = null;
         _lastFailedRequest = null;
 
@@ -656,12 +633,14 @@ class _LecturePageState extends State<LecturePage> {
         if (isCompleted) {
           // 「这一题讲清楚了」：追加一条温和的系统收束气泡，文案与右下角
           // 完成横幅呼应；不自动清空画布，给学生留时间回看高亮。
-          _turns.add(const AgentTurn(
-            role: AgentRole.system,
-            displayName: '系统',
-            text: '这一题讲清楚了。可以点「下一题」继续，也可以点「再讲一遍」复盘。',
-            highlightStepIds: [],
-          ));
+          _turns.add(
+            const AgentTurn(
+              role: AgentRole.system,
+              displayName: '系统',
+              text: '这一题讲清楚了。可以点「下一题」继续，也可以点「再讲一遍」复盘。',
+              highlightStepIds: [],
+            ),
+          );
         }
       });
 
@@ -686,7 +665,9 @@ class _LecturePageState extends State<LecturePage> {
         _status = _LectureStatus.error;
         _errorMessage = e.userMessage;
         _lastFailedRequest = request;
-        if (!retry && _turns.isNotEmpty && _turns.last.role == AgentRole.system) {
+        if (!retry &&
+            _turns.isNotEmpty &&
+            _turns.last.role == AgentRole.system) {
           _turns.removeLast();
         }
       });
@@ -697,7 +678,9 @@ class _LecturePageState extends State<LecturePage> {
         _status = _LectureStatus.error;
         _errorMessage = '出现未知错误：$e';
         _lastFailedRequest = request;
-        if (!retry && _turns.isNotEmpty && _turns.last.role == AgentRole.system) {
+        if (!retry &&
+            _turns.isNotEmpty &&
+            _turns.last.role == AgentRole.system) {
           _turns.removeLast();
         }
       });
@@ -850,12 +833,14 @@ class _LecturePageState extends State<LecturePage> {
 
   void _onUnderstood() {
     setState(() {
-      _turns.add(const AgentTurn(
-        role: AgentRole.teacher,
-        displayName: '李老师',
-        text: '好。这一轮先到这里。下一题我们换一种条件，看你能不能用刚才总结的思路再讲一次。',
-        highlightStepIds: [],
-      ));
+      _turns.add(
+        const AgentTurn(
+          role: AgentRole.teacher,
+          displayName: '李老师',
+          text: '好。这一轮先到这里。下一题我们换一种条件，看你能不能用刚才总结的思路再讲一次。',
+          highlightStepIds: [],
+        ),
+      );
       _status = _LectureStatus.finished;
     });
     _canvasController.clearHighlight();
@@ -894,7 +879,6 @@ class _LecturePageState extends State<LecturePage> {
     // 第八轮：进入新一轮后允许再次保存 review 记录（再讲一遍同题 / 下一题
     // 都属于「新一轮」语义；不重置会导致连续两题只留下第一题的回顾）。
     _reviewSavedForCurrentRound = false;
-    _currentRoundAsrChars = 0;
     _cancelThinkingWatchdog();
   }
 
@@ -926,12 +910,14 @@ class _LecturePageState extends State<LecturePage> {
       _turns
         ..clear()
         ..add(_introTurn())
-        ..add(const AgentTurn(
-          role: AgentRole.system,
-          displayName: '系统',
-          text: '好，再讲一遍。这次你可以试着用更精炼的语言总结，每一步都说清「为什么这样做」。',
-          highlightStepIds: [],
-        ));
+        ..add(
+          const AgentTurn(
+            role: AgentRole.system,
+            displayName: '系统',
+            text: '好，再讲一遍。这次你可以试着用更精炼的语言总结，每一步都说清「为什么这样做」。',
+            highlightStepIds: [],
+          ),
+        );
     });
   }
 
@@ -952,11 +938,32 @@ class _LecturePageState extends State<LecturePage> {
     if (!mounted) return;
     final acknowledged = await PrivacyNoticePage.ensureAcknowledged(context);
     if (!mounted || !acknowledged) return;
+    if (_liveService.isConnected) {
+      final audioStarted = await _audioService.start();
+      if (!mounted) return;
+      if (!audioStarted) {
+        final next =
+            _audioService.status == AudioStreamStatus.permissionDenied
+                ? _LiveStatus.permissionDenied
+                : _LiveStatus.failed;
+        setState(() {
+          _liveStatus = next;
+          _liveFailureReason = _audioService.failureReason ?? '录音不可用';
+        });
+        return;
+      }
+      _scheduleInkSnapshot(immediate: true);
+      setState(() {
+        _liveStatus = _LiveStatus.listening;
+      });
+      return;
+    }
     setState(() {
       _liveStatus = _LiveStatus.connecting;
       _liveFailureReason = null;
     });
-    final sessionId = 'sess-${DateTime.now().millisecondsSinceEpoch}-'
+    final sessionId =
+        'sess-${DateTime.now().millisecondsSinceEpoch}-'
         '${widget.section.id}-${_question.questionId}';
     _replayService.startSession(
       sessionId: sessionId,
@@ -982,10 +989,11 @@ class _LecturePageState extends State<LecturePage> {
     final audioStarted = await _audioService.start();
     if (!mounted) return;
     if (!audioStarted) {
-      // 录音失败：保留 WS 让学生还能手动「我讲到这里」，但状态切到失败态。
-      final next = _audioService.status == AudioStreamStatus.permissionDenied
-          ? _LiveStatus.permissionDenied
-          : _LiveStatus.failed;
+      // 录音失败：保留 WS 让学生还能补写白板后重试，但状态切到失败态。
+      final next =
+          _audioService.status == AudioStreamStatus.permissionDenied
+              ? _LiveStatus.permissionDenied
+              : _LiveStatus.failed;
       setState(() {
         _liveStatus = next;
         _liveFailureReason = _audioService.failureReason ?? '录音不可用';
@@ -994,21 +1002,25 @@ class _LecturePageState extends State<LecturePage> {
     }
     // 启动成功后立刻把当前白板 snapshot 发出去（**跳过 debounce**），让后端
     // 在第一时间知道「学生目前有几步、笔画数」，避免学生在 480ms 内立即
-    // 点「我讲到这里」时新 session 的 latest_steps 还是空、撞 no_steps_yet。
+    // 点「讲题结束」时新 session 的 latest_steps 还是空、撞 no_steps_yet。
     _scheduleInkSnapshot(immediate: true);
     setState(() {
       _liveStatus = _LiveStatus.listening;
     });
   }
 
-  /// 「我讲到这里」/「我来回答」按钮：手动触发 AI 追问。
+  /// 「讲题结束」按钮：手动触发 AI 追问。
   ///
-  /// 等价于客户端主动发一个 pause_detected：后端收到后无视当前
-  /// silenceMs 数值，直接走 LLM 调用。brief 第 12 节"学生点击『我讲到
-  /// 这里』可手动触发追问"。
+  /// 当前实时讲题改成类似微信群聊发语音：学生点「开始讲题」后持续录音，
+  /// 不根据停顿/间隔自动判断讲完；只有学生明确点「讲题结束」才发
+  /// pause_detected 进入 LLM 追问。
   void _onManualPause() {
     if (!_liveService.isConnected) return;
-    _liveService.sendPauseDetected(silenceMs: 1500);
+    _wrapUpTimer?.cancel();
+    // 像发语音一样，学生点结束后立即停掉本段录音；AI 追问完成后再让
+    // 学生手动开始下一段。
+    unawaited(_audioService.stop());
+    _liveService.sendPauseDetected(silenceMs: 0);
     _armThinkingWatchdog();
     setState(() {
       _liveStatus = _LiveStatus.thinking;
@@ -1018,7 +1030,7 @@ class _LecturePageState extends State<LecturePage> {
   /// 启动 thinking 看门狗。重复调用幂等：每次调用都会 cancel 旧定时器。
   ///
   /// 看门狗超时后做的事：
-  ///   * 切回 listening（保留 WS / 录音 / 已识别 ASR）；
+  ///   * 切回 idle（保留 WS / 已识别 ASR，录音段已在「讲题结束」时停止）；
   ///   * 设一句 `_liveFailureReason` 友好提示，不切到 failed 态以免
   ///     学生觉得整次会话挂了；
   ///   * 不主动断 WS，因为后端可能还在生成、只是慢；如果 WS 真的断了，
@@ -1029,8 +1041,8 @@ class _LecturePageState extends State<LecturePage> {
       if (!mounted) return;
       if (_liveStatus != _LiveStatus.thinking) return;
       setState(() {
-        _liveStatus = _LiveStatus.listening;
-        _liveFailureReason = '后端暂时没回，请再讲两句或重新点「我讲到这里」';
+        _liveStatus = _LiveStatus.idle;
+        _liveFailureReason = '后端暂时没回，请再讲两句或重新点「讲题结束」';
       });
     });
   }
@@ -1062,7 +1074,6 @@ class _LecturePageState extends State<LecturePage> {
     setState(() {
       _liveStatus = _LiveStatus.idle;
       _activeStreamingTurnId = '';
-      _ttsPlaying = false;
     });
   }
 
@@ -1073,64 +1084,13 @@ class _LecturePageState extends State<LecturePage> {
     _replayService.appendAudioChunk(base64Encode(data));
   }
 
-  /// 收到 audio_service 的"自然停顿"信号 (默认 silenceMs ≥ 1500)。
+  /// 收到 audio_service 的自然停顿信号。
   ///
-  /// 第十二轮自动追问触发条件（修订）：
-  ///   1. 必须当前是 listening / paused（非 thinking / aiSpeaking）；
-  ///   2. **本轮已经累计 ≥ 5 个 ASR 字符**（[_currentRoundAsrChars]），
-  ///      避免学生只是清嗓子 / 翻书就被 LLM 调一次空炮；
-  ///   3. 笔迹 2s 内没有新落笔（之前 3s 太严，学生写完最后一笔抬手就被卡）；
-  ///   4. 总静音达到约 2.5s 后真正触发 sendPauseDetected。
-  ///
-  /// 对比第九轮原始 `4000 - silenceMs` 等待时间过长，且笔迹门槛过严，
-  /// 实测会让"边写边讲"的学生整节课都触发不到一次自动追问。
+  /// 产品体验已改为「学生手动点讲题结束」：停顿只取消旧的延迟任务，不再
+  /// 触发 LLM，不再切到「AI 正在想问题」。
   void _onAudioPause(int silenceMs) {
-    if (!_liveService.isConnected) return;
-    if (_liveStatus == _LiveStatus.thinking ||
-        _liveStatus == _LiveStatus.aiSpeaking) {
-      return;
-    }
-    final lastStroke = _canvasController.lastStrokeAt;
-    if (lastStroke != null &&
-        DateTime.now().difference(lastStroke) < const Duration(seconds: 2)) {
-      return;
-    }
     _stuckHintTimer?.cancel();
     _wrapUpTimer?.cancel();
-    // stuck hint 通用文案在第十二轮被彻底删除（见 _showStuckHintIfStillPaused
-    // 注释）—— UI 上不再插入任何"不调 LLM 的伪追问"，避免学生看到与本节
-    // 知识点无关、且反复弹出的废话。自动追问完全交给下面的 _wrapUpTimer。
-    //
-    // 第十二轮第二轮调优：原来 (2500 - silenceMs) 等于学生讲完后再等
-    // 2500ms 总静音才触发 LLM；端到端体感 3.5-4s。改成 (1200 - silenceMs)，
-    // 等于学生讲完后再等 1200ms 总静音 → -1.3s。
-    // VAD 阈值 _pauseSilenceMs 已经从 1500ms 降到 700ms，所以 wrapUp 实际
-    // 等的额外时间 ≈ max(0, 1200 - 700) = 500ms 给学生一个"反悔窗口"
-    // （重新开口讲会通过 _onAudioVoice 取消 wrapUp）。
-    final waitMs = (1200 - silenceMs).clamp(0, 1200).toInt();
-    _wrapUpTimer = Timer(
-      Duration(milliseconds: waitMs),
-      () {
-        if (!_liveService.isConnected || _liveStatus == _LiveStatus.thinking) {
-          return;
-        }
-        if (_currentRoundAsrChars < _minAsrCharsForAutoAsk) {
-          // 本轮学生几乎没开口，不要烧 LLM。等学生再讲一段或主动按
-          // 「我讲到这里」。
-          return;
-        }
-        final last = _canvasController.lastStrokeAt;
-        if (last != null &&
-            DateTime.now().difference(last) < const Duration(seconds: 2)) {
-          return;
-        }
-        _liveService.sendPauseDetected(silenceMs: 1200);
-        _armThinkingWatchdog();
-        setState(() {
-          _liveStatus = _LiveStatus.thinking;
-        });
-      },
-    );
   }
 
   void _onAudioVoice(bool active) {
@@ -1139,27 +1099,17 @@ class _LecturePageState extends State<LecturePage> {
       _stuckHintTimer?.cancel();
       _wrapUpTimer?.cancel();
     }
-    if (active && (_ttsPlaying || _liveStatus == _LiveStatus.aiSpeaking)) {
-      _voiceDebounceTimer?.cancel();
-      _voiceDebounceTimer = Timer(const Duration(milliseconds: 300), () {
-        if (_ttsPlaying || _liveStatus == _LiveStatus.aiSpeaking) {
-          _maybeInterruptAi(reason: 'voice');
-        }
-      });
-    } else if (active && _liveStatus == _LiveStatus.paused) {
+    if (active && _liveStatus == _LiveStatus.paused) {
       setState(() {
         _liveStatus = _LiveStatus.listening;
       });
-    } else if (!active) {
-      _voiceDebounceTimer?.cancel();
     }
   }
 
   // 第九轮加过的 _showStuckHintIfStillPaused 通用文案插入逻辑在第十二轮
-  // 被彻底删除：跨章节弹"卡住了..."模板严重出戏，且会因 voice / canvas
-  // 事件反复重置 flag 而连续弹同一句。"静音后追问"完全交给 _wrapUpTimer
-  // 走真实 LLM 路径；如果未来想恢复"卡住"体感，要走 sendPauseDetected
-  // + 后端 LLM，而不是前端写死。
+  // 被彻底删除：跨章节弹"卡住了..."模板严重出戏。当前语音体验也不再
+  // 做静音后追问；如果未来想恢复"卡住"体感，要走学生显式按钮或后端
+  // LLM，而不是前端写死。
 
   void _onAudioStatus(AudioStreamStatus status) {
     if (!mounted) return;
@@ -1177,10 +1127,8 @@ class _LecturePageState extends State<LecturePage> {
         });
         break;
       case AudioStreamStatus.paused:
-        // 静音由 _onAudioPause 单独处理；这里只在 listening↔paused 之间切换
-        if (_liveStatus == _LiveStatus.listening) {
-          setState(() => _liveStatus = _LiveStatus.paused);
-        }
+        // 当前体验不再根据停顿自动触发或改变面板状态；学生自己点
+        // 「讲题结束」才把这一段语音交给 AI。
         break;
       case AudioStreamStatus.listening:
         if (_liveStatus == _LiveStatus.paused ||
@@ -1194,38 +1142,13 @@ class _LecturePageState extends State<LecturePage> {
     }
   }
 
-  void _maybeInterruptAi({required String reason}) {
-    if (_interruptOnCooldown) return;
-    _interruptOnCooldown = true;
-    _interruptCooldownTimer?.cancel();
-    _interruptCooldownTimer = Timer(const Duration(milliseconds: 700), () {
-      _interruptOnCooldown = false;
-    });
-    if (_liveService.isConnected) {
-      _liveService.sendStudentInterrupt(reason: reason);
-    }
-    unawaited(_liveService.stopTts());
-    if (mounted) {
-      setState(() {
-        _ttsPlaying = false;
-        _activeStreamingTurnId = '';
-        _liveStatus = _LiveStatus.listening;
-        final interruptedRole = _lastNonSystemRole();
-        _turns.add(AgentTurn(
-          role: interruptedRole,
-          displayName: _defaultDisplayName(interruptedRole),
-          text: _interruptMessageFor(interruptedRole),
-          highlightStepIds: [],
-        ));
-      });
-      _scrollToBottomSoon();
-    }
-  }
-
   void _onLiveEvent(LiveServerEvent event) {
     switch (event.type) {
       case LiveServerEventType.listening:
-        if (mounted && _liveStatus != _LiveStatus.listening) {
+        final isRecording =
+            _audioService.status == AudioStreamStatus.listening ||
+            _audioService.status == AudioStreamStatus.paused;
+        if (mounted && isRecording && _liveStatus != _LiveStatus.listening) {
           setState(() {
             _liveStatus = _LiveStatus.listening;
             _activeStreamingTurnId = '';
@@ -1239,19 +1162,9 @@ class _LecturePageState extends State<LecturePage> {
         // 末尾，方便学生 / 演示者校对。
         final segment = (event.payload as LiveAsrSegmentPayload).text;
         if (segment.isEmpty) break;
-        // 累计本轮 ASR 字符数：自动追问触发的硬门槛，避免误触发。
-        // 用 setState 让「我讲到这里」按钮的 canManualPause 立刻刷新。
-        if (mounted) {
-          setState(() {
-            _currentRoundAsrChars += segment.length;
-          });
-        } else {
-          _currentRoundAsrChars += segment.length;
-        }
         if (_kShowLegacyTextInputByDefault) {
           final base = _speechController.text;
-          _speechController.text =
-              base.isEmpty ? segment : '$base $segment';
+          _speechController.text = base.isEmpty ? segment : '$base $segment';
         }
         break;
       case LiveServerEventType.thinking:
@@ -1272,15 +1185,18 @@ class _LecturePageState extends State<LecturePage> {
         setState(() {
           _liveStatus = _LiveStatus.aiSpeaking;
           _activeStreamingTurnId = p.turnId;
-          _turns.add(AgentTurn(
-            turnId: p.turnId,
-            role: role,
-            displayName: p.displayName.isEmpty
-                ? _defaultDisplayName(role)
-                : p.displayName,
-            text: '',
-            highlightStepIds: p.highlightStepIds,
-          ));
+          _turns.add(
+            AgentTurn(
+              turnId: p.turnId,
+              role: role,
+              displayName:
+                  p.displayName.isEmpty
+                      ? _defaultDisplayName(role)
+                      : p.displayName,
+              text: '',
+              highlightStepIds: p.highlightStepIds,
+            ),
+          );
         });
         if (p.highlightStepIds.isNotEmpty) {
           _canvasController.setHighlight(p.highlightStepIds);
@@ -1325,10 +1241,7 @@ class _LecturePageState extends State<LecturePage> {
           );
           _history.add(_agentTurnToHistory(doneTurn));
           if (_history.length > _maxHistoryItems) {
-            _history.removeRange(
-              0,
-              _history.length - _maxHistoryItems,
-            );
+            _history.removeRange(0, _history.length - _maxHistoryItems);
           }
           // 第十二轮第三轮：流式 TTS 优先。LLM 流式 delta 在后端逐句切句、
           // 边合成边推 `agent_tts_chunk`，前端 LiveLectureService 已经按
@@ -1336,10 +1249,12 @@ class _LecturePageState extends State<LecturePage> {
           // 用 didStreamTtsForTurn 判断；只有当流式 TTS 完全没出过段（极少
           // 见的"turn done 时连一段都没合成出来"）才 fallback 到整段合成。
           if (!_liveService.didStreamTtsForTurn(p.turnId)) {
-            unawaited(_liveService.requestTts(
-              doneTurn.text,
-              role: agentRoleWire(doneTurn.role),
-            ));
+            unawaited(
+              _liveService.requestTts(
+                doneTurn.text,
+                role: agentRoleWire(doneTurn.role),
+              ),
+            );
           }
         }
         if (_activeStreamingTurnId == p.turnId) {
@@ -1356,23 +1271,21 @@ class _LecturePageState extends State<LecturePage> {
         setState(() {
           _round += 1;
           _lastResponseStatus = p.status;
-          // 进入下一轮：清空本轮 ASR 字符计数，让「我讲到这里」按钮和
-          // 自动追问门槛重新等学生开口讲 ≥ 5 字之后才解锁。
-          _currentRoundAsrChars = 0;
           if (p.status == 'completed') {
             _status = _LectureStatus.finished;
-            _turns.add(const AgentTurn(
-              role: AgentRole.system,
-              displayName: '系统',
-              text: '这一题讲清楚了。可以点「下一题」继续，也可以点「再讲一遍」复盘。',
-              highlightStepIds: [],
-            ));
+            _turns.add(
+              const AgentTurn(
+                role: AgentRole.system,
+                displayName: '系统',
+                text: '这一题讲清楚了。可以点「下一题」继续，也可以点「再讲一遍」复盘。',
+                highlightStepIds: [],
+              ),
+            );
           } else {
             _status = _LectureStatus.awaiting;
           }
-          // round_done 不一定立刻收到 listening；先切回 listening，
-          // 后续如果再来一条 listening event 会幂等。
-          _liveStatus = _LiveStatus.listening;
+          // AI 追问结束后不自动继续录音；下一轮由学生再点「开始讲题」。
+          _liveStatus = _LiveStatus.idle;
         });
         if (p.status == 'completed') {
           // 复用第六/八轮的本地落地逻辑。把"流式 turns"包成
@@ -1383,9 +1296,11 @@ class _LecturePageState extends State<LecturePage> {
             sectionId: widget.section.id,
             status: p.status,
             masteryDelta: p.masteryDelta,
-            turns: List<AgentTurn>.unmodifiable(_turns
-                .where((t) => t.role != AgentRole.system)
-                .toList(growable: false)),
+            turns: List<AgentTurn>.unmodifiable(
+              _turns
+                  .where((t) => t.role != AgentRole.system)
+                  .toList(growable: false),
+            ),
           );
           unawaited(_persistCompletion(fakeResp));
           unawaited(_replayService.finishAndUpload());
@@ -1394,19 +1309,17 @@ class _LecturePageState extends State<LecturePage> {
         break;
       case LiveServerEventType.warning:
         // warning 只用于非致命协议提示；真实链路错误走 error。
-        // 第十二轮：后端 no_steps_yet 之类的 warning 之后会显式补一条
-        // listening；这里只负责取消 thinking 看门狗、让用户看到一句友好
-        // 提示，不要把状态切到 failed（那条路径只给真错误用）。
+        // 后端 no_steps_yet 之类的 warning 之后会显式补一条 listening。
+        // 现在学生点「讲题结束」时已经停掉录音，所以这里回到 idle，
+        // 让学生补写/补讲后重新点「开始讲题」。
         final wmsg = (event.payload as LiveWarningPayload).message;
         _cancelThinkingWatchdog();
         if (wmsg == 'no_steps_yet' && mounted) {
           setState(() {
-            // listening 事件马上会跟来，这里先把 thinking 状态卸掉，
-            // 避免短暂双状态（在 listening 来之前用户看见过期 thinking）。
             if (_liveStatus == _LiveStatus.thinking) {
-              _liveStatus = _LiveStatus.listening;
+              _liveStatus = _LiveStatus.idle;
             }
-            _liveFailureReason = '请先在白板写两步、或多讲几句再点「我讲到这里」';
+            _liveFailureReason = '请先在白板写两步，或重新开始讲一段后再点「讲题结束」';
           });
         } else if (wmsg == 'heartbeat') {
           // 应用层心跳，安静吃掉。
@@ -1417,9 +1330,7 @@ class _LecturePageState extends State<LecturePage> {
         setState(() {
           _liveStatus = _LiveStatus.failed;
           _activeStreamingTurnId = '';
-          _ttsPlaying = false;
-          _liveFailureReason =
-              (event.payload as LiveErrorPayload).message;
+          _liveFailureReason = (event.payload as LiveErrorPayload).message;
         });
         break;
       case LiveServerEventType.unknown:
@@ -1433,7 +1344,6 @@ class _LecturePageState extends State<LecturePage> {
     setState(() {
       _liveStatus = _LiveStatus.failed;
       _activeStreamingTurnId = '';
-      _ttsPlaying = false;
       _liveFailureReason = message;
     });
   }
@@ -1446,7 +1356,7 @@ class _LecturePageState extends State<LecturePage> {
         // 第十二轮：service 层自动重连成功后会再发 connected 事件。
         // 此时新 ws 上对应的 LiveLectureSession 是全新实例、latest_steps
         // 重新清零；如果学生白板上有内容，必须立刻同步过去，否则学生
-        // 点「我讲到这里」会撞 no_steps_yet。同步推 snapshot 是幂等的：
+        // 点「讲题结束」会撞 no_steps_yet。同步推 snapshot 是幂等的：
         // 如果白板空，`_pushInkSnapshotNow` 会自然 early-return。
         _scheduleInkSnapshot(immediate: true);
         break;
@@ -1455,19 +1365,11 @@ class _LecturePageState extends State<LecturePage> {
         setState(() {
           _liveStatus = _LiveStatus.disconnected;
           _activeStreamingTurnId = '';
-          _ttsPlaying = false;
         });
         unawaited(_audioService.stop());
         unawaited(_liveService.stopTts());
         break;
     }
-  }
-
-  void _onTtsState(TtsState state) {
-    if (!mounted) return;
-    setState(() {
-      _ttsPlaying = state == TtsState.playing;
-    });
   }
 
   /// 把后端 wire role 字符串映射回中文 displayName 兜底。
@@ -1484,29 +1386,6 @@ class _LecturePageState extends State<LecturePage> {
         return '李老师';
       case AgentRole.system:
         return '系统';
-    }
-  }
-
-  AgentRole _lastNonSystemRole() {
-    for (final turn in _turns.reversed) {
-      if (turn.role != AgentRole.system) return turn.role;
-    }
-    return AgentRole.teacher;
-  }
-
-  String _interruptMessageFor(AgentRole role) {
-    switch (role) {
-      case AgentRole.xiaoming:
-        return '没事，你继续说，我听着。';
-      case AgentRole.daxiong:
-        return '哦哦，你有新想法了？那我先不抢话。';
-      case AgentRole.classLeader:
-      case AgentRole.monitor:
-        return '你先把自己的思路讲完整，我帮你记重点。';
-      case AgentRole.teacher:
-        return '你有新想法啦，慢慢讲，我先听你说。';
-      case AgentRole.system:
-        return '我先停下来听你讲。';
     }
   }
 
@@ -1566,8 +1445,9 @@ class _LecturePageState extends State<LecturePage> {
                 // ProgressRepository notify 时（completed 写盘成功）自动重建。
                 animation: ProgressRepository.instance,
                 builder: (context, _) {
-                  final p = ProgressRepository.instance
-                      .progressFor(widget.section.id);
+                  final p = ProgressRepository.instance.progressFor(
+                    widget.section.id,
+                  );
                   return _MasteryBadge(round: _round, progress: p);
                 },
               ),
@@ -1619,7 +1499,11 @@ class _LecturePageState extends State<LecturePage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.forum_outlined, size: 20, color: AppPalette.primary),
+              const Icon(
+                Icons.forum_outlined,
+                size: 20,
+                color: AppPalette.primary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1640,7 +1524,8 @@ class _LecturePageState extends State<LecturePage> {
           Expanded(
             child: ListView.separated(
               controller: _discussionScrollController,
-              itemCount: _turns.length +
+              itemCount:
+                  _turns.length +
                   (_status == _LectureStatus.submitting ? 1 : 0),
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
@@ -1650,11 +1535,15 @@ class _LecturePageState extends State<LecturePage> {
                 final turn = _turns[index];
                 return AgentMessageBubble(
                   turn: turn,
-                  isHighlighted: turn.highlightStepIds
-                      .any(_canvasController.highlightStepIds.contains),
-                  onHighlightTap: turn.highlightStepIds.isEmpty
-                      ? null
-                      : () => _canvasController.setHighlight(turn.highlightStepIds),
+                  isHighlighted: turn.highlightStepIds.any(
+                    _canvasController.highlightStepIds.contains,
+                  ),
+                  onHighlightTap:
+                      turn.highlightStepIds.isEmpty
+                          ? null
+                          : () => _canvasController.setHighlight(
+                            turn.highlightStepIds,
+                          ),
                 );
               },
             ),
@@ -1723,7 +1612,8 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   Widget _buildCanvasPanel() {
-    final canSubmit = (_status == _LectureStatus.idle ||
+    final canSubmit =
+        (_status == _LectureStatus.idle ||
             _status == _LectureStatus.awaiting ||
             _status == _LectureStatus.error) &&
         !_canvasController.isEmpty;
@@ -1733,7 +1623,11 @@ class _LecturePageState extends State<LecturePage> {
       children: [
         Row(
           children: [
-            const Icon(Icons.edit_outlined, size: 20, color: AppPalette.primary),
+            const Icon(
+              Icons.edit_outlined,
+              size: 20,
+              color: AppPalette.primary,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -1758,10 +1652,11 @@ class _LecturePageState extends State<LecturePage> {
         Expanded(
           child: AnimatedBuilder(
             animation: UserCosmeticsPrefs.instance,
-            builder: (context, _) => HandCanvas(
-              controller: _canvasController,
-              penStyle: UserCosmeticsPrefs.instance.penStyle,
-            ),
+            builder:
+                (context, _) => HandCanvas(
+                  controller: _canvasController,
+                  penStyle: UserCosmeticsPrefs.instance.penStyle,
+                ),
           ),
         ),
         const SizedBox(height: 12),
@@ -1777,20 +1672,15 @@ class _LecturePageState extends State<LecturePage> {
           onEndQuestion: _onEndLiveSession,
           onManualPause: _onManualPause,
           onFallbackSubmit: _onFallbackTextSubmit,
-          // 「我讲到这里」按钮：listening / paused 状态 + 本轮已经讲过
-          // 任意 ASR 文本时都允许学生主动触发 —— 体验上更接近「学生想
-          // 讲完一段就立刻问 AI」的预期，不再要求 ≥5 字才解锁。
-          canManualPause: (_liveStatus == _LiveStatus.listening ||
-                  _liveStatus == _LiveStatus.paused) &&
-              _currentRoundAsrChars > 0,
-          shouldHighlightManualPause:
-              _currentRoundAsrChars >= _minAsrCharsForAutoAsk,
+          // 「讲题结束」按钮：只要正在听就允许学生主动收束当前语音段。
+          // 不再等待 ASR 字数，也不再根据静音自动触发。
+          canManualPause:
+              (_liveStatus == _LiveStatus.listening ||
+                  _liveStatus == _LiveStatus.paused),
+          shouldHighlightManualPause: false,
           failureReason: _liveFailureReason,
         ),
-        if (_debugOcr) ...[
-          const SizedBox(height: 12),
-          _buildDebugOcrPanel(),
-        ],
+        if (_debugOcr) ...[const SizedBox(height: 12), _buildDebugOcrPanel()],
         if (_kShowLegacyTextInputByDefault ||
             _liveStatus == _LiveStatus.disconnected ||
             _liveStatus == _LiveStatus.permissionDenied ||
@@ -1813,17 +1703,19 @@ class _LecturePageState extends State<LecturePage> {
             return Row(
               children: [
                 OutlinedButton.icon(
-                  onPressed: _canvasController.canUndo && !submitting
-                      ? _canvasController.undo
-                      : null,
+                  onPressed:
+                      _canvasController.canUndo && !submitting
+                          ? _canvasController.undo
+                          : null,
                   icon: const Icon(Icons.undo),
                   label: const Text('撤销'),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
-                  onPressed: _canvasController.isEmpty || submitting
-                      ? null
-                      : _canvasController.clear,
+                  onPressed:
+                      _canvasController.isEmpty || submitting
+                          ? null
+                          : _canvasController.clear,
                   icon: const Icon(Icons.cleaning_services_outlined),
                   label: const Text('清空'),
                 ),
@@ -1836,18 +1728,21 @@ class _LecturePageState extends State<LecturePage> {
                     _liveStatus == _LiveStatus.failed)
                   FilledButton.icon(
                     onPressed: canSubmit && !submitting ? _onSubmit : null,
-                    icon: submitting
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                    icon:
+                        submitting
+                            ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                            : Icon(
+                              _status == _LectureStatus.error
+                                  ? Icons.replay
+                                  : Icons.send_outlined,
                             ),
-                          )
-                        : Icon(_status == _LectureStatus.error
-                            ? Icons.replay
-                            : Icons.send_outlined),
                     label: Text(_submitLabel(submitting)),
                   ),
               ],
@@ -1866,11 +1761,9 @@ class _LecturePageState extends State<LecturePage> {
   /// 把口述写进去后点「提交讲解」。
   void _onFallbackTextSubmit() {
     if (_canvasController.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('先在白板上写一两行思路，再用文字提交。'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('先在白板上写一两行思路，再用文字提交。')));
       return;
     }
     // 直接走原有 _onSubmit：它会根据当前白板 / 文字输入区做一次提交。
@@ -1884,30 +1777,36 @@ class _LecturePageState extends State<LecturePage> {
         return ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 12),
           shape: const RoundedRectangleBorder(borderRadius: AppRadius.buttonR),
-          collapsedShape:
-              const RoundedRectangleBorder(borderRadius: AppRadius.buttonR),
+          collapsedShape: const RoundedRectangleBorder(
+            borderRadius: AppRadius.buttonR,
+          ),
           backgroundColor: AppPalette.surface,
           collapsedBackgroundColor: AppPalette.surface,
           title: const Text('DEBUG OCR / HWR'),
-          subtitle: Text(guesses.isEmpty ? '暂无识别结果' : '${guesses.length} 个 step'),
-          children: guesses.isEmpty
-              ? const [
-                  Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text('写字后等待 480ms 或提交讲解即可看到 source/confidence/mode。'),
-                  ),
-                ]
-              : guesses
-                  .map(
-                    (g) => ListTile(
-                      dense: true,
-                      title: Text('${g.stepId} · ${g.source} · ${g.mode}'),
-                      subtitle: Text(
-                        '${g.confidence.toStringAsFixed(2)} · ${g.latex.isEmpty ? g.plainText : g.latex}',
+          subtitle: Text(
+            guesses.isEmpty ? '暂无识别结果' : '${guesses.length} 个 step',
+          ),
+          children:
+              guesses.isEmpty
+                  ? const [
+                    Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        '写字后等待 480ms 或提交讲解即可看到 source/confidence/mode。',
                       ),
                     ),
-                  )
-                  .toList(growable: false),
+                  ]
+                  : guesses
+                      .map(
+                        (g) => ListTile(
+                          dense: true,
+                          title: Text('${g.stepId} · ${g.source} · ${g.mode}'),
+                          subtitle: Text(
+                            '${g.confidence.toStringAsFixed(2)} · ${g.latex.isEmpty ? g.plainText : g.latex}',
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
         );
       },
     );
@@ -1931,11 +1830,11 @@ class _LecturePageState extends State<LecturePage> {
     final hasFollowup = pendingFollowup != null;
     final speechTitle =
         hasFollowup ? '回答${pendingFollowup.displayName}的追问' : '我刚才是这样讲的';
-    final speechSubtitle =
-        hasFollowup ? 'AI 同伴会先评估你的回答' : 'AI 同伴会照着这段话追问';
-    final speechHint = hasFollowup
-        ? '例如：我补充一下，这一步用到的条件是……所以可以这样推。'
-        : '例如：我先读题目条件，再说明第一步为什么能推出下一步。';
+    final speechSubtitle = hasFollowup ? 'AI 同伴会先评估你的回答' : 'AI 同伴会照着这段话追问';
+    final speechHint =
+        hasFollowup
+            ? '例如：我补充一下，这一步用到的条件是……所以可以这样推。'
+            : '例如：我先读题目条件，再说明第一步为什么能推出下一步。';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -1985,20 +1884,17 @@ class _LecturePageState extends State<LecturePage> {
           const SizedBox(height: 14),
           Row(
             children: [
-              const Icon(Icons.format_list_numbered_outlined,
-                  size: 18, color: AppPalette.primary),
+              const Icon(
+                Icons.format_list_numbered_outlined,
+                size: 18,
+                color: AppPalette.primary,
+              ),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(
-                  '为每一步补充一句话（可选）',
-                  style: theme.textTheme.titleSmall,
-                ),
+                child: Text('为每一步补充一句话（可选）', style: theme.textTheme.titleSmall),
               ),
               if (stepIds.isNotEmpty)
-                Text(
-                  '共 ${stepIds.length} 步',
-                  style: theme.textTheme.bodySmall,
-                ),
+                Text('共 ${stepIds.length} 步', style: theme.textTheme.bodySmall),
             ],
           ),
           const SizedBox(height: 8),
@@ -2074,9 +1970,7 @@ class _LecturePageState extends State<LecturePage> {
                   });
                 },
                 icon: Icon(
-                  latexExpanded
-                      ? Icons.expand_less
-                      : Icons.functions_outlined,
+                  latexExpanded ? Icons.expand_less : Icons.functions_outlined,
                   size: 16,
                 ),
                 label: Text(latexExpanded ? '收起' : '加公式'),
@@ -2133,23 +2027,19 @@ class _PendingFollowupHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final preview = turn.text.length > 80
-        ? '${turn.text.substring(0, 80)}…'
-        : turn.text;
+    final preview =
+        turn.text.length > 80 ? '${turn.text.substring(0, 80)}…' : turn.text;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
         color: AppPalette.primary.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: AppPalette.primary.withValues(alpha: 0.20),
-        ),
+        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.20)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.help_outline,
-              size: 16, color: AppPalette.primary),
+          const Icon(Icons.help_outline, size: 16, color: AppPalette.primary),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -2389,8 +2279,9 @@ class _QuestionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final difficultyLabel = MockLectureRepository.instance
-        .difficultyLabel(question.difficulty);
+    final difficultyLabel = MockLectureRepository.instance.difficultyLabel(
+      question.difficulty,
+    );
     // 第七轮：标签数量已由 Mock 题库控制在 1-3 个；此处再做一次硬上限
     // 防御未来题库走样，避免题面卡片被 chip 撑成 N 行挤压手写板主区。
     final tags = question.tags.take(3).toList(growable: false);
@@ -2407,8 +2298,11 @@ class _QuestionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.menu_book_outlined,
-                  size: 16, color: AppPalette.primary),
+              const Icon(
+                Icons.menu_book_outlined,
+                size: 16,
+                color: AppPalette.primary,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -2427,7 +2321,10 @@ class _QuestionCard extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              _DifficultyChip(label: difficultyLabel, level: question.difficulty),
+              _DifficultyChip(
+                label: difficultyLabel,
+                level: question.difficulty,
+              ),
               for (final t in tags) _TagChip(label: t),
             ],
           ),
@@ -2476,11 +2373,7 @@ class _QuestionImage extends StatelessWidget {
           borderRadius: AppRadius.cardR,
           border: Border.all(color: AppPalette.outline),
         ),
-        child: SvgPicture.asset(
-          image.asset,
-          height: 150,
-          fit: BoxFit.contain,
-        ),
+        child: SvgPicture.asset(image.asset, height: 150, fit: BoxFit.contain),
       ),
     );
   }
@@ -2667,9 +2560,7 @@ class _StepOrderBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppPalette.primary.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppPalette.primary.withValues(alpha: 0.28),
-        ),
+        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.28)),
       ),
       child: Text(
         '$order',
@@ -2726,8 +2617,11 @@ class _MasteryBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style:
-            TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

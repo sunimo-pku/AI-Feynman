@@ -43,11 +43,7 @@ router = APIRouter(tags=["Round11"])
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _QUESTIONS_FILE = _PROJECT_ROOT / "data" / "questions" / "pep-junior-math-questions.json"
 
-_SECTION_LABELS = {
-    "pep-g8-down-s16-1": "16.1 二次根式的概念与取值范围",
-    "pep-g8-down-s16-2": "16.2 二次根式的乘除",
-    "pep-g8-down-s16-3": "16.3 二次根式的加减",
-}
+_SECTION_LABELS: dict[str, str] = {}
 _TIERS = ((900, "王者"), (600, "黄金"), (300, "白银"), (0, "青铜"))
 
 _SHOP_ITEMS = [
@@ -61,28 +57,28 @@ _GEEK_SKUS = [
 ]
 _BOUNTIES = [
     {
-        "challengeId": "bounty-s16-1-a",
-        "sectionId": "pep-g8-down-s16-1",
-        "prompt": r"小明写：$\sqrt{x-2}$ 有意义，所以 $x>2$。圈出错误并说明。",
-        "wrongStep": r"$x>2$",
+        "challengeId": "bounty-equation-distribute-a",
+        "sectionId": "pep-g7-up-s3-3",
+        "prompt": r"小明写：$3(x-2)=12$，所以 $3x-2=12$。圈出错误并说明。",
+        "wrongStep": r"$3x-2=12$",
         "errorBox": {"x": 120, "y": 90, "width": 180, "height": 70},
         "rewardCrystals": 12,
         "rewardPower": 20,
     },
     {
-        "challengeId": "bounty-s16-2-a",
-        "sectionId": "pep-g8-down-s16-2",
-        "prompt": r"大雄写：$\sqrt{-2}\cdot\sqrt{-8}=\sqrt{16}=4$。圈出错误并说明。",
-        "wrongStep": r"$\sqrt{-2}\cdot\sqrt{-8}$",
+        "challengeId": "bounty-sign-move-a",
+        "sectionId": "pep-g7-up-s3-2",
+        "prompt": r"大雄写：$2x-5=9$，移项得到 $2x=9-5$。圈出错误并说明。",
+        "wrongStep": r"$2x=9-5$",
         "errorBox": {"x": 88, "y": 100, "width": 260, "height": 76},
         "rewardCrystals": 15,
         "rewardPower": 24,
     },
     {
-        "challengeId": "bounty-s16-3-a",
-        "sectionId": "pep-g8-down-s16-3",
-        "prompt": r"班长草稿：$\sqrt{12}-\sqrt{27}=2\sqrt3-3\sqrt3=\sqrt3$。",
-        "wrongStep": r"$2\sqrt3-3\sqrt3=\sqrt3$",
+        "challengeId": "bounty-like-terms-a",
+        "sectionId": "pep-g7-up-s2-2",
+        "prompt": r"班长草稿：$2a+3b+a=6ab$。圈出错误并说明。",
+        "wrongStep": r"$2a+3b+a=6ab$",
         "errorBox": {"x": 180, "y": 120, "width": 280, "height": 72},
         "rewardCrystals": 15,
         "rewardPower": 24,
@@ -325,7 +321,7 @@ async def leaderboard(
 @router.get("/leaderboard/my-titles")
 async def my_titles(user: User = Depends(require_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
-    title = getattr(profile, "equipped_title", "") or "二次根式练习生"
+    title = getattr(profile, "equipped_title", "") or "数学练习生"
     return {"equippedTitle": title, "titles": [title]}
 
 
