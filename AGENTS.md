@@ -863,6 +863,11 @@ git push origin main
   `POST /auth/switch-parent`（Bearer 学生会话 + 仅 `parentPassword`）；
   家长端切回学生走 `POST /auth/switch-student`（Bearer 家长会话，无需密码）。
   **禁止**在已登录切换时重复索要账号密码。
+- **学生端弹窗切家长端要延迟 notify**：`switchToParent` 若在 dialog 还没
+  `pop` 完就 `notifyListeners()`，根 `_AuthGate` 会同步把学生端树替换成家长端，
+  Flutter 可能在销毁旧 `InheritedElement` 时触发 `_dependents.isEmpty`
+  红屏。做法：先 `switchToParent(notify:false)` 落 token，等 `showDialog`
+  Future 完成后下一帧再 `notifySessionChanged()`。
 - **1 孩子 : 1 家长，注册时绑定**：先注册学生，再注册家长并填 `childUsername`；
   后端写 `ParentStudentLink`，parent / child 各 UNIQUE。**已删除**
   `POST /parent/children/bind` 与 App 内「绑定孩子」入口。

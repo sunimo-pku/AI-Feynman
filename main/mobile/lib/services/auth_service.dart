@@ -224,7 +224,10 @@ class AuthService extends ChangeNotifier {
   }
 
   /// 已登录学生端：仅凭家长密码切换到家长会话。
-  Future<AuthResult> switchToParent({required String parentPassword}) async {
+  Future<AuthResult> switchToParent({
+    required String parentPassword,
+    bool notify = true,
+  }) async {
     if (!isStudent) {
       return const AuthResult.failure('当前不是学生端会话，请重新登录。');
     }
@@ -235,7 +238,7 @@ class AuthService extends ChangeNotifier {
     if (outcome is _ApiFailure) {
       return AuthResult.failure(outcome.message);
     }
-    return _applySessionFromBody((outcome as _ApiSuccess).body);
+    return _applySessionFromBody((outcome as _ApiSuccess).body, notify: notify);
   }
 
   /// 已登录家长端：切回学生会话，无需密码。
@@ -250,7 +253,12 @@ class AuthService extends ChangeNotifier {
     return _applySessionFromBody((outcome as _ApiSuccess).body);
   }
 
-  Future<AuthResult> _applySessionFromBody(Map<String, dynamic> responseBody) async {
+  void notifySessionChanged() => notifyListeners();
+
+  Future<AuthResult> _applySessionFromBody(
+    Map<String, dynamic> responseBody, {
+    bool notify = true,
+  }) async {
     final token = (responseBody['token'] as String?) ?? '';
     final userMap = responseBody['user'];
     if (token.isEmpty) {
@@ -284,7 +292,7 @@ class AuthService extends ChangeNotifier {
       await ReviewRepository.instance.switchUser(storageNamespace);
       await StudentGradeStore.instance.load();
     }
-    notifyListeners();
+    if (notify) notifyListeners();
     return AuthResult.success(_username, role: _role);
   }
 

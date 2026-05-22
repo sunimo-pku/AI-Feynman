@@ -229,6 +229,7 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
   final parentPasswordController = TextEditingController();
   var submitting = false;
   String? errorMessage;
+  var shouldNotifySessionChanged = false;
 
   await showDialog<void>(
     context: context,
@@ -249,6 +250,7 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
             });
             final result = await AuthService.instance.switchToParent(
               parentPassword: parentPassword,
+              notify: false,
             );
             if (!ctx.mounted) return;
             if (!result.ok) {
@@ -258,6 +260,7 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
               });
               return;
             }
+            shouldNotifySessionChanged = true;
             Navigator.of(ctx).pop();
           }
 
@@ -323,6 +326,11 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
   );
 
   parentPasswordController.dispose();
+  if (shouldNotifySessionChanged) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AuthService.instance.notifySessionChanged();
+    });
+  }
 }
 
 class LeaderboardPage extends StatefulWidget {
