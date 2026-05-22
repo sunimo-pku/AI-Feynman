@@ -153,9 +153,15 @@ def build_peer_assessment_system_prompt(role: str) -> str:
 
 {_FORBIDDEN_TUTOR_VOICE}
 
+【架构 · 与本任务相关】
+你是小明 / 大雄 / 班长**三人并行、各一次独立 API** 中的其中一个；另两人
+由其它请求同时评估，**互不代发言**。只输出**你自己**的听懂 JSON。
+不要套用「每轮只能一个同伴说话」「禁止同轮多角色」——那是旧版单模型
+流式追问剧本，**与本评估任务无关**。
+
 【输出任务】
 你正在听一位初中同学做费曼讲题。**只输出你自己的听懂状态**（JSON），
-不要替其他同伴发言。
+不要替其他同伴发言、不要模拟多人对话。
 
 【判断规则】
 1. 与你视角相关的点讲清楚了 → `"understood": true`，`reason` 按上面「听懂了」语感写（≤60 字）。
@@ -177,17 +183,18 @@ def build_peer_assessment_system_prompt(role: str) -> str:
 
 
 def build_lecture_director_system_prompt() -> str:
-    """非实时 / 流式讲题追问用的「剧本导演」System Prompt。"""
+    """非实时 / 流式讲题追问用的「剧本导演」System Prompt（单模型、单条 turns）。"""
     x = _ROLE_PROFILES["xiaoming"]
     d = _ROLE_PROFILES["daxiong"]
     m = _ROLE_PROFILES["monitor"]
 
-    return f"""你是「初中数学费曼学习小组」的剧本导演。
-学生正在给同班几个同学讲题；你要让**某一个**同伴接话，像真实小组讨论。
+    return f"""你是「初中数学费曼学习小组」的剧本导演（**单模型单条输出**路径）。
+学生正在给同班几个同学讲题；本路径每次只生成**一条**同伴接话（turns 长度 1）。
+实时讲题主路径已改为三人并行独立评估，**不经过本导演**。
 
 {_SCENE_BLOCK}
 
-【角色清单】每次**只能选 1 个**最合适的角色发言（禁止同轮多角色）：
+【角色清单】本路径每次**只能选 1 个**最合适的角色发言（turns 仅 1 条）：
 - xiaoming（小明）：{x["identity"].replace("你是**小明**，", "")} {x["focus"]}
 - daxiong（大雄）：{d["identity"].replace("你是**大雄**，", "")} {d["focus"]}
 - monitor（班长）：{m["identity"].replace("你是**班长**，", "")} {m["focus"]}
@@ -242,7 +249,8 @@ H5. 题面没出现的数值/公式，禁止写进追问假装是学生给的。
 """
 
 PEER_ASSESSMENT_USER_SUFFIX = (
-    "【小组讨论任务】像围在旁边的**同班同学**一样，判断你个人听懂没。"
-    "输出 JSON：`understood` + 一句口语化 `reason`（附和或求助，不是点评）。"
-    "没听懂时只提 **1 个** 最卡你的点；听懂了可以半句复述或说「我跟上了」。"
+    "【小组讨论 · 独立评估】三人（小明/大雄/班长）并行各评各的，你只代表"
+    "自己。输出 JSON：`understood` + 一句口语化 `reason`（附和或求助）。"
+    "没听懂时只提 **1 个** 最卡的点；听懂了可以半句复述或说「我跟上了」。"
+    "不要输出 turns 数组，不要考虑「本轮只能一人发言」。"
 )

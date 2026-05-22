@@ -2,9 +2,11 @@
 
 设计要点：
 
-- **单大模型单角色剧本**：用同一次 LLM 调用让 DeepSeek 扮演小明 / 大雄 / 班长
-  中的**恰好 1 个**角色，避免多角色同轮发言混乱。李老师已拆到独立 `teacher_agent`，
-  仅在学生主动请求「提示」时调用。
+- **两条同伴路径**：
+  - **主路径（实时 / submit）**：`peer_assessment_agent` 三人并行、各一次 API，
+    各输出 understood + reason；
+  - **备用路径**：本模块 `generate_lecture_turns` / `lecture_agent_stream` 单模型
+    每次只扮演 1 个角色、turns 仅 1 条（非实时兜底或流式 NDJSON）。
 - **强 Schema 防御**：System Prompt 限定「只输出 JSON」、`response_format=json_object`
   双保险；解析时还要再做 markdown 去壳 + 字段白名单校验。
 - **highlightStepIds 必须命中真实 stepId**：模型最爱编造 `step_99`，路由层会把

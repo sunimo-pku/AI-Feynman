@@ -121,16 +121,19 @@ class _PeerRailRow extends StatelessWidget {
     final palette = _PeerPalette.forRole(role);
     final hasData = assessment != null;
     final understood = assessment?.understood ?? false;
+    // 听懂 / 没听懂：绿 / 红；不用主题蓝表示 TTS 播放，避免和掌握度语义冲突。
     final ringColor = switch (true) {
-      _ when isSpeaking || isPlaying => AppPalette.primary,
-      _ when role == AgentRole.teacher && hasMessageRing => AppPalette.primaryAccent,
-      _ when !hasData => AppPalette.outlineSoft,
-      _ when understood => const Color(0xFF16A34A),
-      _ => const Color(0xFFEA580C),
+      _ when hasData && understood => const Color(0xFF16A34A),
+      _ when hasData && !understood => AppPalette.error,
+      _ when role == AgentRole.teacher && hasMessageRing =>
+        AppPalette.primaryAccent,
+      _ => AppPalette.outlineSoft,
     };
 
     final msg = message;
     final hasMessage = msg != null && msg.text.trim().isNotEmpty;
+    final emphasizeRing =
+        isSpeaking || isPlaying || (hasData && !understood);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -159,7 +162,7 @@ class _PeerRailRow extends StatelessWidget {
           child: AgentAvatar(
             role: role,
             ringColor: ringColor,
-            ringWidth: isSpeaking || (hasData && !understood) ? 3 : 1.5,
+            ringWidth: emphasizeRing ? 3 : 1.5,
             pulse: isSpeaking,
           ),
         ),

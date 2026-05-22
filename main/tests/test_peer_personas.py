@@ -13,6 +13,8 @@ def test_peer_assessment_prompts_sound_like_classmates_not_tutors() -> None:
     assert "禁止" in xiaoming
     assert "等价变形" in xiaoming  # listed as forbidden tutor phrase
     assert "跟不上了" in xiaoming or "卡" in xiaoming
+    assert "并行" in xiaoming
+    assert "禁止同轮多角色" in xiaoming  # explained as NOT applicable
 
 
 def test_lecture_director_prompt_has_group_discussion_scene() -> None:
