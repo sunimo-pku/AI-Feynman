@@ -1100,8 +1100,16 @@ class _LecturePageState extends State<LecturePage> {
     // stuck hint 通用文案在第十二轮被彻底删除（见 _showStuckHintIfStillPaused
     // 注释）—— UI 上不再插入任何"不调 LLM 的伪追问"，避免学生看到与本节
     // 知识点无关、且反复弹出的废话。自动追问完全交给下面的 _wrapUpTimer。
+    //
+    // 第十二轮第二轮调优：原来 (2500 - silenceMs) 等于学生讲完后再等
+    // 2500ms 总静音才触发 LLM；端到端体感 3.5-4s。改成 (1200 - silenceMs)，
+    // 等于学生讲完后再等 1200ms 总静音 → -1.3s。
+    // VAD 阈值 _pauseSilenceMs 已经从 1500ms 降到 700ms，所以 wrapUp 实际
+    // 等的额外时间 ≈ max(0, 1200 - 700) = 500ms 给学生一个"反悔窗口"
+    // （重新开口讲会通过 _onAudioVoice 取消 wrapUp）。
+    final waitMs = (1200 - silenceMs).clamp(0, 1200).toInt();
     _wrapUpTimer = Timer(
-      Duration(milliseconds: (2500 - silenceMs).clamp(0, 2500).toInt()),
+      Duration(milliseconds: waitMs),
       () {
         if (!_liveService.isConnected || _liveStatus == _LiveStatus.thinking) {
           return;
@@ -1116,7 +1124,7 @@ class _LecturePageState extends State<LecturePage> {
             DateTime.now().difference(last) < const Duration(seconds: 2)) {
           return;
         }
-        _liveService.sendPauseDetected(silenceMs: 2500);
+        _liveService.sendPauseDetected(silenceMs: 1200);
         _armThinkingWatchdog();
         setState(() {
           _liveStatus = _LiveStatus.thinking;

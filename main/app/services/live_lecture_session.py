@@ -69,19 +69,24 @@ EVT_ERROR = "error"
 
 
 # 单次 LLM 追问产出的整段 text 切成多少字一条 delta 推给前端。
-# 经验值：18-22 字一条让流式气泡每 80-120ms 增长一段，体感最接近真实
-# token 流；切太碎会让前端 setState 抖动，切太大体感和"等整段"一样。
+# 仅用于 _stream_turns_to_client（备用同步路径）；流式主路径由 LLM
+# 自己控制 delta 粒度，不走这个常量。
 _DELTA_CHUNK_CHARS = 20
 
-# 同一轮 turn 之间额外停顿，让前端有时间渲染上一条 agent_turn_done。
-_INTER_TURN_DELAY_MS = 80
+# 同一轮 turn 之间额外停顿。第十二轮第二轮调优：80ms → 0；让 turn_done
+# → next turn_start 之间无人为延迟。备用路径才用得到。
+_INTER_TURN_DELAY_MS = 0
 
-# 单条 delta 之间的间隔，模拟流式生成节奏。
-_INTER_DELTA_DELAY_MS = 40
+# 单条 delta 之间的间隔。第十二轮第二轮调优：40ms → 0。流式主路径根本
+# 不应该有人为 sleep —— LLM 给一段就推一段，对话感才出来。备用路径才
+# 用得到。
+_INTER_DELTA_DELAY_MS = 0
 
-# 一次 thinking → 第一条 delta 之间最少给前端展示"AI 正在想问题"的时长，
-# 防御 LLM 很快返回时前端来不及看见 thinking 状态。
-_MIN_THINKING_VISIBLE_MS = 240
+# thinking 状态最短可见时长。第十二轮第二轮调优：240ms → 0。原本是
+# 防御「LLM 极快返回，前端没来得及切 thinking 就要切 aiSpeaking」，
+# 但用户反馈整体延迟过高 —— 这种场景目前根本不会出现，反而 240ms
+# 是白白挤压第一条气泡的可见时间。
+_MIN_THINKING_VISIBLE_MS = 0
 
 # 一个 session 内 history 最多保留多少条；与 lecture_agent._HISTORY_KEEP_LAST 同步。
 _HISTORY_KEEP_LAST = 6
