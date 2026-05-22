@@ -4,9 +4,22 @@ import '../data/lecture_models.dart';
 import '../theme/app_theme.dart';
 import 'formula_text.dart';
 
+/// 头像旁内联追问文案（由讲题页传入）。
+class PeerInlineMessage {
+  const PeerInlineMessage({
+    required this.text,
+    this.highlightStepIds = const [],
+    this.showPlay = false,
+  });
+
+  final String text;
+  final List<String> highlightStepIds;
+  final bool showPlay;
+}
+
 /// 讲题页右侧四人头像轨：小明 / 大雄 / 班长 / 李老师。
 ///
-/// 三名同伴外圈颜色表示本轮是否听懂；没听懂时显示可点气泡查看追问理由。
+/// 有追问/发言时，在头像左侧显示内联气泡（默认缩略两行，点击展开全文）。
 class LecturePeerRail extends StatelessWidget {
   const LecturePeerRail({
     super.key,
@@ -14,18 +27,22 @@ class LecturePeerRail extends StatelessWidget {
     this.playingRole,
     this.activeSpeakingRole,
     this.teacherHasMessage = false,
-    this.onPeerTap,
-    this.onConfusedBubbleTap,
-    this.onTeacherTap,
+    this.expandedRole,
+    required this.messageForRole,
+    required this.onAvatarTap,
+    this.onPlayAudio,
+    this.onHighlightSteps,
   });
 
   final List<PeerAssessment> assessments;
   final AgentRole? playingRole;
   final AgentRole? activeSpeakingRole;
   final bool teacherHasMessage;
-  final void Function(AgentRole role)? onPeerTap;
-  final void Function(AgentRole role)? onConfusedBubbleTap;
-  final VoidCallback? onTeacherTap;
+  final AgentRole? expandedRole;
+  final PeerInlineMessage? Function(AgentRole role) messageForRole;
+  final ValueChanged<AgentRole> onAvatarTap;
+  final void Function(AgentRole role)? onPlayAudio;
+  final void Function(AgentRole role, List<String> stepIds)? onHighlightSteps;
 
   static const List<AgentRole> _peerOrder = [
     AgentRole.xiaoming,
@@ -39,251 +56,244 @@ class LecturePeerRail extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         for (final role in _peerOrder) ...[
-          _PeerAvatarOrb(
+          _PeerRailRow(
             role: role,
             assessment: byRole[role],
+            message: messageForRole(role),
+            isExpanded: expandedRole == role,
             isPlaying: playingRole == role,
             isSpeaking: activeSpeakingRole == role,
-            onTap: onPeerTap != null ? () => onPeerTap!(role) : null,
-            onBubbleTap:
-                onConfusedBubbleTap != null &&
-                        byRole[role] != null &&
-                        byRole[role]!.understood == false &&
-                        byRole[role]!.reason.trim().isNotEmpty
-                    ? () => onConfusedBubbleTap!(role)
+            onAvatarTap: () => onAvatarTap(role),
+            onPlayAudio: onPlayAudio != null ? () => onPlayAudio!(role) : null,
+            onHighlightSteps:
+                onHighlightSteps != null
+                    ? (ids) => onHighlightSteps!(role, ids)
                     : null,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
         ],
-        _TeacherAvatarOrb(
-          hasMessage: teacherHasMessage,
-          isSpeaking: activeSpeakingRole == AgentRole.teacher,
+        _PeerRailRow(
+          role: AgentRole.teacher,
+          assessment: null,
+          message: messageForRole(AgentRole.teacher),
+          isExpanded: expandedRole == AgentRole.teacher,
           isPlaying: playingRole == AgentRole.teacher,
-          onTap: onTeacherTap,
+          isSpeaking: activeSpeakingRole == AgentRole.teacher,
+          hasMessageRing: teacherHasMessage,
+          onAvatarTap: () => onAvatarTap(AgentRole.teacher),
         ),
       ],
     );
   }
 }
 
-/// 点击没听懂同伴后展示的追问气泡（轻量圆角，非整页大卡片）。
-class LecturePeerReasonPopover extends StatelessWidget {
-  const LecturePeerReasonPopover({
-    super.key,
-    required this.assessment,
-    this.onPlay,
-    this.onHighlightSteps,
-  });
-
-  final PeerAssessment assessment;
-  final VoidCallback? onPlay;
-  final VoidCallback? onHighlightSteps;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = _PeerPalette.forRole(assessment.role);
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 280),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          color: AppPalette.surface.withValues(alpha: 0.98),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
-          boxShadow: [
-            BoxShadow(
-              color: AppPalette.textPrimary.withValues(alpha: 0.08),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  '${palette.label}的追问',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: palette.accent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close, size: 18),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            FormulaText(
-              assessment.reason,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(height: 1.5),
-              formulaStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: palette.accent,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (onPlay != null || onHighlightSteps != null) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  if (onPlay != null)
-                    IconButton(
-                      onPressed: onPlay,
-                      icon: const Icon(Icons.volume_up_outlined, size: 22),
-                      color: palette.accent,
-                      tooltip: '听${palette.label}说',
-                    ),
-                  if (onHighlightSteps != null &&
-                      assessment.highlightStepIds.isNotEmpty)
-                    IconButton(
-                      onPressed: onHighlightSteps,
-                      icon: const Icon(Icons.flash_on_outlined, size: 22),
-                      color: palette.accent,
-                      tooltip: '看相关步骤',
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PeerAvatarOrb extends StatelessWidget {
-  const _PeerAvatarOrb({
+class _PeerRailRow extends StatelessWidget {
+  const _PeerRailRow({
     required this.role,
     required this.assessment,
-    this.isPlaying = false,
-    this.isSpeaking = false,
-    this.onTap,
-    this.onBubbleTap,
+    required this.message,
+    required this.isExpanded,
+    required this.isPlaying,
+    required this.isSpeaking,
+    required this.onAvatarTap,
+    this.hasMessageRing = false,
+    this.onPlayAudio,
+    this.onHighlightSteps,
   });
 
   final AgentRole role;
   final PeerAssessment? assessment;
+  final PeerInlineMessage? message;
+  final bool isExpanded;
   final bool isPlaying;
   final bool isSpeaking;
-  final VoidCallback? onTap;
-  final VoidCallback? onBubbleTap;
+  final bool hasMessageRing;
+  final VoidCallback onAvatarTap;
+  final VoidCallback? onPlayAudio;
+  final void Function(List<String> stepIds)? onHighlightSteps;
 
   @override
   Widget build(BuildContext context) {
     final palette = _PeerPalette.forRole(role);
     final hasData = assessment != null;
     final understood = assessment?.understood ?? false;
-    final showBubble =
-        hasData &&
-        !understood &&
-        (assessment!.reason.trim().isNotEmpty);
-
     final ringColor = switch (true) {
       _ when isSpeaking || isPlaying => AppPalette.primary,
+      _ when role == AgentRole.teacher && hasMessageRing => AppPalette.primaryAccent,
       _ when !hasData => AppPalette.outlineSoft,
       _ when understood => const Color(0xFF16A34A),
       _ => const Color(0xFFEA580C),
     };
 
-    return SizedBox(
-      width: 56,
-      height: showBubble ? 68 : 56,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          GestureDetector(
-            onTap: onTap,
-            child: _AvatarDisc(
-              palette: palette,
-              ringColor: ringColor,
-              ringWidth: isSpeaking || (hasData && !understood) ? 3 : 1.5,
-              pulse: isSpeaking,
-            ),
+    final msg = message;
+    final showBubble = msg != null && msg.text.trim().isNotEmpty;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (showBubble) ...[
+          _InlinePeerBubble(
+            palette: palette,
+            message: msg,
+            expanded: isExpanded,
+            onToggle: onAvatarTap,
+            onPlay: msg.showPlay ? onPlayAudio : null,
+            onHighlight:
+                msg.highlightStepIds.isNotEmpty ? onHighlightSteps : null,
           ),
-          if (showBubble)
-            Positioned(
-              left: -4,
-              top: 0,
-              child: GestureDetector(
-                onTap: onBubbleTap,
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEA580C),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppPalette.textPrimary.withValues(alpha: 0.15),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.chat_bubble_outline,
-                    size: 14,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
+          const SizedBox(width: 8),
         ],
-      ),
+        GestureDetector(
+          onTap: onAvatarTap,
+          child: _AvatarDisc(
+            palette: palette,
+            ringColor: ringColor,
+            ringWidth: isSpeaking || (hasData && !understood) ? 3 : 1.5,
+            pulse: isSpeaking,
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _TeacherAvatarOrb extends StatelessWidget {
-  const _TeacherAvatarOrb({
-    required this.hasMessage,
-    this.isSpeaking = false,
-    this.isPlaying = false,
-    this.onTap,
+/// 头像左侧内联气泡：默认最多 2 行，点击切换展开/收起。
+class _InlinePeerBubble extends StatelessWidget {
+  const _InlinePeerBubble({
+    required this.palette,
+    required this.message,
+    required this.expanded,
+    required this.onToggle,
+    this.onPlay,
+    this.onHighlight,
   });
 
-  final bool hasMessage;
-  final bool isSpeaking;
-  final bool isPlaying;
-  final VoidCallback? onTap;
+  final _PeerPalette palette;
+  final PeerInlineMessage message;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final VoidCallback? onPlay;
+  final void Function(List<String> stepIds)? onHighlight;
+
+  static const double _maxWidth = 200;
+  static const int _collapsedLines = 2;
+
+  static String _plainPreview(String raw) {
+    return raw
+        .replaceAll(RegExp(r'\$\$?'), '')
+        .replaceAll(RegExp(r'\\[a-zA-Z]+(\{[^}]*\})?'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
 
   @override
   Widget build(BuildContext context) {
-    const palette = _PeerPalette(
-      accent: AppPalette.primary,
-      avatar: '师',
-      label: '李老师',
-    );
-    final ringColor =
-        isSpeaking || isPlaying
-            ? AppPalette.primary
-            : hasMessage
-            ? AppPalette.primaryAccent
-            : AppPalette.outlineSoft;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: _AvatarDisc(
-        palette: palette,
-        ringColor: ringColor,
-        ringWidth: isSpeaking ? 3 : 1.5,
-        pulse: isSpeaking,
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: _maxWidth),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: BoxDecoration(
+            color: AppPalette.surface.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
+            boxShadow: [
+              BoxShadow(
+                color: AppPalette.textPrimary.withValues(alpha: 0.06),
+                blurRadius: 8,
+                offset: const Offset(-2, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    palette.label,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: palette.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 16,
+                    color: AppPalette.textSecondary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              expanded
+                  ? FormulaText(
+                    message.text,
+                    style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
+                    formulaStyle: theme.textTheme.bodySmall?.copyWith(
+                      color: palette.accent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
+                  : Text(
+                    _plainPreview(message.text),
+                    maxLines: _collapsedLines,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
+                  ),
+              if (expanded && (onPlay != null || onHighlight != null)) ...[
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (onPlay != null)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        onPressed: onPlay,
+                        icon: Icon(
+                          Icons.volume_up_outlined,
+                          size: 18,
+                          color: palette.accent,
+                        ),
+                        tooltip: '听${palette.label}说',
+                      ),
+                    if (onHighlight != null)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        onPressed:
+                            () => onHighlight!(message.highlightStepIds),
+                        icon: Icon(
+                          Icons.flash_on_outlined,
+                          size: 18,
+                          color: palette.accent,
+                        ),
+                        tooltip: '看相关步骤',
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

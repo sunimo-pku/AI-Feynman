@@ -196,6 +196,9 @@ class _LecturePageState extends State<LecturePage> {
   /// 李老师「需要提示」请求进行中。
   bool _hintLoading = false;
 
+  /// 右侧头像轨：当前展开全文追问气泡的角色（再点一次收起）。
+  AgentRole? _expandedPeerBubble;
+
   static const int _maxHistoryItems = 6;
 
   // —— 第九轮：实时双工讲题相关状态 ————————————————————————————————————
@@ -1091,6 +1094,7 @@ class _LecturePageState extends State<LecturePage> {
     // 都属于「新一轮」语义；不重置会导致连续两题只留下第一题的回顾）。
     _reviewSavedForCurrentRound = false;
     _peerAssessments = const [];
+    _expandedPeerBubble = null;
     unawaited(_reasonPlayback.stop());
     _reasonPlayback.clearQueue();
     _cancelThinkingWatchdog();
@@ -1668,73 +1672,37 @@ class _LecturePageState extends State<LecturePage> {
         (t) => t.role == AgentRole.teacher && t.text.trim().isNotEmpty,
       );
 
-  void _showConfusedPeerPopover(AgentRole role) {
+  PeerInlineMessage? _peerInlineMessage(AgentRole role) {
     final assessment = _assessmentFor(role);
-    if (assessment == null || assessment.understood) return;
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black26,
-      builder:
-          (ctx) => Center(
-            child: LecturePeerReasonPopover(
-              assessment: assessment,
-              onPlay:
-                  () => unawaited(_reasonPlayback.playPeer(role)),
-              onHighlightSteps:
-                  assessment.highlightStepIds.isEmpty
-                      ? null
-                      : () {
-                        Navigator.of(ctx).pop();
-                        _canvasController.setHighlight(
-                          assessment.highlightStepIds,
-                        );
-                      },
-            ),
-          ),
-    );
-  }
-
-  void _showAgentMessageDialog(AgentRole role) {
-    final assessment = _assessmentFor(role);
-    if (assessment != null && !assessment.understood) {
-      _showConfusedPeerPopover(role);
-      return;
+    if (assessment != null &&
+        !assessment.understood &&
+        assessment.reason.trim().isNotEmpty) {
+      return PeerInlineMessage(
+        text: assessment.reason,
+        highlightStepIds: assessment.highlightStepIds,
+        showPlay: true,
+      );
     }
     final turn = _latestTurnFor(role);
-    if (turn == null) {
+    if (turn != null && turn.text.trim().isNotEmpty) {
+      return PeerInlineMessage(
+        text: turn.text,
+        highlightStepIds: turn.highlightStepIds,
+      );
+    }
+    return null;
+  }
+
+  void _onPeerAvatarTap(AgentRole role) {
+    if (_peerInlineMessage(role) == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${_defaultDisplayName(role)}还没有发言')),
       );
       return;
     }
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black26,
-      builder:
-          (ctx) => Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 320),
-              child: Material(
-                color: Colors.transparent,
-                child: AgentMessageBubble(
-                  turn: turn,
-                  isHighlighted: turn.highlightStepIds.any(
-                    _canvasController.highlightStepIds.contains,
-                  ),
-                  onHighlightTap:
-                      turn.highlightStepIds.isEmpty
-                          ? null
-                          : () {
-                            Navigator.of(ctx).pop();
-                            _canvasController.setHighlight(
-                              turn.highlightStepIds,
-                            );
-                          },
-                ),
-              ),
-            ),
-          ),
-    );
+    setState(() {
+      _expandedPeerBubble = _expandedPeerBubble == role ? null : role;
+    });
   }
 
   void _showQuestionSheet() {
@@ -1949,11 +1917,11 @@ class _LecturePageState extends State<LecturePage> {
           Positioned(
             left: 8,
             top: topPad + 6,
-            right: 76,
+            right: 220,
             child: _buildTopChrome(order: order, total: total),
           ),
           Positioned(
-            right: 10,
+            right: 8,
             top: topPad + 72,
             bottom: MediaQuery.paddingOf(context).bottom + 88,
             child: AnimatedBuilder(
@@ -1964,9 +1932,14 @@ class _LecturePageState extends State<LecturePage> {
                     playingRole: _reasonPlayback.playingRole,
                     activeSpeakingRole: _activeSpeakingRole,
                     teacherHasMessage: _teacherHasMessage,
-                    onPeerTap: _showAgentMessageDialog,
-                    onConfusedBubbleTap: _showConfusedPeerPopover,
-                    onTeacherTap: () => _showAgentMessageDialog(AgentRole.teacher),
+                    expandedRole: _expandedPeerBubble,
+                    messageForRole: _peerInlineMessage,
+                    onAvatarTap: _onPeerAvatarTap,
+                    onPlayAudio:
+                        (role) => unawaited(_reasonPlayback.playPeer(role)),
+                    onHighlightSteps: (_, ids) {
+                      _canvasController.setHighlight(ids);
+                    },
                   ),
             ),
           ),
