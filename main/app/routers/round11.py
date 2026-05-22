@@ -67,10 +67,18 @@ class PowerAdjustRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class BountyStepAnswer(BaseModel):
+    step_id: str = Field(..., alias="stepId")
+    option_id: str = Field(..., alias="optionId")
+
+    model_config = {"populate_by_name": True}
+
+
 class BountySubmitRequest(BaseModel):
     challenge_id: str = Field(..., alias="challengeId")
     circled_box: dict[str, float] = Field(default_factory=dict, alias="circledBox")
     transcript_text: str = Field("", alias="transcriptText")
+    step_answers: list[BountyStepAnswer] = Field(default_factory=list, alias="stepAnswers")
 
     model_config = {"populate_by_name": True}
 
@@ -285,6 +293,60 @@ def _attempt_for(
     ).first()
 
 
+def _step_quizzes_for_challenge(challenge: dict[str, Any]) -> list[dict[str, Any]]:
+    """把 wrongSolution 拆成逐步选择题（服务端生成，题库无需手写每题选项）。"""
+    custom = challenge.get("stepQuizzes")
+    if isinstance(custom, list) and custom:
+        return [item for item in custom if isinstance(item, dict) and item.get("stepId")]
+
+    lines = [str(line).strip() for line in (challenge.get("wrongSolution") or []) if str(line).strip()]
+    error_step_id = str(challenge.get("errorStepId") or "step-2")
+    quizzes: list[dict[str, Any]] = []
+    for i, line in enumerate(lines):
+        step_id = f"step-{i + 1}"
+        is_error = step_id == error_step_id
+        quizzes.append({
+            "stepId": step_id,
+            "index": i + 1,
+            "statement": line,
+            "prompt": f"第 {i + 1} 步有没有问题？",
+            "options": [
+                {"optionId": "ok", "label": "这一步没问题"},
+                {"optionId": "wrong", "label": "错误出在这一步"},
+                {"optionId": "unsure", "label": "还不确定"},
+            ],
+            "correctOptionId": "wrong" if is_error else "ok",
+        })
+    return quizzes
+
+
+def _score_step_answers(
+    challenge: dict[str, Any],
+    step_answers: list[dict[str, str]],
+) -> tuple[bool, float, list[str]]:
+    quizzes = _step_quizzes_for_challenge(challenge)
+    if not quizzes:
+        return False, 0.0, []
+    expected = {str(q["stepId"]): str(q["correctOptionId"]) for q in quizzes}
+    picked: dict[str, str] = {}
+    for item in step_answers:
+        sid = str(item.get("stepId") or item.get("step_id") or "").strip()
+        oid = str(item.get("optionId") or item.get("option_id") or "").strip()
+        if sid and oid:
+            picked[sid] = oid
+    missed: list[str] = []
+    correct = 0
+    for sid, want in expected.items():
+        if picked.get(sid) == want:
+            correct += 1
+        else:
+            missed.append(sid)
+    score = correct / len(expected) if expected else 0.0
+    # 必须每步都答对，且覆盖全部步骤
+    passed = len(missed) == 0 and len(picked) >= len(expected)
+    return passed, score, missed
+
+
 def _feedback_payload(
     *,
     circled: bool,
@@ -292,20 +354,25 @@ def _feedback_payload(
     explanation_score: int,
     completed: bool,
     keyword_hits: list[str],
+    mcq_mode: bool = True,
 ) -> dict[str, Any]:
     if completed:
-        summary = "圈选和错因讲解都命中了关键点，已经发放今日挑战奖励。"
-        next_hint = "可以点“继续讲清本节”，把正确步骤完整讲给 AI 同伴听。"
+        summary = "逐步判断和板书讲解都达标了，今日挑战奖励已发放。"
+        next_hint = "可以在白板上再写一遍正确解法加深印象。"
+    elif mcq_mode and not circled:
+        summary = "还有解题步骤没判断对，请找出真正出错的那一步。"
+        next_hint = "回看同学的解法，逐步点选；找出后再在白板上讲清为什么错。"
     elif not circled:
-        summary = "圈选还没有覆盖到真正出错的那一步。"
-        next_hint = "先把红框拖到错误等式或错误判断所在行，再提交讲解。"
+        summary = "选择题还没有全部判断正确。"
+        next_hint = "逐步检查同学的每一步，标出出错的那一步。"
     else:
-        summary = "圈选命中了，讲解还需要更明确地说出错因。"
-        next_hint = "补一句为什么错、正确规则是什么、正确结果应该怎样写。"
+        summary = "步骤判断对了，板书讲解还要更清楚地说出错因和正确做法。"
+        next_hint = "在白板上写出正确步骤，并用语音说明：错在哪、规则是什么、结果应该怎样。"
     return {
         "summary": summary,
         "nextHint": next_hint,
         "iouScore": round(iou_score, 3),
+        "mcqScore": round(iou_score, 3),
         "explanationScore": explanation_score,
         "keywordHits": keyword_hits[:6],
     }
@@ -353,6 +420,7 @@ def _bounty_public(challenge: dict[str, Any], attempt: BountyAttempt | None) -> 
         "explanationScore": int(attempt.explanation_score or 0) if attempt else 0,
         "feedback": feedback,
         "rewardGranted": bool(attempt and (attempt.reward_granted_at is not None or int(attempt.crystal_reward or 0) > 0)),
+        "stepQuizzes": _step_quizzes_for_challenge(challenge),
     }
 
 
@@ -487,8 +555,18 @@ async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_s
     if challenge not in todays:
         raise HTTPException(status_code=400, detail="Bounty challenge is not in today's set.")
 
-    iou_score = _iou(req.circled_box, challenge.get("errorBox", {}))
-    circled = iou_score >= 0.25
+    quizzes = _step_quizzes_for_challenge(challenge)
+    if not req.step_answers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请完成所有步骤的选择题后再提交。",
+        )
+    step_payload = [
+        {"stepId": a.step_id, "optionId": a.option_id}
+        for a in req.step_answers
+    ]
+    circled, iou_score, _missed = _score_step_answers(challenge, step_payload)
+    selected_payload: dict[str, Any] = {"mode": "mcq", "stepAnswers": step_payload}
     explanation_score, keyword_hits = _score_explanation(challenge, req.transcript_text.strip())
     completed = circled and explanation_score >= 60
     reward_crystals = int(challenge["rewardCrystals"] if completed else 0)
@@ -510,7 +588,7 @@ async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_s
     attempt.date_key = date_key
     attempt.section_id = str(challenge.get("sectionId") or attempt.section_id)
     attempt.circled_correctly = 1 if circled else 0
-    attempt.selected_box_json = dump_json(req.circled_box)
+    attempt.selected_box_json = dump_json(selected_payload)
     attempt.iou_score = iou_score
     attempt.explanation_score = explanation_score
     attempt.feedback_json = dump_json(_feedback_payload(
@@ -519,6 +597,7 @@ async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_s
         explanation_score=explanation_score,
         completed=completed,
         keyword_hits=keyword_hits,
+        mcq_mode=True,
     ))
     attempt.attempt_count = int(attempt.attempt_count or 0) + 1
     attempt.transcript_text = req.transcript_text
@@ -539,7 +618,9 @@ async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_s
         "completed": completed,
         "status": _bounty_status(attempt),
         "circledCorrectly": circled,
+        "mcqCorrect": circled,
         "iouScore": round(iou_score, 3),
+        "mcqScore": round(iou_score, 3),
         "explanationScore": explanation_score,
         "crystalReward": reward_crystals if granted_now else 0,
         "powerReward": reward_power if granted_now else 0,

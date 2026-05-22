@@ -50,12 +50,12 @@ class Round12Service {
 
   Future<BountySubmitResult> submitBounty({
     required String challengeId,
-    required Map<String, num> circledBox,
+    required List<Map<String, String>> stepAnswers,
     required String transcriptText,
   }) async {
     final json = await _postMap(ApiConfig.uri('/bounty/submit'), {
       'challengeId': challengeId,
-      'circledBox': circledBox,
+      'stepAnswers': stepAnswers,
       'transcriptText': transcriptText,
     });
     return BountySubmitResult.fromJson(json);

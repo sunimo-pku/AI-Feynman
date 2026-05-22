@@ -751,10 +751,11 @@ git push origin main
 - **流式 ASR 接线要标明 mode**：有 `VOLC_ASR_STREAM_*` 时走 `asr_mode=stream`；未配置或调用失败时必须显式报错，不能静默伪装成流式，也不能降级成窗口式 ASR。
 - **商城皮肤是本地 prefs + 画笔渲染联动**：兑换 `pen-gold` 后写 `UserCosmeticsPrefs`，讲题页 `HandCanvas` 订阅并立即变成金色粗笔；不要只扣晶石不改白板。
 - **全册题库以 JSON 为准**：`data/questions/pep-junior-math-questions.json` 由 `scripts/generate_section_questions.py` 生成并同步到 Flutter asset；当前口径是 90 个小节 × 基础/巩固/挑战 3 题，非 16 章用 `quality=generated_seed` 标记，后续逐章教研校对。
-- **每日挑战不能提交标准答案框**：`DailyChallengePage` 必须由学生真实拖拽生成
-  `circledBox`；后端 `/bounty/submit` 自己用题库里的 `errorBox` 计算 IoU，
-  前端不要再把 `challenge.errorBox` 当作提交值。奖励也必须幂等，同一
-  `dateKey + challengeId` 首次 completed 才写晶石流水和章节战力，重复提交只更新反馈。
+- **每日挑战改为逐步选择题 + 白板语音**：`wrongSolution` 由后端拆成
+  `stepQuizzes`（`ok` / `wrong` / `unsure`）；`/bounty/submit` 必传
+  `stepAnswers`，全部判对才算找错成功，再配合 `transcriptText` 讲解分。
+  已废弃红框 `circledBox` 圈选 UI。奖励幂等：`dateKey + challengeId` 首次
+  completed 才发晶石/战力。
 - **题图 SVG 要走 asset 引用**：JSON 只写 `image.asset / image.alt`，SVG 文件放 `assets/questions/diagrams/` 并在 `pubspec.yaml` 声明目录；Flutter 端用 direct dependency `flutter_svg` 渲染，不能指望 `Image.asset` 直接显示 SVG。
 - **Python 生成 LaTeX 的 f-string 要转义花括号**：例如 `rf"$\\sqrt{{x-4}}$"`，否则 `{x-4}` 会被当成 Python 表达式导致生成脚本运行时报 `NameError`。
 - **实时语音改为手动收束，不再自动追问 / 打断**：V2 实测里自动停顿识别与

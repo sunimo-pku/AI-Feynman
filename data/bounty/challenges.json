@@ -8,7 +8,7 @@
       "sectionId": "pep-g8-down-s16-1",
       "questionId": "q-s16-1-bounty-001",
       "sectionLabel": "16.1 二次根式",
-      "prompt": "小明判断 $\\sqrt{x-3}$ 有意义时写成：因为根号里可以是任意数，所以 $x$ 取任意实数。请圈出错误并说明。",
+      "prompt": "小明判断 $\\sqrt{x-3}$ 有意义时写成：因为根号里可以是任意数，所以 $x$ 取任意实数。请逐步判断哪一步有错，并在白板上讲清并说明。",
       "wrongStep": "根号里可以是任意数",
       "wrongSolution": [
         "题目：判断 $\\sqrt{x-3}$ 有意义时 $x$ 的范围。",
@@ -29,7 +29,7 @@
       "sectionId": "pep-g8-down-s16-2",
       "questionId": "q-s16-2-bounty-001",
       "sectionLabel": "16.2 二次根式的乘除",
-      "prompt": "大雄化简 $\\sqrt{12}$：$\\sqrt{12}=\\sqrt{6}\\times\\sqrt{2}=6\\sqrt2$。请圈出错误步骤并说明。",
+      "prompt": "大雄化简 $\\sqrt{12}$：$\\sqrt{12}=\\sqrt{6}\\times\\sqrt{2}=6\\sqrt2$。请逐步判断哪一步有错，并在白板上讲清步骤并说明。",
       "wrongStep": "$\\sqrt{6}\\times\\sqrt{2}=6\\sqrt2$",
       "wrongSolution": [
         "题目：化简 $\\sqrt{12}$。",
@@ -50,7 +50,7 @@
       "sectionId": "pep-g8-down-s16-3",
       "questionId": "q-s16-3-bounty-001",
       "sectionLabel": "16.3 二次根式的加减",
-      "prompt": "班长合并：$\\sqrt{8}+\\sqrt{18}=\\sqrt{26}$。请圈出错误并讲清正确做法。",
+      "prompt": "班长合并：$\\sqrt{8}+\\sqrt{18}=\\sqrt{26}$。请逐步判断哪一步有错，并在白板上讲清并讲清正确做法。",
       "wrongStep": "$\\sqrt{8}+\\sqrt{18}=\\sqrt{26}$",
       "wrongSolution": [
         "题目：化简 $\\sqrt{8}+\\sqrt{18}$。",
@@ -71,7 +71,7 @@
       "sectionId": "pep-g7-up-s3-3",
       "questionId": "q-g7-equation-bounty-001",
       "sectionLabel": "3.3 解一元一次方程（二）",
-      "prompt": "小明写：$3(x-2)=12$，所以 $3x-2=12$。请圈出错误并说明。",
+      "prompt": "小明写：$3(x-2)=12$，所以 $3x-2=12$。请逐步判断哪一步有错，并在白板上讲清并说明。",
       "wrongStep": "$3x-2=12$",
       "wrongSolution": [
         "题目：解方程 $3(x-2)=12$。",
@@ -92,7 +92,7 @@
       "sectionId": "pep-g7-up-s3-2",
       "questionId": "q-g7-equation-bounty-002",
       "sectionLabel": "3.2 解一元一次方程（一）",
-      "prompt": "大雄写：$2x-5=9$，移项得到 $2x=9-5$。请圈出错误并说明。",
+      "prompt": "大雄写：$2x-5=9$，移项得到 $2x=9-5$。请逐步判断哪一步有错，并在白板上讲清并说明。",
       "wrongStep": "$2x=9-5$",
       "wrongSolution": [
         "题目：解方程 $2x-5=9$。",
@@ -113,7 +113,7 @@
       "sectionId": "pep-g7-up-s2-2",
       "questionId": "q-g7-polynomial-bounty-001",
       "sectionLabel": "2.2 整式的加减",
-      "prompt": "班长草稿：$2a+3b+a=6ab$。请圈出错误并说明。",
+      "prompt": "班长草稿：$2a+3b+a=6ab$。请逐步判断哪一步有错，并在白板上讲清并说明。",
       "wrongStep": "$2a+3b+a=6ab$",
       "wrongSolution": [
         "题目：合并同类项 $2a+3b+a$。",
@@ -134,7 +134,7 @@
       "sectionId": "pep-g7-down-s9-2",
       "questionId": "q-g7-ineq-bounty-001",
       "sectionLabel": "9.2 一元一次不等式",
-      "prompt": "小明解 $-2x>6$，两边除以 $-2$ 后写 $x> -3$。请圈出错误并说明。",
+      "prompt": "小明解 $-2x>6$，两边除以 $-2$ 后写 $x> -3$。请逐步判断哪一步有错，并在白板上讲清并说明。",
       "wrongStep": "$x>-3$",
       "wrongSolution": [
         "题目：解不等式 $-2x>6$。",
@@ -155,7 +155,7 @@
       "sectionId": "pep-g8-up-s11-2",
       "questionId": "q-g8-triangle-bounty-001",
       "sectionLabel": "11.2 与三角形有关的角",
-      "prompt": "大雄说：三角形两个内角是 $50^\\circ$ 和 $60^\\circ$，第三个角是 $90^\\circ$。请圈出错误并说明。",
+      "prompt": "大雄说：三角形两个内角是 $50^\\circ$ 和 $60^\\circ$，第三个角是 $90^\\circ$。请逐步判断哪一步有错，并在白板上讲清并说明。",
       "wrongStep": "第三个角是 $90^\\circ$",
       "wrongSolution": [
         "题目：三角形两个内角是 $50^\\circ$ 和 $60^\\circ$。",
@@ -176,7 +176,7 @@
       "sectionId": "pep-g8-down-s19-2",
       "questionId": "q-g8-function-bounty-001",
       "sectionLabel": "19.2 一次函数",
-      "prompt": "班长说：一次函数 $y=-2x+3$ 的图象随 $x$ 增大而增大。请圈出错误并说明。",
+      "prompt": "班长说：一次函数 $y=-2x+3$ 的图象随 $x$ 增大而增大。请逐步判断哪一步有错，并在白板上讲清并说明。",
       "wrongStep": "随 $x$ 增大而增大",
       "wrongSolution": [
         "题目：判断 $y=-2x+3$ 的增减性。",

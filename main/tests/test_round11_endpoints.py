@@ -87,7 +87,28 @@ def test_bounty_and_parent_registration(client: TestClient) -> None:
     assert children[0]["studentId"] > 0
 
     assert client.get("/bounty/today").status_code == 401
-    assert client.get("/bounty/today", headers=student_headers).status_code == 200
+    today = client.get("/bounty/today", headers=student_headers)
+    assert today.status_code == 200
+    challenge = today.json()["challenges"][0]
+    quizzes = challenge.get("stepQuizzes") or []
+    assert len(quizzes) >= 2
+    answers = [
+        {"stepId": q["stepId"], "optionId": q["correctOptionId"]}
+        for q in quizzes
+    ]
+    submit = client.post(
+        "/bounty/submit",
+        headers=student_headers,
+        json={
+            "challengeId": challenge["challengeId"],
+            "stepAnswers": answers,
+            "transcriptText": "因为被开方数要非负，所以 x-3 要大于等于 0，x 要大于等于 3。",
+        },
+    )
+    assert submit.status_code == 200
+    body = submit.json()
+    assert body["mcqCorrect"] is True
+    assert body["explanationScore"] >= 60
 
     assert client.get("/parent/dashboard", headers=parent_headers).status_code == 200
     assert client.get("/parent/dashboard", headers=student_headers).status_code == 403

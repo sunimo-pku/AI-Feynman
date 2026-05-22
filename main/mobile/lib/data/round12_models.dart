@@ -78,6 +78,55 @@ class LeaderboardEntry {
   }
 }
 
+class BountyStepOption {
+  const BountyStepOption({required this.optionId, required this.label});
+
+  final String optionId;
+  final String label;
+
+  factory BountyStepOption.fromJson(Map<String, dynamic> json) {
+    return BountyStepOption(
+      optionId: json['optionId'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+    );
+  }
+}
+
+class BountyStepQuiz {
+  const BountyStepQuiz({
+    required this.stepId,
+    required this.index,
+    required this.statement,
+    required this.prompt,
+    required this.options,
+    required this.correctOptionId,
+  });
+
+  final String stepId;
+  final int index;
+  final String statement;
+  final String prompt;
+  final List<BountyStepOption> options;
+  final String correctOptionId;
+
+  factory BountyStepQuiz.fromJson(Map<String, dynamic> json) {
+    final rawOpts = json['options'];
+    return BountyStepQuiz(
+      stepId: json['stepId'] as String? ?? '',
+      index: (json['index'] as num?)?.toInt() ?? 0,
+      statement: json['statement'] as String? ?? '',
+      prompt: json['prompt'] as String? ?? '',
+      options: rawOpts is List
+          ? rawOpts
+              .whereType<Map<String, dynamic>>()
+              .map(BountyStepOption.fromJson)
+              .toList(growable: false)
+          : const <BountyStepOption>[],
+      correctOptionId: json['correctOptionId'] as String? ?? 'ok',
+    );
+  }
+}
+
 class BountyChallenge {
   const BountyChallenge({
     required this.challengeId,
@@ -101,6 +150,7 @@ class BountyChallenge {
     required this.explanationScore,
     required this.feedback,
     required this.rewardGranted,
+    required this.stepQuizzes,
   });
 
   final String challengeId;
@@ -124,6 +174,7 @@ class BountyChallenge {
   final int explanationScore;
   final BountyFeedback feedback;
   final bool rewardGranted;
+  final List<BountyStepQuiz> stepQuizzes;
 
   bool get isCompleted => status == 'completed';
 
@@ -131,6 +182,7 @@ class BountyChallenge {
     final rawBox = json['errorBox'];
     final rawSolution = json['wrongSolution'];
     final rawTags = json['tags'];
+    final rawQuizzes = json['stepQuizzes'];
     return BountyChallenge(
       challengeId: json['challengeId'] as String? ?? '',
       track: json['track'] as String? ?? 'review',
@@ -163,6 +215,12 @@ class BountyChallenge {
             : const <String, dynamic>{},
       ),
       rewardGranted: json['rewardGranted'] == true,
+      stepQuizzes: rawQuizzes is List
+          ? rawQuizzes
+              .whereType<Map<String, dynamic>>()
+              .map(BountyStepQuiz.fromJson)
+              .toList(growable: false)
+          : const <BountyStepQuiz>[],
     );
   }
 }

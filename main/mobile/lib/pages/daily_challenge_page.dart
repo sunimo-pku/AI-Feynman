@@ -9,12 +9,12 @@ import '../services/asr_service.dart';
 import '../services/audio_stream_service.dart';
 import '../services/round12_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/bounty_solution_strip.dart';
+import '../widgets/bounty_step_quiz_bar.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
 import '../widgets/lecture_orb_button.dart';
 
-/// 每日挑战：上方展示错题解法并圈选；下方全屏白板 + 语音讲解（与讲题页同口径）。
+/// 每日挑战：错误解法拆成逐步选择题 + 全屏白板语音讲解。
 class DailyChallengePage extends StatefulWidget {
   const DailyChallengePage({super.key});
 
@@ -29,8 +29,9 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   final _canvas = HandCanvasController();
 
   late Future<BountyToday> _future = _service.fetchBountyToday();
-  final Map<String, Map<String, num>> _circledBoxes = {};
+  final Map<String, Map<String, String>> _stepAnswersByChallenge = {};
   final Map<String, BountySubmitResult> _results = {};
+  final Map<String, int> _quizIndexByChallenge = {};
 
   int _selectedIndex = 0;
   bool _submitting = false;
@@ -68,6 +69,24 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
     }
   }
 
+  Map<String, String> _answersFor(String challengeId) {
+    return _stepAnswersByChallenge.putIfAbsent(challengeId, () => {});
+  }
+
+  int _quizIndexFor(String challengeId) {
+    return _quizIndexByChallenge[challengeId] ?? 0;
+  }
+
+  bool _allStepsAnswered(BountyChallenge challenge) {
+    final quizzes = challenge.stepQuizzes;
+    if (quizzes.isEmpty) return false;
+    final answers = _answersFor(challenge.challengeId);
+    for (final q in quizzes) {
+      if (!answers.containsKey(q.stepId)) return false;
+    }
+    return true;
+  }
+
   void _showMessage(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
@@ -77,7 +96,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
     final ok = await _audio.start();
     if (!mounted) return;
     if (!ok) {
-      _showMessage(_audio.failureReason ?? '无法开始录音，请检查麦克风权限。');
+      _showMessage(_audio.failureReason ?? '无法开始录音');
       return;
     }
     setState(() => _listening = true);
@@ -89,9 +108,8 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
       setState(() => _listening = false);
     }
 
-    final box = _circledBoxes[challenge.challengeId];
-    if (box == null || (box['width'] ?? 0) == 0 || (box['height'] ?? 0) == 0) {
-      _showMessage('请先在「错误解法」区域拖红框，圈住出错的那一行。');
+    if (!_allStepsAnswered(challenge)) {
+      _showMessage('请先完成上方每一步的选择题。');
       return;
     }
 
@@ -106,10 +124,20 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
         offset += c.length;
       }
 
+      final answers = _answersFor(challenge.challengeId);
+      final stepPayload = challenge.stepQuizzes
+          .map(
+            (q) => {
+              'stepId': q.stepId,
+              'optionId': answers[q.stepId]!,
+            },
+          )
+          .toList(growable: false);
+
       final transcript = await _asr.transcribePcm16(merged);
       final result = await _service.submitBounty(
         challengeId: challenge.challengeId,
-        circledBox: box,
+        stepAnswers: stepPayload,
         transcriptText: transcript,
       );
       if (!mounted) return;
@@ -201,15 +229,6 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                         challenge.prompt,
                         style: Theme.of(ctx).textTheme.titleMedium,
                       ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        children: [
-                          _MiniChip(_trackLabel(challenge.track)),
-                          _MiniChip(_difficultyLabel(challenge.difficulty)),
-                          _MiniChip('${challenge.rewardCrystals} 晶石'),
-                        ],
-                      ),
                     ],
                   ),
                 ),
@@ -233,22 +252,15 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
           final today = snapshot.data!;
           final challenges = today.challenges;
           if (challenges.isEmpty) {
-            return SafeArea(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    '今天暂时没有挑战，明天再来看看。',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ),
+            return const SafeArea(
+              child: Center(child: Text('今天暂时没有挑战')),
             );
           }
           final safeIndex = math.min(_selectedIndex, challenges.length - 1);
           final challenge = challenges[safeIndex];
           final result = _results[challenge.challengeId];
           final topPad = MediaQuery.paddingOf(context).top;
+          final quizIdx = _quizIndexFor(challenge.challengeId);
 
           return Stack(
             fit: StackFit.expand,
@@ -264,25 +276,35 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: SizedBox(
-                      height: math.min(
-                        200,
-                        MediaQuery.sizeOf(context).height * 0.28,
-                      ),
-                      child: BountySolutionStrip(
-                        key: ValueKey(challenge.challengeId),
-                        challenge: challenge,
-                        initialBox: _circledBoxes[challenge.challengeId],
-                        onBoxChanged:
-                            (box) =>
-                                _circledBoxes[challenge.challengeId] = box,
-                      ),
+                    child: BountyStepQuizBar(
+                      quizzes: challenge.stepQuizzes,
+                      currentIndex: quizIdx,
+                      answers: _answersFor(challenge.challengeId),
+                      onPick: (stepId, optionId) {
+                        setState(() {
+                          _answersFor(challenge.challengeId)[stepId] = optionId;
+                        });
+                      },
+                      onPrev:
+                          quizIdx > 0
+                              ? () => setState(() {
+                                _quizIndexByChallenge[challenge.challengeId] =
+                                    quizIdx - 1;
+                              })
+                              : null,
+                      onNext:
+                          quizIdx < challenge.stepQuizzes.length - 1
+                              ? () => setState(() {
+                                _quizIndexByChallenge[challenge.challengeId] =
+                                    quizIdx + 1;
+                              })
+                              : null,
                     ),
                   ),
                   const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 4, 16, 6),
+                    padding: EdgeInsets.fromLTRB(16, 6, 16, 4),
                     child: Text(
-                      '白板：写下正确做法，并语音讲清为什么错',
+                      '白板：写出正确做法，语音讲清为什么错',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppPalette.textSecondary,
@@ -336,11 +358,10 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '每日挑战 · ${today.completedCount}/${today.totalCount}',
+              '每日挑战 ${today.completedCount}/${today.totalCount}',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
-              overflow: TextOverflow.ellipsis,
             ),
           ),
           for (var i = 0; i < challenges.length; i++) ...[
@@ -356,16 +377,12 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color:
-                      index == i
-                          ? AppPalette.primary
-                          : AppPalette.surface,
+                  color: index == i ? AppPalette.primary : AppPalette.surface,
                   border: Border.all(
                     color:
                         challenges[i].isCompleted
                             ? const Color(0xFF16A34A)
                             : AppPalette.outlineSoft,
-                    width: challenges[i].isCompleted ? 2 : 1,
                   ),
                 ),
                 child: Text(
@@ -373,7 +390,6 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     color: index == i ? Colors.white : AppPalette.primary,
-                    fontSize: 14,
                   ),
                 ),
               ),
@@ -414,6 +430,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   }
 
   Widget _buildOrbToolbar(BountyChallenge challenge, BountySubmitResult? result) {
+    final canSubmit = _allStepsAnswered(challenge);
     final orbs = <Widget>[
       if (!_listening)
         LectureOrbButton(
@@ -425,7 +442,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
       else
         LectureOrbButton(
           icon: Icons.mic,
-          tooltip: '正在录音',
+          tooltip: '录音中',
           filled: true,
           accent: AppPalette.error,
           pulse: true,
@@ -437,13 +454,13 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
         filled: true,
         loading: _submitting,
         onPressed:
-            _submitting
+            _submitting || !canSubmit
                 ? null
                 : () => unawaited(_stopVoiceAndSubmit(challenge)),
       ),
       LectureOrbButton(
         icon: Icons.undo,
-        tooltip: '撤销笔迹',
+        tooltip: '撤销',
         onPressed: _canvas.canUndo ? _canvas.undo : null,
       ),
       LectureOrbButton(
@@ -456,8 +473,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
       orbs.add(
         LectureOrbButton(
           icon: Icons.feedback_outlined,
-          tooltip: '查看反馈',
-          accent: AppPalette.primaryAccent,
+          tooltip: '反馈',
           onPressed: () => _showResultSheet(result),
         ),
       );
@@ -469,51 +485,15 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
 Widget _loadingOrError(AsyncSnapshot snapshot, VoidCallback retry) {
   if (snapshot.hasError) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('加载失败：${snapshot.error}', textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: retry, child: const Text('重试')),
-          ],
-        ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('加载失败：${snapshot.error}'),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: retry, child: const Text('重试')),
+        ],
       ),
     );
   }
   return const Center(child: CircularProgressIndicator());
-}
-
-class _MiniChip extends StatelessWidget {
-  const _MiniChip(this.label);
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppPalette.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(label, style: Theme.of(context).textTheme.labelSmall),
-    );
-  }
-}
-
-String _trackLabel(String track) {
-  return switch (track) {
-    'weak' => '弱项',
-    'advanced' => '进阶',
-    _ => '复习',
-  };
-}
-
-String _difficultyLabel(int difficulty) {
-  return switch (difficulty) {
-    3 => '挑战',
-    2 => '巩固',
-    _ => '基础',
-  };
 }
