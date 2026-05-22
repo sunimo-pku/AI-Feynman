@@ -9,7 +9,10 @@ import '../services/round12_service.dart';
 import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
+import '../widgets/study_layout.dart';
 import 'lecture_page.dart';
+
+const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
 
 class PowerProfilePage extends StatefulWidget {
   const PowerProfilePage({super.key});
@@ -35,7 +38,12 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
       child: FutureBuilder<PowerProfile>(
         future: _future,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return _loadingOrError(snapshot, () => setState(() => _future = _service.fetchPowerProfile()));
+          if (!snapshot.hasData) {
+            return _loadingOrError(
+              snapshot,
+              () => setState(() => _future = _service.fetchPowerProfile()),
+            );
+          }
           final p = snapshot.data!;
           final total = p.sections.fold<int>(0, (sum, s) => sum + s.powerScore);
           return ListView(
@@ -43,14 +51,18 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
             children: [
               _InfoCard(
                 title: p.studentName,
-                subtitle: '总战力 $total · ${p.equippedTitle.isEmpty ? '数学练习生' : p.equippedTitle} · 晶石 ${p.crystalBalance}',
+                subtitle:
+                    '总战力 $total · ${p.equippedTitle.isEmpty ? '数学练习生' : p.equippedTitle} · 晶石 ${p.crystalBalance}',
                 icon: Icons.bolt_outlined,
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const StudentProfileEditPage()),
-                ),
+                onPressed:
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const StudentProfileEditPage(),
+                      ),
+                    ),
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('编辑展示名 / 学校地区'),
               ),
@@ -77,7 +89,9 @@ class LeaderboardPage extends StatefulWidget {
 class _LeaderboardPageState extends State<LeaderboardPage> {
   final _service = Round12Service();
   String _scope = 'school';
-  late Future<List<LeaderboardEntry>> _future = _service.fetchLeaderboard(scope: _scope);
+  late Future<List<LeaderboardEntry>> _future = _service.fetchLeaderboard(
+    scope: _scope,
+  );
 
   @override
   void dispose() {
@@ -107,29 +121,40 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         children: [
           Wrap(
             spacing: 8,
-            children: labels.entries
-                .map((e) => ChoiceChip(
-                      label: Text(e.value),
-                      selected: _scope == e.key,
-                      onSelected: (_) => _select(e.key),
-                    ))
-                .toList(),
+            children:
+                labels.entries
+                    .map(
+                      (e) => ChoiceChip(
+                        label: Text(e.value),
+                        selected: _scope == e.key,
+                        onSelected: (_) => _select(e.key),
+                      ),
+                    )
+                    .toList(),
           ),
           const SizedBox(height: 12),
           FutureBuilder<List<LeaderboardEntry>>(
             future: _future,
             builder: (context, snapshot) {
-              if (!snapshot.hasData) return _loadingOrError(snapshot, () => _select(_scope));
+              if (!snapshot.hasData) {
+                return _loadingOrError(snapshot, () => _select(_scope));
+              }
               final entries = snapshot.data!;
-              if (entries.isEmpty) return const _EmptyCard('本周还没有同地区战力记录，先完成一题冲榜。');
+              if (entries.isEmpty) {
+                return const _EmptyCard('本周还没有同地区战力记录，先完成一题冲榜。');
+              }
               return Column(
-                children: entries
-                    .map((e) => _InfoCard(
-                          title: '#${e.rank} ${e.studentName}',
-                          subtitle: '${e.powerScore} 战力 · ${e.rankTier}\n${e.titleLabel}',
-                          icon: Icons.emoji_events_outlined,
-                        ))
-                    .toList(),
+                children:
+                    entries
+                        .map(
+                          (e) => _InfoCard(
+                            title: '#${e.rank} ${e.studentName}',
+                            subtitle:
+                                '${e.powerScore} 战力 · ${e.rankTier}\n${e.titleLabel}',
+                            icon: Icons.emoji_events_outlined,
+                          ),
+                        )
+                        .toList(),
               );
             },
           ),
@@ -167,9 +192,10 @@ class _BountyPageState extends State<BountyPage> {
     );
     if (!mounted) return;
     setState(() {
-      _message = result['completed'] == true
-          ? '挑战完成，获得 ${result['crystalReward']} 晶石 / ${result['powerReward']} 战力。'
-          : '还差一点：圈选和讲解都要命中错误点。';
+      _message =
+          result.completed
+              ? '挑战完成，获得 ${result.crystalReward} 晶石 / ${result.powerReward} 战力。'
+              : '还差一点：圈选和讲解都要命中错误点。';
     });
   }
 
@@ -180,18 +206,30 @@ class _BountyPageState extends State<BountyPage> {
       child: FutureBuilder<List<BountyChallenge>>(
         future: _future,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return _loadingOrError(snapshot, () => setState(() => _future = _service.fetchBounties()));
+          if (!snapshot.hasData) {
+            return _loadingOrError(
+              snapshot,
+              () => setState(() => _future = _service.fetchBounties()),
+            );
+          }
           final items = snapshot.data!;
           if (items.isEmpty) return const _EmptyCard('今天暂时没有悬赏题。');
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.pageEdge),
             children: [
-              if (_message.isNotEmpty) _InfoCard(title: '提交结果', subtitle: _message, icon: Icons.check_circle_outline),
-              ...items.map((c) => _BountyCard(
-                    challenge: c,
-                    transcript: _transcript,
-                    onSubmit: () => _submit(c),
-                  )),
+              if (_message.isNotEmpty)
+                _InfoCard(
+                  title: '提交结果',
+                  subtitle: _message,
+                  icon: Icons.check_circle_outline,
+                ),
+              ...items.map(
+                (c) => _BountyCard(
+                  challenge: c,
+                  transcript: _transcript,
+                  onSubmit: () => _submit(c),
+                ),
+              ),
             ],
           );
         },
@@ -223,9 +261,9 @@ class _ShopPageState extends State<ShopPage> {
       await UserCosmeticsPrefs.instance.equipPenStyle(item.skuId);
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已兑换 ${item.name}')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已兑换 ${item.name}')));
     setState(() => _future = _service.fetchShopCatalog());
   }
 
@@ -235,23 +273,36 @@ class _ShopPageState extends State<ShopPage> {
       title: '晶石商城',
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const GeekShopPage()),
-          ),
+          onPressed:
+              () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const GeekShopPage())),
           child: const Text('工具局'),
-        )
+        ),
       ],
       child: FutureBuilder<ShopCatalog>(
         future: _future,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return _loadingOrError(snapshot, () => setState(() => _future = _service.fetchShopCatalog()));
+          if (!snapshot.hasData) {
+            return _loadingOrError(
+              snapshot,
+              () => setState(() => _future = _service.fetchShopCatalog()),
+            );
+          }
           final catalog = snapshot.data!;
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.pageEdge),
             children: [
-              _InfoCard(title: '晶石余额', subtitle: '${catalog.balance} 颗 · 晶石只能靠讲题和悬赏获得', icon: Icons.diamond_outlined),
+              _InfoCard(
+                title: '晶石余额',
+                subtitle: '${catalog.balance} 颗 · 晶石只能靠讲题和悬赏获得',
+                icon: Icons.diamond_outlined,
+              ),
               const SizedBox(height: 12),
-              ...catalog.items.map((item) => _ShopItemCard(item: item, onRedeem: () => _redeem(item))),
+              ...catalog.items.map(
+                (item) =>
+                    _ShopItemCard(item: item, onRedeem: () => _redeem(item)),
+              ),
               const SizedBox(height: 12),
               FutureBuilder<Map<String, dynamic>>(
                 future: _service.fetchLedger(),
@@ -261,7 +312,9 @@ class _ShopPageState extends State<ShopPage> {
                   if (rows.isEmpty) return const _EmptyCard('暂无晶石流水。');
                   return _InfoCard(
                     title: '最近流水',
-                    subtitle: rows.map((e) => '${e['amount']} · ${e['reason']}').join('\n'),
+                    subtitle: rows
+                        .map((e) => '${e['amount']} · ${e['reason']}')
+                        .join('\n'),
                     icon: Icons.receipt_long_outlined,
                   );
                 },
@@ -298,15 +351,18 @@ class _GeekShopPageState extends State<GeekShopPage> {
   }
 
   Future<void> _redeem(ShopItem item) async {
-    await _service.redeem(item.skuId, address: {
-      'name': _name.text.trim(),
-      'phone': _phone.text.trim(),
-      'address': _address.text.trim(),
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${item.name} 兑换申请已提交，状态 pending。')),
+    await _service.redeem(
+      item.skuId,
+      address: {
+        'name': _name.text.trim(),
+        'phone': _phone.text.trim(),
+        'address': _address.text.trim(),
+      },
     );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${item.name} 兑换申请已提交，状态 pending。')));
   }
 
   @override
@@ -316,7 +372,12 @@ class _GeekShopPageState extends State<GeekShopPage> {
       child: FutureBuilder<ShopCatalog>(
         future: _future,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return _loadingOrError(snapshot, () => setState(() => _future = _service.fetchShopCatalog()));
+          if (!snapshot.hasData) {
+            return _loadingOrError(
+              snapshot,
+              () => setState(() => _future = _service.fetchShopCatalog()),
+            );
+          }
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.pageEdge),
             children: [
@@ -324,7 +385,10 @@ class _GeekShopPageState extends State<GeekShopPage> {
               _TextField(controller: _phone, label: '电话'),
               _TextField(controller: _address, label: '地址'),
               const SizedBox(height: 12),
-              ...snapshot.data!.geekSkus.map((item) => _ShopItemCard(item: item, onRedeem: () => _redeem(item))),
+              ...snapshot.data!.geekSkus.map(
+                (item) =>
+                    _ShopItemCard(item: item, onRedeem: () => _redeem(item)),
+              ),
               const SizedBox(height: 12),
               FutureBuilder<Map<String, dynamic>>(
                 future: _service.fetchOrders(),
@@ -333,9 +397,12 @@ class _GeekShopPageState extends State<GeekShopPage> {
                   final rows = raw is List ? raw : const [];
                   return _InfoCard(
                     title: '我的订单',
-                    subtitle: rows.isEmpty
-                        ? '暂无订单'
-                        : rows.map((e) => '${e['skuId']} · ${e['status']}').join('\n'),
+                    subtitle:
+                        rows.isEmpty
+                            ? '暂无订单'
+                            : rows
+                                .map((e) => '${e['skuId']} · ${e['status']}')
+                                .join('\n'),
                     icon: Icons.local_shipping_outlined,
                   );
                 },
@@ -392,9 +459,9 @@ class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
       contentStatus: 'available',
       v1Launch: true,
     );
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LecturePage(section: section)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => LecturePage(section: section)));
   }
 
   @override
@@ -410,12 +477,18 @@ class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
             icon: const Icon(Icons.photo_library_outlined),
             label: const Text('从相册选择题目图片'),
           ),
-          if (_error != null) _InfoCard(title: '识别失败', subtitle: _error!, icon: Icons.error_outline),
+          if (_error != null)
+            _InfoCard(
+              title: '识别失败',
+              subtitle: _error!,
+              icon: Icons.error_outline,
+            ),
           if (r != null) ...[
             const SizedBox(height: 12),
             _InfoCard(
               title: '推荐章节 ${r['sectionId']}',
-              subtitle: '置信度 ${r['confidence']} · ${r['source']}\n${r['questionPrompt']}',
+              subtitle:
+                  '置信度 ${r['confidence']} · ${r['source']}\n${r['questionPrompt']}',
               icon: Icons.document_scanner_outlined,
             ),
             const SizedBox(height: 12),
@@ -472,7 +545,9 @@ class _StudentProfileEditPageState extends State<StudentProfileEditPage> {
       'district': _district.text.trim(),
     });
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('资料已保存')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('资料已保存')));
   }
 
   @override
@@ -488,37 +563,60 @@ class _StudentProfileEditPageState extends State<StudentProfileEditPage> {
   Widget build(BuildContext context) {
     return _ScaffoldShell(
       title: '学生资料',
-      child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(AppSpacing.pageEdge),
-              children: [
-                _TextField(controller: _display, label: '展示名'),
-                _TextField(controller: _grade, label: '年级'),
-                _TextField(controller: _school, label: '学校'),
-                _TextField(controller: _province, label: '省'),
-                _TextField(controller: _city, label: '市'),
-                _TextField(controller: _district, label: '区/县'),
-                const SizedBox(height: 12),
-                FilledButton(onPressed: _save, child: const Text('保存')),
-              ],
-            ),
+      child:
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                padding: const EdgeInsets.all(AppSpacing.pageEdge),
+                children: [
+                  _TextField(controller: _display, label: '展示名'),
+                  DropdownButtonFormField<String>(
+                    initialValue:
+                        _gradeOptions.contains(_grade.text)
+                            ? _grade.text
+                            : '八年级',
+                    decoration: const InputDecoration(labelText: '年级'),
+                    items:
+                        _gradeOptions
+                            .map(
+                              (grade) => DropdownMenuItem(
+                                value: grade,
+                                child: Text(grade),
+                              ),
+                            )
+                            .toList(),
+                    onChanged: (value) => _grade.text = value ?? _grade.text,
+                  ),
+                  const SizedBox(height: 10),
+                  _TextField(controller: _school, label: '学校'),
+                  _TextField(controller: _province, label: '省'),
+                  _TextField(controller: _city, label: '市'),
+                  _TextField(controller: _district, label: '区/县'),
+                  const SizedBox(height: 12),
+                  FilledButton(onPressed: _save, child: const Text('保存')),
+                ],
+              ),
     );
   }
 }
 
 class _ScaffoldShell extends StatelessWidget {
-  const _ScaffoldShell({required this.title, required this.child, this.actions});
+  const _ScaffoldShell({
+    required this.title,
+    required this.child,
+    this.actions,
+  });
   final String title;
   final Widget child;
   final List<Widget>? actions;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppPalette.background,
-      appBar: AppBar(title: Text(title), actions: actions),
-      body: SafeArea(child: child),
+    return StudyShell(
+      title: title,
+      actions: actions,
+      maxWidth: 980,
+      child: child,
     );
   }
 }
@@ -543,33 +641,43 @@ Widget _loadingOrError(AsyncSnapshot snapshot, VoidCallback retry) {
 }
 
 class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.title, required this.subtitle, required this.icon});
+  const _InfoCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
   final String title;
   final String subtitle;
   final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StudyPanel(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppPalette.primary),
-          const SizedBox(width: 12),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppPalette.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: AppPalette.primary, size: 22),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 4),
-                FormulaText(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+                FormulaText(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ],
             ),
           ),
@@ -616,18 +724,16 @@ class _BountyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StudyPanel(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FormulaText(challenge.prompt, style: Theme.of(context).textTheme.titleMedium),
+          FormulaText(
+            challenge.prompt,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           FormulaText('错误步骤：${challenge.wrongStep}'),
           const SizedBox(height: 8),
@@ -659,7 +765,10 @@ class _ShopItemCard extends StatelessWidget {
     return _InfoCard(
       title: item.name,
       subtitle: '${item.crystalCost} 晶石 · ${item.type}\n点兑换后返回讲题页可看到笔迹变化。',
-      icon: item.type == 'physical' ? Icons.inventory_2_outlined : Icons.brush_outlined,
+      icon:
+          item.type == 'physical'
+              ? Icons.inventory_2_outlined
+              : Icons.brush_outlined,
     ).withButton(onRedeem);
   }
 }

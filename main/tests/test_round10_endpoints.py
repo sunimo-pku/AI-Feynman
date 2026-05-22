@@ -368,20 +368,45 @@ def test_tts_error_returns_502(client: TestClient, monkeypatch) -> None:
 
 def test_lecture_submit_with_auth_persists_progress(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.routers.lecture.generate_lecture_turns",
+        "app.routers.lecture.generate_peer_assessments",
         lambda **_kwargs: {
             "status": "completed",
             "mastery_delta": 1,
-            "turns": [
+            "all_understood": True,
+            "assessments": [
                 {
-                    "turn_id": "turn_1",
-                    "role": "teacher",
-                    "display_name": "李老师",
-                    "text": "这次解释清楚了。",
+                    "role": "xiaoming",
+                    "display_name": "小明",
+                    "understood": True,
+                    "reason": "听懂了",
                     "highlight_step_ids": ["step_1"],
-                }
+                },
+                {
+                    "role": "daxiong",
+                    "display_name": "大雄",
+                    "understood": True,
+                    "reason": "听懂了",
+                    "highlight_step_ids": ["step_1"],
+                },
+                {
+                    "role": "monitor",
+                    "display_name": "班长",
+                    "understood": True,
+                    "reason": "听懂了",
+                    "highlight_step_ids": ["step_1"],
+                },
             ],
             "source": "llm",
+        },
+    )
+    monkeypatch.setattr(
+        "app.routers.lecture.generate_teacher_summary",
+        lambda **_kwargs: {
+            "turn_id": "summary_1",
+            "role": "teacher",
+            "display_name": "李老师",
+            "text": "这次解释清楚了。",
+            "highlight_step_ids": ["step_1"],
         },
     )
     token = _register_and_login(client)
@@ -438,7 +463,7 @@ def test_lecture_submit_with_auth_persists_progress(client: TestClient, monkeypa
 
 
 def test_lecture_submit_without_llm_key_returns_502(client: TestClient, monkeypatch) -> None:
-    monkeypatch.setattr("app.services.lecture_agent.Config.DEEPSEEK_API_KEY", "")
+    monkeypatch.setattr("app.services.peer_assessment_agent.Config.DEEPSEEK_API_KEY", "")
     resp = client.post(
         "/lecture/submit",
         json={
@@ -460,4 +485,4 @@ def test_lecture_submit_without_llm_key_returns_502(client: TestClient, monkeypa
         },
     )
     assert resp.status_code == 502
-    assert "Lecture agent failed" in resp.json()["detail"]
+    assert "Peer assessment failed" in resp.json()["detail"]

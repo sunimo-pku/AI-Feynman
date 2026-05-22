@@ -42,6 +42,7 @@ from app.services.qwen_vision import recognize_question_image
 router = APIRouter(tags=["Round11"])
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _QUESTIONS_FILE = _PROJECT_ROOT / "data" / "questions" / "pep-junior-math-questions.json"
+_BOUNTY_FILE = _PROJECT_ROOT / "data" / "bounty" / "challenges.json"
 
 _SECTION_LABELS: dict[str, str] = {}
 _TIERS = ((900, "王者"), (600, "黄金"), (300, "白银"), (0, "青铜"))
@@ -54,35 +55,6 @@ _GEEK_SKUS = [
     {"skuId": "geek-compass", "name": "专业圆规套装", "type": "physical", "crystalCost": 120},
     {"skuId": "geek-timer", "name": "翻转番茄钟", "type": "physical", "crystalCost": 180},
     {"skuId": "geek-notebook", "name": "费曼错题本", "type": "physical", "crystalCost": 90},
-]
-_BOUNTIES = [
-    {
-        "challengeId": "bounty-equation-distribute-a",
-        "sectionId": "pep-g7-up-s3-3",
-        "prompt": r"小明写：$3(x-2)=12$，所以 $3x-2=12$。圈出错误并说明。",
-        "wrongStep": r"$3x-2=12$",
-        "errorBox": {"x": 120, "y": 90, "width": 180, "height": 70},
-        "rewardCrystals": 12,
-        "rewardPower": 20,
-    },
-    {
-        "challengeId": "bounty-sign-move-a",
-        "sectionId": "pep-g7-up-s3-2",
-        "prompt": r"大雄写：$2x-5=9$，移项得到 $2x=9-5$。圈出错误并说明。",
-        "wrongStep": r"$2x=9-5$",
-        "errorBox": {"x": 88, "y": 100, "width": 260, "height": 76},
-        "rewardCrystals": 15,
-        "rewardPower": 24,
-    },
-    {
-        "challengeId": "bounty-like-terms-a",
-        "sectionId": "pep-g7-up-s2-2",
-        "prompt": r"班长草稿：$2a+3b+a=6ab$。圈出错误并说明。",
-        "wrongStep": r"$2a+3b+a=6ab$",
-        "errorBox": {"x": 180, "y": 120, "width": 280, "height": 72},
-        "rewardCrystals": 15,
-        "rewardPower": 24,
-    },
 ]
 class PowerAdjustRequest(BaseModel):
     section_id: str = Field(..., alias="sectionId")
@@ -230,6 +202,181 @@ def _adjust_power(
     return row
 
 
+def _today_key() -> str:
+    return datetime.utcnow().date().isoformat()
+
+
+def _load_bounty_bank() -> list[dict[str, Any]]:
+    try:
+        raw = json.loads(_BOUNTY_FILE.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Bounty bank unavailable: {e}") from e
+    items = raw.get("challenges") if isinstance(raw, dict) else []
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if isinstance(item, dict) and item.get("challengeId")]
+
+
+def _challenge_by_id(challenge_id: str) -> dict[str, Any] | None:
+    return next((item for item in _load_bounty_bank() if item.get("challengeId") == challenge_id), None)
+
+
+def _stable_offset(seed: str, size: int) -> int:
+    if size <= 0:
+        return 0
+    return sum(ord(ch) for ch in seed) % size
+
+
+def _attempt_key(date_key: str, challenge_id: str) -> str:
+    return f"{date_key}:{challenge_id}"
+
+
+def _base_challenge_id(stored_challenge_id: str) -> str:
+    parts = stored_challenge_id.split(":", 1)
+    if len(parts) == 2 and len(parts[0]) == 10:
+        return parts[1]
+    return stored_challenge_id
+
+
+def _select_today_bounties(
+    db: Session,
+    profile: StudentProfile,
+    *,
+    date_key: str,
+) -> list[dict[str, Any]]:
+    bank = _load_bounty_bank()
+    if not bank:
+        return []
+
+    weak = (
+        db.query(LearningProgress)
+        .filter(LearningProgress.student_id == profile.id)
+        .order_by(LearningProgress.mastery_score.asc(), LearningProgress.updated_at.desc())
+        .first()
+    )
+    weak_section_id = weak.section_id if weak else ""
+    selected: list[dict[str, Any]] = []
+    used: set[str] = set()
+    tracks = ("review", "weak", "advanced")
+    for idx, track in enumerate(tracks):
+        candidates = [item for item in bank if item.get("track") == track]
+        if track == "weak" and weak_section_id:
+            prioritized = [item for item in candidates if item.get("sectionId") == weak_section_id]
+            if prioritized:
+                candidates = prioritized
+        if not candidates:
+            candidates = bank
+        start = _stable_offset(f"{date_key}:{profile.id}:{track}:{idx}", len(candidates))
+        for step in range(len(candidates)):
+            item = candidates[(start + step) % len(candidates)]
+            challenge_id = str(item.get("challengeId") or "")
+            if challenge_id and challenge_id not in used:
+                selected.append(item)
+                used.add(challenge_id)
+                break
+    if len(selected) < 3:
+        for item in bank:
+            challenge_id = str(item.get("challengeId") or "")
+            if challenge_id and challenge_id not in used:
+                selected.append(item)
+                used.add(challenge_id)
+            if len(selected) >= 3:
+                break
+    return selected[:3]
+
+
+def _attempt_for(
+    db: Session,
+    profile: StudentProfile,
+    *,
+    challenge_id: str,
+    date_key: str,
+) -> BountyAttempt | None:
+    attempt = db.query(BountyAttempt).filter(
+        BountyAttempt.student_id == profile.id,
+        BountyAttempt.challenge_id == _attempt_key(date_key, challenge_id),
+        BountyAttempt.date_key == date_key,
+    ).first()
+    if attempt is not None:
+        return attempt
+    return db.query(BountyAttempt).filter(
+        BountyAttempt.student_id == profile.id,
+        BountyAttempt.challenge_id == challenge_id,
+        BountyAttempt.date_key == date_key,
+    ).first()
+
+
+def _feedback_payload(
+    *,
+    circled: bool,
+    iou_score: float,
+    explanation_score: int,
+    completed: bool,
+    keyword_hits: list[str],
+) -> dict[str, Any]:
+    if completed:
+        summary = "圈选和错因讲解都命中了关键点，已经发放今日挑战奖励。"
+        next_hint = "可以点“继续讲清本节”，把正确步骤完整讲给 AI 同伴听。"
+    elif not circled:
+        summary = "圈选还没有覆盖到真正出错的那一步。"
+        next_hint = "先把红框拖到错误等式或错误判断所在行，再提交讲解。"
+    else:
+        summary = "圈选命中了，讲解还需要更明确地说出错因。"
+        next_hint = "补一句为什么错、正确规则是什么、正确结果应该怎样写。"
+    return {
+        "summary": summary,
+        "nextHint": next_hint,
+        "iouScore": round(iou_score, 3),
+        "explanationScore": explanation_score,
+        "keywordHits": keyword_hits[:6],
+    }
+
+
+def _score_explanation(challenge: dict[str, Any], text_value: str) -> tuple[int, list[str]]:
+    normalized = text_value.lower().replace(" ", "")
+    keywords = [str(k) for k in challenge.get("rubricKeywords", []) if str(k).strip()]
+    hits = [kw for kw in keywords if kw.lower().replace(" ", "") in normalized]
+    length = len(text_value.strip())
+    length_score = 65 if length >= 24 else (35 if length >= 12 else 0)
+    hit_score = min(60, len(hits) * 30)
+    structure_score = 5 if any(mark in text_value for mark in ("所以", "因为", "应该", "正确")) else 0
+    return min(100, length_score + hit_score + structure_score), hits
+
+
+def _bounty_status(attempt: BountyAttempt | None) -> str:
+    if attempt is None or int(attempt.attempt_count or 0) == 0:
+        return "notStarted"
+    if attempt.reward_granted_at is not None or int(attempt.crystal_reward or 0) > 0:
+        return "completed"
+    return "inProgress"
+
+
+def _bounty_public(challenge: dict[str, Any], attempt: BountyAttempt | None) -> dict[str, Any]:
+    feedback = load_json(attempt.feedback_json, {}) if attempt else {}
+    return {
+        "challengeId": challenge.get("challengeId", ""),
+        "track": challenge.get("track", "review"),
+        "sectionId": challenge.get("sectionId", ""),
+        "questionId": challenge.get("questionId", ""),
+        "sectionLabel": challenge.get("sectionLabel", ""),
+        "prompt": challenge.get("prompt", ""),
+        "wrongStep": challenge.get("wrongStep", ""),
+        "wrongSolution": challenge.get("wrongSolution", []),
+        "tags": challenge.get("tags", []),
+        "difficulty": int(challenge.get("difficulty") or 1),
+        "rewardCrystals": int(challenge.get("rewardCrystals") or 0),
+        "rewardPower": int(challenge.get("rewardPower") or 0),
+        "canvasWidth": 640,
+        "canvasHeight": 360,
+        "status": _bounty_status(attempt),
+        "attemptCount": int(attempt.attempt_count or 0) if attempt else 0,
+        "circledCorrectly": bool(attempt.circled_correctly) if attempt else False,
+        "explanationScore": int(attempt.explanation_score or 0) if attempt else 0,
+        "feedback": feedback,
+        "rewardGranted": bool(attempt and (attempt.reward_granted_at is not None or int(attempt.crystal_reward or 0) > 0)),
+    }
+
+
 @router.get("/gamification/me")
 async def gamification_me(user: User = Depends(require_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
@@ -326,37 +473,126 @@ async def my_titles(user: User = Depends(require_user), db: Session = Depends(ge
 
 
 @router.get("/bounty/today")
-async def bounty_today():
-    today = datetime.utcnow().date().toordinal()
-    start = today % len(_BOUNTIES)
-    return {"date": datetime.utcnow().date().isoformat(), "challenges": [_BOUNTIES[(start + i) % len(_BOUNTIES)] for i in range(3)]}
+async def bounty_today(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    profile = ensure_student_profile(db, user)
+    date_key = _today_key()
+    challenges = _select_today_bounties(db, profile, date_key=date_key)
+    attempts = {
+        _base_challenge_id(row.challenge_id): row
+        for row in db.query(BountyAttempt).filter(
+            BountyAttempt.student_id == profile.id,
+            BountyAttempt.date_key == date_key,
+        ).all()
+    }
+    public = [_bounty_public(item, attempts.get(str(item.get("challengeId") or ""))) for item in challenges]
+    return {
+        "date": date_key,
+        "dateKey": date_key,
+        "completedCount": sum(1 for item in public if item["status"] == "completed"),
+        "totalCount": len(public),
+        "totalCrystals": sum(int(item["rewardCrystals"] or 0) for item in public),
+        "challenges": public,
+    }
 
 
 @router.post("/bounty/submit")
 async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
-    challenge = next((b for b in _BOUNTIES if b["challengeId"] == req.challenge_id), None)
+    date_key = _today_key()
+    todays = _select_today_bounties(db, profile, date_key=date_key)
+    challenge = next((b for b in todays if b.get("challengeId") == req.challenge_id), None)
+    if challenge is None:
+        challenge = _challenge_by_id(req.challenge_id)
     if challenge is None:
         raise HTTPException(status_code=404, detail="Bounty challenge not found.")
-    circled = _iou(req.circled_box, challenge["errorBox"]) >= 0.25
-    reward_crystals = int(challenge["rewardCrystals"] if circled and req.transcript_text.strip() else 0)
-    reward_power = int(challenge["rewardPower"] if reward_crystals else 0)
-    attempt = db.query(BountyAttempt).filter(
-        BountyAttempt.student_id == profile.id,
-        BountyAttempt.challenge_id == req.challenge_id,
-    ).first()
+    if challenge not in todays:
+        raise HTTPException(status_code=400, detail="Bounty challenge is not in today's set.")
+
+    iou_score = _iou(req.circled_box, challenge.get("errorBox", {}))
+    circled = iou_score >= 0.25
+    explanation_score, keyword_hits = _score_explanation(challenge, req.transcript_text.strip())
+    completed = circled and explanation_score >= 60
+    reward_crystals = int(challenge["rewardCrystals"] if completed else 0)
+    reward_power = int(challenge["rewardPower"] if completed else 0)
+    attempt = _attempt_for(
+        db,
+        profile,
+        challenge_id=req.challenge_id,
+        date_key=date_key,
+    )
     if attempt is None:
-        attempt = BountyAttempt(student_id=profile.id, challenge_id=req.challenge_id, section_id=challenge["sectionId"])
+        attempt = BountyAttempt(
+            student_id=profile.id,
+            date_key=date_key,
+            challenge_id=_attempt_key(date_key, req.challenge_id),
+            section_id=challenge["sectionId"],
+        )
         db.add(attempt)
+    attempt.date_key = date_key
+    attempt.section_id = str(challenge.get("sectionId") or attempt.section_id)
     attempt.circled_correctly = 1 if circled else 0
+    attempt.selected_box_json = dump_json(req.circled_box)
+    attempt.iou_score = iou_score
+    attempt.explanation_score = explanation_score
+    attempt.feedback_json = dump_json(_feedback_payload(
+        circled=circled,
+        iou_score=iou_score,
+        explanation_score=explanation_score,
+        completed=completed,
+        keyword_hits=keyword_hits,
+    ))
+    attempt.attempt_count = int(attempt.attempt_count or 0) + 1
     attempt.transcript_text = req.transcript_text
-    attempt.crystal_reward = reward_crystals
-    attempt.power_reward = reward_power
-    if reward_crystals:
+    already_rewarded = attempt.reward_granted_at is not None or int(attempt.crystal_reward or 0) > 0
+    granted_now = bool(completed and not already_rewarded)
+    if granted_now:
+        attempt.crystal_reward = reward_crystals
+        attempt.power_reward = reward_power
+        attempt.reward_granted_at = datetime.utcnow()
+        attempt.completed_at = datetime.utcnow()
         _change_crystals(db, profile, reward_crystals, reason="bounty", ref_id=req.challenge_id)
         _adjust_power(db, profile, challenge["sectionId"], reward_power, reason="bounty", ref_id=req.challenge_id)
+    elif completed and attempt.completed_at is None:
+        attempt.completed_at = datetime.utcnow()
     db.commit()
-    return {"completed": bool(reward_crystals), "circledCorrectly": circled, "crystalReward": reward_crystals, "powerReward": reward_power}
+    db.refresh(attempt)
+    return {
+        "completed": completed,
+        "status": _bounty_status(attempt),
+        "circledCorrectly": circled,
+        "iouScore": round(iou_score, 3),
+        "explanationScore": explanation_score,
+        "crystalReward": reward_crystals if granted_now else 0,
+        "powerReward": reward_power if granted_now else 0,
+        "rewardGranted": granted_now,
+        "feedback": load_json(attempt.feedback_json, {}),
+        "attemptCount": int(attempt.attempt_count or 0),
+    }
+
+
+@router.get("/bounty/history")
+async def bounty_history(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    profile = ensure_student_profile(db, user)
+    rows = db.query(BountyAttempt).filter(
+        BountyAttempt.student_id == profile.id,
+    ).order_by(BountyAttempt.completed_at.desc()).limit(30).all()
+    return {
+        "history": [
+            {
+                "dateKey": row.date_key,
+                "challengeId": _base_challenge_id(row.challenge_id),
+                "sectionId": row.section_id,
+                "status": _bounty_status(row),
+                "circledCorrectly": bool(row.circled_correctly),
+                "explanationScore": int(row.explanation_score or 0),
+                "crystalReward": int(row.crystal_reward or 0),
+                "powerReward": int(row.power_reward or 0),
+                "completedAt": row.completed_at,
+                "feedback": load_json(row.feedback_json, {}),
+            }
+            for row in rows
+        ]
+    }
 
 
 @router.get("/shop/catalog")

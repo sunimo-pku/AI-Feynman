@@ -61,7 +61,7 @@ def test_lecture_agent_uses_deepseek_non_thinking(monkeypatch) -> None:
     class FakeMessage:
         content = (
             '{"status":"needs_explanation","masteryDelta":0,'
-            '"turns":[{"role":"teacher","displayName":"李老师","text":"请解释这一步依据。",'
+            '"turns":[{"role":"xiaoming","displayName":"小明","text":"请解释这一步依据。",'
             '"highlightStepIds":["step_1"]}]}'
         )
 

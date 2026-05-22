@@ -88,11 +88,62 @@ class LectureService {
   }
 
   Future<LectureSubmitResponse> submit(LectureSubmitRequest request) async {
-    final uri = ApiConfig.uri('/lecture/submit');
+    return _postSubmit('/lecture/submit', request);
+  }
+
+  Future<LectureHintResponse> requestHint(LectureSubmitRequest request) async {
+    final uri = ApiConfig.uri('/lecture/hint');
     http.Response resp;
     try {
-      // 第十轮：登录后自动带 Bearer，让后端把本次提交写入学生进度。
-      // 未登录时仍走匿名 demo 路径，不会破坏第二轮以来的契约。
+      final headers = AuthService.instance.authHeaders();
+      resp = await _client
+          .post(
+            uri,
+            headers: headers,
+            body: utf8.encode(jsonEncode(request.toJson())),
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw const LectureApiException(
+        userMessage: '李老师想得有点久（超过 12 秒），稍等几秒再点一次「需要提示」。',
+      );
+    } on SocketException catch (e) {
+      throw LectureApiException(
+        userMessage: '连不上后端（${ApiConfig.baseUrl}）。请确认后端已启动，或检查局域网地址。',
+        cause: e,
+      );
+    } on http.ClientException catch (e) {
+      throw LectureApiException(
+        userMessage: '网络请求失败：${e.message}',
+        cause: e,
+      );
+    }
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+      if (decoded is! Map<String, dynamic>) {
+        throw const LectureApiException(
+          userMessage: '后端返回的格式不符合契约，请联系开发同学检查 /lecture/hint。',
+        );
+      }
+      return LectureHintResponse.fromJson(decoded);
+    }
+
+    final detail = _extractDetail(resp.bodyBytes);
+    throw LectureApiException(
+      statusCode: resp.statusCode,
+      userMessage: _userMessageFor(resp.statusCode, detail),
+      detail: detail,
+    );
+  }
+
+  Future<LectureSubmitResponse> _postSubmit(
+    String path,
+    LectureSubmitRequest request,
+  ) async {
+    final uri = ApiConfig.uri(path);
+    http.Response resp;
+    try {
       final headers = AuthService.instance.authHeaders();
       resp = await _client
           .post(

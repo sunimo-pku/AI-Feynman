@@ -278,29 +278,116 @@ class BoundingBoxPayload {
       };
 }
 
+class LectureHintResponse {
+  const LectureHintResponse({required this.turn});
+
+  final AgentTurn turn;
+
+  factory LectureHintResponse.fromJson(Map<String, dynamic> json) {
+    final turnJson = json['turn'];
+    if (turnJson is! Map<String, dynamic>) {
+      return LectureHintResponse(
+        turn: AgentTurn(
+          role: AgentRole.teacher,
+          displayName: '李老师',
+          text: '',
+        ),
+      );
+    }
+    return LectureHintResponse(turn: AgentTurn.fromJson(turnJson));
+  }
+}
+
+/// 单名同伴的「听懂 / 没听懂」评估（P1 `/lecture/submit` 主字段）。
+class PeerAssessment {
+  const PeerAssessment({
+    required this.role,
+    required this.displayName,
+    required this.understood,
+    required this.reason,
+    this.highlightStepIds = const [],
+  });
+
+  final AgentRole role;
+  final String displayName;
+  final bool understood;
+  final String reason;
+  final List<String> highlightStepIds;
+
+  factory PeerAssessment.fromJson(Map<String, dynamic> json) {
+    return PeerAssessment(
+      role: parseAgentRole(json['role'] as String? ?? 'xiaoming'),
+      displayName: json['displayName'] as String? ?? '',
+      understood: json['understood'] == true,
+      reason: json['reason'] as String? ?? '',
+      highlightStepIds:
+          (json['highlightStepIds'] as List<dynamic>? ?? const [])
+              .map((e) => e.toString())
+              .toList(growable: false),
+    );
+  }
+
+  AgentTurn toReasonTurn({String? turnId}) {
+    return AgentTurn(
+      turnId: turnId,
+      role: role,
+      displayName: displayName,
+      text: reason,
+      highlightStepIds: highlightStepIds,
+    );
+  }
+
+  LectureHistoryItem toHistoryItem() {
+    return LectureHistoryItem(
+      role: agentRoleWire(role),
+      displayName: displayName,
+      text: understood ? '（听懂了）$reason' : reason,
+      highlightStepIds: highlightStepIds,
+    );
+  }
+}
+
 class LectureSubmitResponse {
   const LectureSubmitResponse({
     required this.questionId,
     required this.sectionId,
     required this.status,
     required this.masteryDelta,
-    required this.turns,
+    this.allUnderstood = false,
+    this.assessments = const [],
+    this.teacherSummary,
+    this.turns = const [],
   });
 
   final String questionId;
   final String sectionId;
   final String status;
   final int masteryDelta;
+  final bool allUnderstood;
+  final List<PeerAssessment> assessments;
+  final AgentTurn? teacherSummary;
   final List<AgentTurn> turns;
 
   factory LectureSubmitResponse.fromJson(Map<String, dynamic> json) {
+    AgentTurn? summary;
+    final summaryJson = json['teacherSummary'];
+    if (summaryJson is Map<String, dynamic>) {
+      summary = AgentTurn.fromJson(summaryJson);
+    }
     return LectureSubmitResponse(
       questionId: json['questionId'] as String? ?? '',
       sectionId: json['sectionId'] as String? ?? '',
       status: json['status'] as String? ?? 'needs_explanation',
       masteryDelta: (json['masteryDelta'] as num?)?.toInt() ?? 0,
+      allUnderstood: json['allUnderstood'] == true,
+      assessments: (json['assessments'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(PeerAssessment.fromJson)
+          .toList(growable: false),
+      teacherSummary: summary,
       turns: (json['turns'] as List<dynamic>? ?? const [])
-          .map((e) => AgentTurn.fromJson(e as Map<String, dynamic>))
+          .whereType<Map<String, dynamic>>()
+          .map(AgentTurn.fromJson)
           .toList(growable: false),
     );
   }

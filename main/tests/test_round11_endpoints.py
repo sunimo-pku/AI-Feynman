@@ -76,15 +76,57 @@ def test_bounty_and_children_binding(client: TestClient) -> None:
     assert resp.status_code == 200, resp.text
     assert client.get("/parent/children", headers=headers).json()["children"]
 
-    today = client.get("/bounty/today").json()["challenges"][0]
+    assert client.get("/bounty/today").status_code == 401
+    today_payload = client.get("/bounty/today", headers=headers).json()
+    assert today_payload["totalCount"] == 3
+    today = today_payload["challenges"][0]
+    wrong_index = next(
+        (
+            idx
+            for idx, line in enumerate(today["wrongSolution"])
+            if today["wrongStep"] in line
+        ),
+        1,
+    )
+    correct_box = {"x": 80, "y": 62 + 72 * wrong_index, "width": 450, "height": 76}
+    bad_box = {"x": 0, "y": 0, "width": 40, "height": 40}
+
+    failed = client.post(
+        "/bounty/submit",
+        headers=headers,
+        json={
+            "challengeId": today["challengeId"],
+            "circledBox": bad_box,
+            "transcriptText": "我知道这里要说清规则，但先故意圈错。",
+        },
+    )
+    assert failed.status_code == 200, failed.text
+    assert failed.json()["completed"] is False
+    assert failed.json()["crystalReward"] == 0
+
     resp = client.post(
         "/bounty/submit",
         headers=headers,
         json={
             "challengeId": today["challengeId"],
-            "circledBox": today["errorBox"],
-            "transcriptText": "这里条件写错了。",
+            "circledBox": correct_box,
+            "transcriptText": "这里错在没有按正确规则处理，应该看关键词和条件，正确结果不能照原来的错误步骤写。",
         },
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["completed"] is True
+    assert resp.json()["crystalReward"] > 0
+
+    again = client.post(
+        "/bounty/submit",
+        headers=headers,
+        json={
+            "challengeId": today["challengeId"],
+            "circledBox": correct_box,
+            "transcriptText": "这里错在没有按正确规则处理，应该看关键词和条件，正确结果不能照原来的错误步骤写。",
+        },
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["completed"] is True
+    assert again.json()["crystalReward"] == 0
+    assert client.get("/bounty/history", headers=headers).status_code == 200

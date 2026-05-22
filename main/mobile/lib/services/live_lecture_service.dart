@@ -341,6 +341,11 @@ class LiveLectureService {
     ));
   }
 
+  void sendRequestHint() {
+    if (!_isConnected || _sessionId.isEmpty) return;
+    _sendJson(LiveClientEvent.requestHint(sessionId: _sessionId));
+  }
+
   void sendStudentInterrupt({String reason = 'voice'}) {
     if (!_isConnected || _sessionId.isEmpty) return;
     _sendJson(LiveClientEvent.studentInterrupt(

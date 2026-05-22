@@ -6,9 +6,9 @@
 - 累计学生侧的音频 chunk → ``LiveAsrBuffer`` 输出 ASR 片段；
 - 累计学生侧的白板 step snapshot（最新一份覆盖式持有）；
 - 维护本题内的 `history`（与 `/lecture/submit` 同口径，最近 6 条）;
-- 在收到 ``pause_detected`` 时调用现有 ``lecture_agent.generate_lecture_turns(...)``
-  做一次多 Agent 追问，并把结果**拆成流式 delta** 推给前端（每段约 18-22
-  汉字一条，给前端"逐步显示"的体感，即便底层 LLM 不是真正 token 流）；
+- 在收到 ``pause_detected`` 时调用 ``peer_assessment_agent.generate_peer_assessments(...)``
+  并行评估三名同伴；全员听懂时再调 ``teacher_agent.generate_teacher_summary``；
+  通过 ``peer_assessments`` 事件把评估结果一次性推给前端（与 ``/lecture/submit`` 同口径）。
 - 在收到 ``student_interrupt`` 时打断本轮 thinking / TTS（state 标志即可，
   TTS 播放由前端控制；后端只负责不再继续推送当前 turn 的剩余 delta）；
 - 任意核心阶段失败时发送 ``error`` 事件，不再静默降级；warning 只用于
@@ -41,6 +41,7 @@ EVT_AUDIO_CHUNK = "audio_chunk"
 EVT_INK_SNAPSHOT = "ink_snapshot"
 EVT_PAUSE_DETECTED = "pause_detected"
 EVT_STUDENT_INTERRUPT = "student_interrupt"
+EVT_REQUEST_HINT = "request_hint"
 EVT_SESSION_END = "session_end"
 # 应用层 client→server 心跳：客户端 20s 一次发一个，目的是让运营商
 # NAT 看到上行流量，避免 60-90s 静默期被中间设备单边关连接。后端
@@ -53,6 +54,7 @@ CLIENT_EVENTS: tuple[str, ...] = (
     EVT_INK_SNAPSHOT,
     EVT_PAUSE_DETECTED,
     EVT_STUDENT_INTERRUPT,
+    EVT_REQUEST_HINT,
     EVT_SESSION_END,
     EVT_PING,
 )
@@ -65,6 +67,7 @@ EVT_AGENT_TURN_START = "agent_turn_start"
 EVT_AGENT_TURN_DELTA = "agent_turn_delta"
 EVT_AGENT_TURN_DONE = "agent_turn_done"
 EVT_ROUND_DONE = "round_done"
+EVT_PEER_ASSESSMENTS = "peer_assessments"
 EVT_WARNING = "warning"
 EVT_ERROR = "error"
 # 第十二轮第三轮（流式 TTS）：LLM 流式 delta 累积一句完整中文（句号 / 问号 / 感叹号）
@@ -126,6 +129,8 @@ class LiveLectureSession:
     last_activity_at: float = field(default_factory=time.time)
     history: list[dict[str, Any]] = field(default_factory=list)
     round_index: int = 0
+    last_status: str = "needs_explanation"
+    last_mastery_delta: int = 0
 
     # ---- 中断 ----
     _interrupt_event: asyncio.Event = field(default_factory=asyncio.Event)
@@ -149,14 +154,15 @@ class LiveLectureSession:
         *,
         send: Callable[[dict[str, Any]], Awaitable[None]],
         recognize_fn: Callable[[str, str], dict],
-        lecture_agent_fn: Callable[..., dict[str, Any]],
-        stream_agent_fn: Callable[..., Any] | None = None,
+        peer_assessment_fn: Callable[..., dict[str, Any]],
+        teacher_summary_fn: Callable[..., dict[str, Any]] | None = None,
+        teacher_hint_fn: Callable[..., dict[str, Any]] | None = None,
     ) -> bool:
         """处理一条来自客户端的事件。
 
         返回 ``True`` 表示 session 继续，``False`` 表示客户端要求结束。
 
-        ``send`` / ``recognize_fn`` / ``lecture_agent_fn`` 都用注入式
+        ``send`` / ``recognize_fn`` / ``peer_assessment_fn`` 都用注入式
         设计，方便单测替换。
         """
 
@@ -205,8 +211,8 @@ class LiveLectureSession:
                 event,
                 send=send,
                 recognize_fn=recognize_fn,
-                lecture_agent_fn=lecture_agent_fn,
-                stream_agent_fn=stream_agent_fn,
+                peer_assessment_fn=peer_assessment_fn,
+                teacher_summary_fn=teacher_summary_fn,
             )
             return True
         if evt_type == EVT_STUDENT_INTERRUPT:
@@ -215,6 +221,12 @@ class LiveLectureSession:
                 "type": EVT_LISTENING,
                 "sessionId": self.session_id,
             })
+            return True
+        if evt_type == EVT_REQUEST_HINT:
+            await self._on_request_hint(
+                send=send,
+                teacher_hint_fn=teacher_hint_fn,
+            )
             return True
         if evt_type == EVT_SESSION_END:
             return False
@@ -350,23 +362,15 @@ class LiveLectureSession:
         *,
         send: Callable[[dict[str, Any]], Awaitable[None]],
         recognize_fn: Callable[[str, str], dict],
-        lecture_agent_fn: Callable[..., dict[str, Any]],
-        stream_agent_fn: Callable[..., Any] | None = None,
+        peer_assessment_fn: Callable[..., dict[str, Any]],
+        teacher_summary_fn: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         if self.is_thinking:
-            # brief 第 12 节："同一轮追问生成中忽略重复触发"
             await self._safe_send(send, {
                 "type": EVT_THINKING,
                 "sessionId": self.session_id,
             })
             return
-        # 「白板空 + 学生也没讲过话」才真正拦下，否则继续走 LLM。
-        # 第十二轮踩坑：之前只要 latest_steps 为空就 warning + return，
-        # 但前端已经切到 thinking 状态，warning 又不让它回退，UI 永远卡在
-        # 「AI 正在想问题」。新策略：
-        #   * 任何一边（白板 / 转写）有内容 → LLM 拿现有上下文做追问；
-        #   * 都没有 → 发 warning 后**显式补一条 listening**，让前端切回，
-        #     学生再继续写 / 讲。
         has_speech = any(seg.strip() for seg in self.transcript_segments)
         if not self.latest_steps and not has_speech:
             await self._safe_send(send, {
@@ -379,8 +383,6 @@ class LiveLectureSession:
                 "sessionId": self.session_id,
             })
             return
-        # 进入 thinking 前先把剩余音频 flush 给 ASR；这样 LLM 看到的
-        # studentSpeechText 包含学生静音前的最后一两句话。
         await self._maybe_flush_asr(
             send=send,
             recognize_fn=recognize_fn,
@@ -395,47 +397,78 @@ class LiveLectureSession:
         thinking_start_ms = time.monotonic() * 1000
 
         try:
-            if stream_agent_fn is not None:
-                response = await self._stream_agent_events_to_client(
-                    stream_agent_fn,
-                    send=send,
-                )
-            else:
-                response = await self._invoke_lecture_agent(lecture_agent_fn)
+            result = await self._invoke_peer_assessments(peer_assessment_fn)
         except Exception as e:  # noqa: BLE001
-            logger.exception("[live-session] lecture_agent 失败：%s", e)
-            await self._send_error(send, f"lecture_agent_failed:{e}")
+            logger.exception("[live-session] peer_assessment 失败：%s", e)
+            await self._send_error(send, f"peer_assessment_failed:{e}")
             self.is_thinking = False
             return
 
-        # 保证 thinking 状态至少可见一段时间，避免 thinking → done 切换过快。
+        assessments = list(result.get("assessments") or [])
+        all_understood = bool(result.get("all_understood"))
+        status = str(result.get("status") or "needs_explanation")
+        mastery_delta = int(result.get("mastery_delta") or 0)
+
+        teacher_summary: dict[str, Any] | None = None
+        if all_understood and teacher_summary_fn is not None:
+            try:
+                teacher_summary = await self._invoke_teacher_summary(
+                    teacher_summary_fn,
+                    peer_assessments=assessments,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.exception("[live-session] teacher_summary 失败：%s", e)
+                await self._send_error(send, f"teacher_summary_failed:{e}")
+                self.is_thinking = False
+                return
+
         elapsed_ms = time.monotonic() * 1000 - thinking_start_ms
         if elapsed_ms < _MIN_THINKING_VISIBLE_MS:
             await asyncio.sleep((_MIN_THINKING_VISIBLE_MS - elapsed_ms) / 1000)
 
-        if stream_agent_fn is None:
-            await self._stream_turns_to_client(response, send=send)
+        await self._safe_send(send, {
+            "type": EVT_PEER_ASSESSMENTS,
+            "sessionId": self.session_id,
+            "assessments": [_assessment_to_wire(a) for a in assessments],
+            "allUnderstood": all_understood,
+            "status": status,
+            "masteryDelta": mastery_delta,
+            "teacherSummary": (
+                _teacher_summary_to_wire(teacher_summary)
+                if teacher_summary
+                else None
+            ),
+        })
 
-        # 落 history。先 student 一条（来自当前 transcript_segments），
-        # 再依次落 AI turns。
+        if teacher_summary and not self._interrupt_event.is_set():
+            await self._stream_single_turn_to_client(teacher_summary, send=send)
+
         self._append_student_history_snapshot()
-        for t in response.get("turns", []):
+        for item in assessments:
+            self.history.append(_assessment_to_history_item(item))
+        if teacher_summary:
             self.history.append({
-                "role": str(t.get("role") or "system"),
-                "displayName": str(t.get("display_name") or ""),
-                "text": str(t.get("text") or ""),
-                "highlightStepIds": list(t.get("highlight_step_ids") or []),
+                "role": str(teacher_summary.get("role") or "teacher"),
+                "displayName": str(teacher_summary.get("display_name") or "李老师"),
+                "text": str(teacher_summary.get("text") or ""),
+                "highlightStepIds": list(
+                    teacher_summary.get("highlight_step_ids") or []
+                ),
             })
         if len(self.history) > _HISTORY_KEEP_LAST:
             del self.history[: len(self.history) - _HISTORY_KEEP_LAST]
+
         self.round_index += 1
+        self.last_status = status
+        self.last_mastery_delta = mastery_delta
         self.is_thinking = False
 
         await self._safe_send(send, {
             "type": EVT_ROUND_DONE,
             "sessionId": self.session_id,
-            "status": response.get("status", "needs_explanation"),
-            "masteryDelta": int(response.get("mastery_delta", 0) or 0),
+            "status": status,
+            "masteryDelta": mastery_delta,
+            "allUnderstood": all_understood,
         })
         await self._safe_send(send, {
             "type": EVT_LISTENING,
@@ -494,6 +527,104 @@ class LiveLectureSession:
             "type": EVT_ASR_SEGMENT,
             "sessionId": self.session_id,
             "text": text,
+        })
+
+    async def _invoke_peer_assessments(
+        self,
+        peer_assessment_fn: Callable[..., dict[str, Any]],
+    ) -> dict[str, Any]:
+        steps_payload = [
+            {
+                "stepId": s.step_id,
+                "latex": s.latex,
+                "plainText": s.plain_text,
+                "strokeCount": s.stroke_count,
+            }
+            for s in self.latest_steps
+        ]
+        speech = " ".join(self.transcript_segments[-6:]).strip()
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: peer_assessment_fn(
+                section_id=self.section_id,
+                question_id=self.question_id,
+                question_prompt=self.question_prompt,
+                student_speech_text=speech,
+                steps=steps_payload,
+                round_index=max(1, self.round_index + 1),
+                history=list(self.history),
+            ),
+        )
+
+    async def _invoke_teacher_summary(
+        self,
+        teacher_summary_fn: Callable[..., dict[str, Any]],
+        *,
+        peer_assessments: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        steps_payload = [
+            {
+                "stepId": s.step_id,
+                "latex": s.latex,
+                "plainText": s.plain_text,
+                "strokeCount": s.stroke_count,
+            }
+            for s in self.latest_steps
+        ]
+        speech = " ".join(self.transcript_segments[-6:]).strip()
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: teacher_summary_fn(
+                section_id=self.section_id,
+                question_id=self.question_id,
+                question_prompt=self.question_prompt,
+                student_speech_text=speech,
+                steps=steps_payload,
+                round_index=max(1, self.round_index + 1),
+                history=list(self.history),
+                peer_assessments=peer_assessments,
+            ),
+        )
+
+    async def _stream_single_turn_to_client(
+        self,
+        turn: dict[str, Any],
+        *,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        turn_id = str(turn.get("turn_id") or "summary_1")
+        role = str(turn.get("role") or "teacher")
+        display = str(turn.get("display_name") or "李老师")
+        highlight = list(turn.get("highlight_step_ids") or [])
+        text = str(turn.get("text") or "")
+        await self._safe_send(send, {
+            "type": EVT_AGENT_TURN_START,
+            "sessionId": self.session_id,
+            "turnId": turn_id,
+            "role": role,
+            "displayName": display,
+            "highlightStepIds": highlight,
+        })
+        if text:
+            await self._safe_send(send, {
+                "type": EVT_AGENT_TURN_DELTA,
+                "sessionId": self.session_id,
+                "turnId": turn_id,
+                "delta": text,
+            })
+            self._tts_role_by_turn[turn_id] = role
+            self._maybe_dispatch_tts_sentence(
+                turn_id=turn_id,
+                delta=text,
+                send=send,
+            )
+        self._flush_tts_remainder(turn_id=turn_id, send=send)
+        await self._safe_send(send, {
+            "type": EVT_AGENT_TURN_DONE,
+            "sessionId": self.session_id,
+            "turnId": turn_id,
         })
 
     async def _invoke_lecture_agent(
@@ -693,12 +824,123 @@ class LiveLectureSession:
                 except (TypeError, ValueError):
                     mastery_delta = 0
         turns = [turns_by_id[k] for k in order if k in turns_by_id]
+        if len(turns) > 1:
+            turns = turns[:1]
         return {
-            "status": status,
-            "mastery_delta": mastery_delta,
+            "status": "needs_explanation",
+            "mastery_delta": 0,
             "turns": turns,
             "source": "llm_stream",
         }
+
+    async def _on_request_hint(
+        self,
+        *,
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+        teacher_hint_fn: Callable[..., dict[str, Any]] | None,
+    ) -> None:
+        if teacher_hint_fn is None:
+            await self._send_error(send, "teacher_hint_unavailable")
+            return
+        if self.is_thinking:
+            await self._safe_send(send, {
+                "type": EVT_WARNING,
+                "sessionId": self.session_id,
+                "message": "thinking_in_progress",
+            })
+            return
+        if not self.latest_steps:
+            await self._safe_send(send, {
+                "type": EVT_WARNING,
+                "sessionId": self.session_id,
+                "message": "no_steps_yet",
+            })
+            return
+
+        self.is_thinking = True
+        self._interrupt_event.clear()
+        await self._safe_send(send, {
+            "type": EVT_THINKING,
+            "sessionId": self.session_id,
+        })
+
+        try:
+            hint = await self._invoke_teacher_hint(teacher_hint_fn)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[live-session] teacher_hint 失败：%s", e)
+            await self._send_error(send, f"teacher_hint_failed:{e}")
+            self.is_thinking = False
+            return
+
+        turn_id = str(hint.get("turn_id") or "hint_1")
+        role = str(hint.get("role") or "teacher")
+        display = str(hint.get("display_name") or "李老师")
+        highlight = list(hint.get("highlight_step_ids") or [])
+        text = str(hint.get("text") or "")
+
+        await self._safe_send(send, {
+            "type": EVT_AGENT_TURN_START,
+            "sessionId": self.session_id,
+            "turnId": turn_id,
+            "role": role,
+            "displayName": display,
+            "highlightStepIds": highlight,
+        })
+        if text:
+            await self._safe_send(send, {
+                "type": EVT_AGENT_TURN_DELTA,
+                "sessionId": self.session_id,
+                "turnId": turn_id,
+                "delta": text,
+            })
+        await self._safe_send(send, {
+            "type": EVT_AGENT_TURN_DONE,
+            "sessionId": self.session_id,
+            "turnId": turn_id,
+        })
+
+        self.history.append({
+            "role": role,
+            "displayName": display,
+            "text": text,
+            "highlightStepIds": highlight,
+        })
+        if len(self.history) > _HISTORY_KEEP_LAST:
+            del self.history[: len(self.history) - _HISTORY_KEEP_LAST]
+
+        self.is_thinking = False
+        await self._safe_send(send, {
+            "type": EVT_LISTENING,
+            "sessionId": self.session_id,
+        })
+
+    async def _invoke_teacher_hint(
+        self,
+        teacher_hint_fn: Callable[..., dict[str, Any]],
+    ) -> dict[str, Any]:
+        steps_payload = [
+            {
+                "stepId": s.step_id,
+                "latex": s.latex,
+                "plainText": s.plain_text,
+                "strokeCount": s.stroke_count,
+            }
+            for s in self.latest_steps
+        ]
+        speech = " ".join(self.transcript_segments[-6:]).strip()
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: teacher_hint_fn(
+                section_id=self.section_id,
+                question_id=self.question_id,
+                question_prompt=self.question_prompt,
+                student_speech_text=speech,
+                steps=steps_payload,
+                round_index=max(1, self.round_index + 1),
+                history=list(self.history),
+            ),
+        )
 
     # ============================================================== #
     # 流式 TTS（第十二轮第三轮）
@@ -894,6 +1136,39 @@ class LiveLectureSession:
             "sessionId": self.session_id,
             "message": message,
         })
+
+
+def _assessment_to_wire(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "role": str(item.get("role") or "xiaoming"),
+        "displayName": str(item.get("display_name") or ""),
+        "understood": bool(item.get("understood")),
+        "reason": str(item.get("reason") or ""),
+        "highlightStepIds": list(item.get("highlight_step_ids") or []),
+    }
+
+
+def _teacher_summary_to_wire(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "turnId": str(item.get("turn_id") or "summary_1"),
+        "role": str(item.get("role") or "teacher"),
+        "displayName": str(item.get("display_name") or "李老师"),
+        "text": str(item.get("text") or ""),
+        "highlightStepIds": list(item.get("highlight_step_ids") or []),
+    }
+
+
+def _assessment_to_history_item(item: dict[str, Any]) -> dict[str, Any]:
+    understood = bool(item.get("understood"))
+    reason = str(item.get("reason") or "").strip()
+    display = str(item.get("display_name") or "")
+    text = f"（听懂了）{reason}" if understood else reason
+    return {
+        "role": str(item.get("role") or "xiaoming"),
+        "displayName": display,
+        "text": text,
+        "highlightStepIds": list(item.get("highlight_step_ids") or []),
+    }
 
 
 def _split_text_into_deltas(text: str, chunk_chars: int) -> list[str]:

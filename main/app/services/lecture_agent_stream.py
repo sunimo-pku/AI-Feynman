@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _STREAM_SYSTEM_SUFFIX = """
 请以 NDJSON 形式逐行输出事件；每行只能是一个 JSON 对象，不要 Markdown。
+每轮**只能有 1 条**同伴发言（禁止 teacher / 李老师）；禁止同轮多角色。
 每行一个对象：
 {"type":"turn_start","turnId":"turn_1","role":"xiaoming","displayName":"小明","highlightStepIds":["step_1"]}
 {"type":"delta","turnId":"turn_1","delta":"..."}
@@ -106,14 +107,20 @@ def _parse_line(line: str, allowed_step_ids: list[str]) -> dict[str, Any] | None
         return None
     typ = str(obj.get("type") or "")
     if typ == "turn_start":
+        role = str(obj.get("role") or "xiaoming").strip().lower()
+        if role not in lecture_agent._PEER_ROLES:  # noqa: SLF001
+            role = "xiaoming"
+        display = str(obj.get("displayName") or "")
+        if not display:
+            display = lecture_agent._DEFAULT_DISPLAY_NAME.get(role, role)  # noqa: SLF001
         highlight = [s for s in obj.get("highlightStepIds", []) if s in allowed_step_ids]
         if not highlight and allowed_step_ids:
             highlight = [allowed_step_ids[0]]
         return {
             "type": "turn_start",
             "turnId": str(obj.get("turnId") or "turn_1"),
-            "role": str(obj.get("role") or "teacher"),
-            "displayName": str(obj.get("displayName") or "李老师"),
+            "role": role,
+            "displayName": display,
             "highlightStepIds": highlight,
         }
     if typ == "delta":
@@ -127,8 +134,8 @@ def _parse_line(line: str, allowed_step_ids: list[str]) -> dict[str, Any] | None
     if typ == "round_meta":
         return {
             "type": "round_meta",
-            "status": str(obj.get("status") or "needs_explanation"),
-            "masteryDelta": int(obj.get("masteryDelta") or 0),
+            "status": "needs_explanation",
+            "masteryDelta": 0,
         }
     return None
 

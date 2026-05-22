@@ -1,0 +1,195 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-05-22",
+  "challenges": [
+    {
+      "challengeId": "bounty-radical-domain-a",
+      "track": "review",
+      "sectionId": "pep-g8-down-s16-1",
+      "questionId": "q-s16-1-bounty-001",
+      "sectionLabel": "16.1 二次根式",
+      "prompt": "小明判断 $\\sqrt{x-3}$ 有意义时写成：因为根号里可以是任意数，所以 $x$ 取任意实数。请圈出错误并说明。",
+      "wrongStep": "根号里可以是任意数",
+      "wrongSolution": [
+        "题目：判断 $\\sqrt{x-3}$ 有意义时 $x$ 的范围。",
+        "小明：根号里可以是任意数。",
+        "所以：$x$ 取任意实数。"
+      ],
+      "errorStepId": "step-2",
+      "errorBox": {"x": 86, "y": 134, "width": 430, "height": 64},
+      "rubricKeywords": ["被开方数", "非负", "x-3", "大于等于", "≥", ">= ", "x≥3", "x >= 3"],
+      "tags": ["定义域", "被开方数非负"],
+      "difficulty": 1,
+      "rewardCrystals": 12,
+      "rewardPower": 20
+    },
+    {
+      "challengeId": "bounty-radical-simplify-a",
+      "track": "weak",
+      "sectionId": "pep-g8-down-s16-2",
+      "questionId": "q-s16-2-bounty-001",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "大雄化简 $\\sqrt{12}$：$\\sqrt{12}=\\sqrt{6}\\times\\sqrt{2}=6\\sqrt2$。请圈出错误步骤并说明。",
+      "wrongStep": "$\\sqrt{6}\\times\\sqrt{2}=6\\sqrt2$",
+      "wrongSolution": [
+        "题目：化简 $\\sqrt{12}$。",
+        "$\\sqrt{12}=\\sqrt{6}\\times\\sqrt{2}$",
+        "$\\sqrt{6}\\times\\sqrt{2}=6\\sqrt2$"
+      ],
+      "errorStepId": "step-3",
+      "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
+      "rubricKeywords": ["完全平方数", "4×3", "4*3", "2√3", "2\\sqrt{3}", "先拆", "平方因数"],
+      "tags": ["化简", "完全平方因数"],
+      "difficulty": 2,
+      "rewardCrystals": 15,
+      "rewardPower": 24
+    },
+    {
+      "challengeId": "bounty-radical-like-terms-a",
+      "track": "advanced",
+      "sectionId": "pep-g8-down-s16-3",
+      "questionId": "q-s16-3-bounty-001",
+      "sectionLabel": "16.3 二次根式的加减",
+      "prompt": "班长合并：$\\sqrt{8}+\\sqrt{18}=\\sqrt{26}$。请圈出错误并讲清正确做法。",
+      "wrongStep": "$\\sqrt{8}+\\sqrt{18}=\\sqrt{26}$",
+      "wrongSolution": [
+        "题目：化简 $\\sqrt{8}+\\sqrt{18}$。",
+        "班长：根号里的数可以直接相加。",
+        "$\\sqrt{8}+\\sqrt{18}=\\sqrt{26}$"
+      ],
+      "errorStepId": "step-3",
+      "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
+      "rubricKeywords": ["不能直接相加", "同类二次根式", "2√2", "3√2", "5√2", "先化简"],
+      "tags": ["同类二次根式", "加减"],
+      "difficulty": 3,
+      "rewardCrystals": 18,
+      "rewardPower": 30
+    },
+    {
+      "challengeId": "bounty-equation-distribute-a",
+      "track": "review",
+      "sectionId": "pep-g7-up-s3-3",
+      "questionId": "q-g7-equation-bounty-001",
+      "sectionLabel": "3.3 解一元一次方程（二）",
+      "prompt": "小明写：$3(x-2)=12$，所以 $3x-2=12$。请圈出错误并说明。",
+      "wrongStep": "$3x-2=12$",
+      "wrongSolution": [
+        "题目：解方程 $3(x-2)=12$。",
+        "小明：去括号得到 $3x-2=12$。",
+        "所以 $3x=14$。"
+      ],
+      "errorStepId": "step-2",
+      "errorBox": {"x": 86, "y": 134, "width": 430, "height": 64},
+      "rubricKeywords": ["乘到每一项", "分配律", "3x-6", "括号", "去括号"],
+      "tags": ["去括号", "分配律"],
+      "difficulty": 1,
+      "rewardCrystals": 12,
+      "rewardPower": 20
+    },
+    {
+      "challengeId": "bounty-sign-move-a",
+      "track": "weak",
+      "sectionId": "pep-g7-up-s3-2",
+      "questionId": "q-g7-equation-bounty-002",
+      "sectionLabel": "3.2 解一元一次方程（一）",
+      "prompt": "大雄写：$2x-5=9$，移项得到 $2x=9-5$。请圈出错误并说明。",
+      "wrongStep": "$2x=9-5$",
+      "wrongSolution": [
+        "题目：解方程 $2x-5=9$。",
+        "大雄：把 $-5$ 移到右边。",
+        "$2x=9-5$。"
+      ],
+      "errorStepId": "step-3",
+      "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
+      "rubricKeywords": ["变号", "移项", "9+5", "+5", "等式性质"],
+      "tags": ["移项", "符号"],
+      "difficulty": 2,
+      "rewardCrystals": 15,
+      "rewardPower": 24
+    },
+    {
+      "challengeId": "bounty-like-terms-a",
+      "track": "advanced",
+      "sectionId": "pep-g7-up-s2-2",
+      "questionId": "q-g7-polynomial-bounty-001",
+      "sectionLabel": "2.2 整式的加减",
+      "prompt": "班长草稿：$2a+3b+a=6ab$。请圈出错误并说明。",
+      "wrongStep": "$2a+3b+a=6ab$",
+      "wrongSolution": [
+        "题目：合并同类项 $2a+3b+a$。",
+        "班长：把所有系数相乘。",
+        "$2a+3b+a=6ab$。"
+      ],
+      "errorStepId": "step-3",
+      "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
+      "rubricKeywords": ["同类项", "2a+a", "3a", "3a+3b", "不能合并"],
+      "tags": ["同类项", "整式加减"],
+      "difficulty": 2,
+      "rewardCrystals": 15,
+      "rewardPower": 24
+    },
+    {
+      "challengeId": "bounty-inequality-flip-a",
+      "track": "review",
+      "sectionId": "pep-g7-down-s9-2",
+      "questionId": "q-g7-ineq-bounty-001",
+      "sectionLabel": "9.2 一元一次不等式",
+      "prompt": "小明解 $-2x>6$，两边除以 $-2$ 后写 $x> -3$。请圈出错误并说明。",
+      "wrongStep": "$x>-3$",
+      "wrongSolution": [
+        "题目：解不等式 $-2x>6$。",
+        "两边同时除以 $-2$。",
+        "$x>-3$。"
+      ],
+      "errorStepId": "step-3",
+      "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
+      "rubricKeywords": ["变号", "不等号方向", "负数", "x<-3", "x < -3"],
+      "tags": ["不等式", "负数变号"],
+      "difficulty": 2,
+      "rewardCrystals": 15,
+      "rewardPower": 24
+    },
+    {
+      "challengeId": "bounty-triangle-angle-a",
+      "track": "weak",
+      "sectionId": "pep-g8-up-s11-2",
+      "questionId": "q-g8-triangle-bounty-001",
+      "sectionLabel": "11.2 与三角形有关的角",
+      "prompt": "大雄说：三角形两个内角是 $50^\\circ$ 和 $60^\\circ$，第三个角是 $90^\\circ$。请圈出错误并说明。",
+      "wrongStep": "第三个角是 $90^\\circ$",
+      "wrongSolution": [
+        "题目：三角形两个内角是 $50^\\circ$ 和 $60^\\circ$。",
+        "大雄：第三个角是 $90^\\circ$。",
+        "因为三角形看起来像直角三角形。"
+      ],
+      "errorStepId": "step-2",
+      "errorBox": {"x": 86, "y": 134, "width": 430, "height": 64},
+      "rubricKeywords": ["内角和", "180", "50+60", "70", "180-50-60"],
+      "tags": ["三角形内角和", "几何推理"],
+      "difficulty": 1,
+      "rewardCrystals": 12,
+      "rewardPower": 20
+    },
+    {
+      "challengeId": "bounty-function-slope-a",
+      "track": "advanced",
+      "sectionId": "pep-g8-down-s19-2",
+      "questionId": "q-g8-function-bounty-001",
+      "sectionLabel": "19.2 一次函数",
+      "prompt": "班长说：一次函数 $y=-2x+3$ 的图象随 $x$ 增大而增大。请圈出错误并说明。",
+      "wrongStep": "随 $x$ 增大而增大",
+      "wrongSolution": [
+        "题目：判断 $y=-2x+3$ 的增减性。",
+        "班长：一次函数都随 $x$ 增大而增大。",
+        "所以 $y=-2x+3$ 也随 $x$ 增大而增大。"
+      ],
+      "errorStepId": "step-3",
+      "errorBox": {"x": 86, "y": 206, "width": 430, "height": 64},
+      "rubricKeywords": ["k", "-2", "小于0", "减小", "随x增大而减小"],
+      "tags": ["一次函数", "增减性"],
+      "difficulty": 3,
+      "rewardCrystals": 18,
+      "rewardPower": 30
+    }
+  ]
+}

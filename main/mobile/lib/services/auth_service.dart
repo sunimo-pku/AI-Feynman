@@ -22,8 +22,7 @@ import 'review_repository.dart';
 ///   * 「未登录」是一等公民：[currentToken] 为空字符串时仍允许进入学生端
 ///     讲题闭环，与第九轮 demo 链路完全兼容；只有家长端 / 同步接口需要登录。
 class AuthService extends ChangeNotifier {
-  AuthService._({http.Client? client})
-      : _client = client ?? http.Client();
+  AuthService._({http.Client? client}) : _client = client ?? http.Client();
 
   static final AuthService instance = AuthService._();
 
@@ -51,7 +50,9 @@ class AuthService extends ChangeNotifier {
   bool get isLoaded => _loaded;
   String get storageNamespace {
     final name = _username.trim();
-    return name.isEmpty ? 'guest' : name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return name.isEmpty
+        ? 'guest'
+        : name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
   }
 
   Future<void> load() async {
@@ -92,10 +93,15 @@ class AuthService extends ChangeNotifier {
   Future<AuthResult> register({
     required String username,
     required String password,
+    String? grade,
   }) async {
     final outcome = await _post(
       '/auth/register',
-      body: {'username': username, 'password': password},
+      body: {
+        'username': username,
+        'password': password,
+        if (grade != null) 'grade': grade,
+      },
     );
     if (outcome is _ApiSuccess) {
       // 注册成功后自动登录，避免学生输入两次。
@@ -120,9 +126,10 @@ class AuthService extends ChangeNotifier {
     final body = success.body;
     final token = (body['token'] as String?) ?? '';
     final userMap = body['user'];
-    final returnedName = userMap is Map<String, dynamic>
-        ? (userMap['username'] as String? ?? username)
-        : username;
+    final returnedName =
+        userMap is Map<String, dynamic>
+            ? (userMap['username'] as String? ?? username)
+            : username;
     if (token.isEmpty) {
       return const AuthResult.failure('后端登录成功但没返回 token，请联系开发同学。');
     }
@@ -230,12 +237,8 @@ class AuthService extends ChangeNotifier {
 }
 
 class AuthResult {
-  const AuthResult.success(this.username)
-      : ok = true,
-        message = '';
-  const AuthResult.failure(this.message)
-      : ok = false,
-        username = '';
+  const AuthResult.success(this.username) : ok = true, message = '';
+  const AuthResult.failure(this.message) : ok = false, username = '';
 
   final bool ok;
   final String username;

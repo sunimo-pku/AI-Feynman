@@ -8,8 +8,11 @@ import '../services/parent_service.dart';
 import '../services/replay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
+import '../widgets/study_layout.dart';
 import 'auth_page.dart';
 import 'replay_page.dart';
+
+const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
 
 /// 家长端 dashboard 页（第十轮）。
 ///
@@ -55,9 +58,9 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     await AuthService.instance.load();
     if (!mounted) return;
     if (!AuthService.instance.isLoggedIn) {
-      final ok = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => const AuthPage()),
-      );
+      final ok = await Navigator.of(
+        context,
+      ).push<bool>(MaterialPageRoute(builder: (_) => const AuthPage()));
       if (!mounted) return;
       if (ok != true || !AuthService.instance.isLoggedIn) {
         Navigator.of(context).pop();
@@ -78,9 +81,14 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     }
     try {
       final children = await _parentService.fetchChildren();
-      _activeStudentId ??= children.isNotEmpty ? children.first.studentId : null;
-      final payload = await _parentService.fetchDashboard(studentId: _activeStudentId);
-      final replays = await _replayService.fetchParentReplays(studentId: _activeStudentId);
+      _activeStudentId ??=
+          children.isNotEmpty ? children.first.studentId : null;
+      final payload = await _parentService.fetchDashboard(
+        studentId: _activeStudentId,
+      );
+      final replays = await _replayService.fetchParentReplays(
+        studentId: _activeStudentId,
+      );
       if (!mounted) return;
       setState(() {
         _children = children;
@@ -115,80 +123,103 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppPalette.background,
-      appBar: AppBar(
-        title: const Text('家长端 · 学习看板'),
-        actions: [
-          IconButton(
-            tooltip: '本周总结海报',
-            icon: const Icon(Icons.auto_awesome_outlined),
-            onPressed: () => _showPoster(context),
-          ),
-          IconButton(
-            tooltip: '刷新',
-            icon: const Icon(Icons.refresh),
-            onPressed: _loading ? null : () => _refresh(forceSync: true),
-          ),
-          Builder(
-            builder: (innerCtx) => PopupMenuButton<String>(
-              onSelected: (key) async {
-                if (key == 'logout') {
-                  final navigator = Navigator.of(innerCtx);
-                  await AuthService.instance.logout();
-                  if (!mounted) return;
-                  navigator.pop();
-                } else if (key == 'edit_profile') {
-                  await _editProfile(innerCtx);
-                } else if (key == 'bind_child') {
-                  await _bindChild(innerCtx);
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit_profile', child: Text('编辑孩子资料')),
-                PopupMenuItem(value: 'bind_child', child: Text('绑定孩子')),
-                PopupMenuItem(value: 'logout', child: Text('退出登录')),
-              ],
-            ),
-          ),
-        ],
-      ),
-      body: SafeArea(child: _buildBody(context)),
+    return StudyShell(
+      title: '家长端 · 学习看板',
+      maxWidth: 1180,
+      actions: [
+        IconButton(
+          tooltip: '本周总结海报',
+          icon: const Icon(Icons.auto_awesome_outlined),
+          onPressed: () => _showPoster(context),
+        ),
+        IconButton(
+          tooltip: '刷新',
+          icon: const Icon(Icons.refresh),
+          onPressed: _loading ? null : () => _refresh(forceSync: true),
+        ),
+        Builder(
+          builder:
+              (innerCtx) => PopupMenuButton<String>(
+                onSelected: (key) async {
+                  if (key == 'logout') {
+                    final navigator = Navigator.of(innerCtx);
+                    await AuthService.instance.logout();
+                    if (!mounted) return;
+                    navigator.pop();
+                  } else if (key == 'edit_profile') {
+                    await _editProfile(innerCtx);
+                  } else if (key == 'bind_child') {
+                    await _bindChild(innerCtx);
+                  }
+                },
+                itemBuilder:
+                    (_) => const [
+                      PopupMenuItem(
+                        value: 'edit_profile',
+                        child: Text('编辑孩子资料'),
+                      ),
+                      PopupMenuItem(value: 'bind_child', child: Text('绑定孩子')),
+                      PopupMenuItem(value: 'logout', child: Text('退出登录')),
+                    ],
+              ),
+        ),
+      ],
+      child: _buildBody(context),
     );
   }
 
   Future<void> _editProfile(BuildContext context) async {
     final payload = _payload;
-    final nameController = TextEditingController(text: payload?.studentName ?? '');
-    final gradeController = TextEditingController(text: payload?.grade ?? '八年级');
+    final nameController = TextEditingController(
+      text: payload?.studentName ?? '',
+    );
+    final gradeController = TextEditingController(
+      text: payload?.grade ?? '八年级',
+    );
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('编辑孩子资料'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: '展示名'),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('编辑孩子资料'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: '展示名'),
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      _gradeOptions.contains(gradeController.text)
+                          ? gradeController.text
+                          : '八年级',
+                  decoration: const InputDecoration(labelText: '年级'),
+                  items:
+                      _gradeOptions
+                          .map(
+                            (grade) => DropdownMenuItem(
+                              value: grade,
+                              child: Text(grade),
+                            ),
+                          )
+                          .toList(),
+                  onChanged:
+                      (value) =>
+                          gradeController.text = value ?? gradeController.text,
+                ),
+              ],
             ),
-            TextField(
-              controller: gradeController,
-              decoration: const InputDecoration(labelText: '年级'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('保存'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
     );
     if (ok != true) return;
     await _parentService.updateProfile(
@@ -204,20 +235,33 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     final nickname = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('绑定孩子账号'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: username, decoration: const InputDecoration(labelText: '孩子用户名')),
-            TextField(controller: nickname, decoration: const InputDecoration(labelText: '备注昵称')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('绑定')),
-        ],
-      ),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('绑定孩子账号'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: username,
+                  decoration: const InputDecoration(labelText: '孩子用户名'),
+                ),
+                TextField(
+                  controller: nickname,
+                  decoration: const InputDecoration(labelText: '备注昵称'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('绑定'),
+              ),
+            ],
+          ),
     );
     if (ok == true && username.text.trim().isNotEmpty) {
       await _parentService.bindChild(
@@ -234,7 +278,10 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null && _payload == null) {
-      return _ErrorView(message: _error!, onRetry: () => _refresh(forceSync: true));
+      return _ErrorView(
+        message: _error!,
+        onRetry: () => _refresh(forceSync: true),
+      );
     }
     final p = _payload!;
     return RefreshIndicator(
@@ -255,30 +302,32 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             ),
           ],
           const SizedBox(height: AppSpacing.moduleGap),
-          _SuggestionCard(text: p.suggestedNextAction),
-          const SizedBox(height: AppSpacing.moduleGap),
-          _SectionGroupCard(
-            title: '需要重点辅导',
-            subtitle: '掌握度低于 60，请优先复讲',
-            color: AppPalette.error,
-            sections: p.weakSections,
-            emptyText: '太好了，目前没有特别薄弱的章节。',
+          _DashboardPair(
+            left: _SuggestionCard(text: p.suggestedNextAction),
+            right: _SectionGroupCard(
+              title: '需要重点辅导',
+              subtitle: '掌握度低于 60，请优先复讲',
+              color: AppPalette.error,
+              sections: p.weakSections,
+              emptyText: '太好了，目前没有特别薄弱的章节。',
+            ),
           ),
           const SizedBox(height: AppSpacing.moduleGap),
-          _SectionGroupCard(
-            title: '已经掌握的章节',
-            subtitle: '掌握度 ≥ 60，可继续挑战难度',
-            color: AppPalette.primaryAccent,
-            sections: p.strongSections,
-            emptyText: '还没有牢牢掌握的章节，多讲几轮就会出现这里。',
+          _DashboardPair(
+            left: _SectionGroupCard(
+              title: '已经掌握的章节',
+              subtitle: '掌握度 >= 60，可继续挑战难度',
+              color: AppPalette.primaryAccent,
+              sections: p.strongSections,
+              emptyText: '还没有牢牢掌握的章节，多讲几轮就会出现这里。',
+            ),
+            right: _ReplayListCard(
+              replays: _replays,
+              studentId: _activeStudentId,
+            ),
           ),
           const SizedBox(height: AppSpacing.moduleGap),
           _RecentReviewsCard(reviews: p.recentReviews),
-          const SizedBox(height: AppSpacing.moduleGap),
-          _ReplayListCard(
-            replays: _replays,
-            studentId: _activeStudentId,
-          ),
           const SizedBox(height: AppSpacing.moduleGap),
           if (_error != null)
             Container(
@@ -312,6 +361,39 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
 
 // ---------------------------------------------------------------- widgets ----
 
+class _DashboardPair extends StatelessWidget {
+  const _DashboardPair({required this.left, required this.right});
+
+  final Widget left;
+  final Widget right;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 820) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              left,
+              const SizedBox(height: AppSpacing.moduleGap),
+              right,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: left),
+            const SizedBox(width: AppSpacing.moduleGap),
+            Expanded(child: right),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _ChildSwitcher extends StatelessWidget {
   const _ChildSwitcher({
     required this.children,
@@ -325,25 +407,21 @@ class _ChildSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StudyPanel(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: children
-            .map(
-              (c) => ChoiceChip(
-                label: Text(c.nickname),
-                selected: activeStudentId == c.studentId,
-                onSelected: (_) => onSelected(c.studentId),
-              ),
-            )
-            .toList(),
+        children:
+            children
+                .map(
+                  (c) => ChoiceChip(
+                    label: Text(c.nickname),
+                    selected: activeStudentId == c.studentId,
+                    onSelected: (_) => onSelected(c.studentId),
+                  ),
+                )
+                .toList(),
       ),
     );
   }
@@ -355,13 +433,9 @@ class _StudentHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StudyPanel(
+      tone: StudyPanelTone.primary,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -435,22 +509,16 @@ class _ReplayListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StudyPanel(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(width: 4, height: 16, color: AppPalette.primaryAccent),
-              const SizedBox(width: 8),
-              Text('精彩回放', style: Theme.of(context).textTheme.titleMedium),
-            ],
+          const SectionHeader(
+            title: '精彩回放',
+            subtitle: '完成 live 讲题后，家长可回看笔迹与 AI 讨论节奏。',
+            icon: Icons.play_circle_outline,
+            accent: AppPalette.primaryAccent,
           ),
           const SizedBox(height: 10),
           if (replays.isEmpty)
@@ -462,14 +530,16 @@ class _ReplayListCard extends StatelessWidget {
                 title: FormulaText(r.questionPrompt),
                 subtitle: Text('${r.sectionId} · ${r.durationMs}ms'),
                 trailing: const Icon(Icons.play_circle_outline),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ReplayPage(
-                      sessionId: r.sessionId,
-                      studentId: studentId,
+                onTap:
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder:
+                            (_) => ReplayPage(
+                              sessionId: r.sessionId,
+                              studentId: studentId,
+                            ),
+                      ),
                     ),
-                  ),
-                ),
               ),
             ),
         ],
@@ -484,15 +554,9 @@ class _SuggestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StudyPanel(
+      tone: StudyPanelTone.accent,
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppPalette.primaryAccent.withValues(alpha: 0.06),
-        borderRadius: AppRadius.cardR,
-        border: Border.all(
-          color: AppPalette.primaryAccent.withValues(alpha: 0.25),
-        ),
-      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -541,38 +605,24 @@ class _SectionGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StudyPanel(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(width: 4, height: 16, color: color),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodySmall,
+          SectionHeader(
+            title: title,
+            subtitle: subtitle,
+            icon: Icons.stacked_line_chart_outlined,
+            accent: color,
           ),
           const SizedBox(height: 12),
           if (sections.isEmpty)
             Text(
               emptyText,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppPalette.textSecondary,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppPalette.textSecondary),
             )
           else
             ...sections.map((s) => _SectionRow(info: s, accent: color)),
@@ -646,28 +696,15 @@ class _RecentReviewsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return StudyPanel(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                  width: 4, height: 16, color: AppPalette.primary),
-              const SizedBox(width: 8),
-              Text('最近讲题', style: Theme.of(context).textTheme.titleMedium),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '点击查看 AI 同伴与孩子讨论的关键点',
-            style: Theme.of(context).textTheme.bodySmall,
+          const SectionHeader(
+            title: '最近讲题',
+            subtitle: '点击查看 AI 同伴与孩子讨论的关键点。',
+            icon: Icons.history_edu_outlined,
           ),
           const SizedBox(height: 12),
           if (reviews.isEmpty)
@@ -723,10 +760,9 @@ class _ReviewItem extends StatelessWidget {
               ),
               child: FormulaText(
                 card.summary,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: AppPalette.textSecondary),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppPalette.textSecondary,
+                ),
               ),
             ),
           ],
@@ -738,15 +774,16 @@ class _ReviewItem extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('· ',
-                        style: TextStyle(color: AppPalette.primary)),
+                    const Text(
+                      '· ',
+                      style: TextStyle(color: AppPalette.primary),
+                    ),
                     Expanded(
                       child: FormulaText(
                         p,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: AppPalette.textPrimary),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppPalette.textPrimary,
+                        ),
                       ),
                     ),
                   ],
@@ -774,8 +811,11 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_outlined,
-                size: 48, color: AppPalette.error),
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 48,
+              color: AppPalette.error,
+            ),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),
@@ -848,14 +888,15 @@ class _PosterSheetState extends State<_PosterSheet> {
           ),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.pageEdge),
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
+            child:
+                _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null
                     ? Center(child: Text(_error!))
                     : _PosterCard(
-                        payload: _payload!,
-                        scrollController: scrollController,
-                      ),
+                      payload: _payload!,
+                      scrollController: scrollController,
+                    ),
           ),
         );
       },
@@ -864,10 +905,7 @@ class _PosterSheetState extends State<_PosterSheet> {
 }
 
 class _PosterCard extends StatelessWidget {
-  const _PosterCard({
-    required this.payload,
-    required this.scrollController,
-  });
+  const _PosterCard({required this.payload, required this.scrollController});
 
   final ParentPosterPayload payload;
   final ScrollController scrollController;
@@ -908,8 +946,7 @@ class _PosterCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 2),
-              Text(payload.grade,
-                  style: Theme.of(context).textTheme.bodySmall),
+              Text(payload.grade, style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -922,23 +959,27 @@ class _PosterCard extends StatelessWidget {
                   Expanded(
                     child: _PosterStat(
                       label: '最强章节',
-                      value: payload.highestSection.isEmpty
-                          ? '—'
-                          : '${payload.highestScore}/100',
-                      sub: payload.highestSection.isEmpty
-                          ? null
-                          : payload.highestSection,
+                      value:
+                          payload.highestSection.isEmpty
+                              ? '—'
+                              : '${payload.highestScore}/100',
+                      sub:
+                          payload.highestSection.isEmpty
+                              ? null
+                              : payload.highestSection,
                     ),
                   ),
                   Expanded(
                     child: _PosterStat(
                       label: '最需巩固',
-                      value: payload.weakestSection.isEmpty
-                          ? '—'
-                          : '${payload.weakestScore}/100',
-                      sub: payload.weakestSection.isEmpty
-                          ? null
-                          : payload.weakestSection,
+                      value:
+                          payload.weakestSection.isEmpty
+                              ? '—'
+                              : '${payload.weakestScore}/100',
+                      sub:
+                          payload.weakestSection.isEmpty
+                              ? null
+                              : payload.weakestSection,
                     ),
                   ),
                 ],
@@ -976,10 +1017,9 @@ class _PosterCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   FormulaText(
                     payload.lastSummary,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppPalette.textSecondary),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppPalette.textSecondary,
+                    ),
                   ),
                 ],
               ],
@@ -1002,11 +1042,7 @@ class _PosterCard extends StatelessWidget {
 }
 
 class _PosterStat extends StatelessWidget {
-  const _PosterStat({
-    required this.label,
-    required this.value,
-    this.sub,
-  });
+  const _PosterStat({required this.label, required this.value, this.sub});
 
   final String label;
   final String value;
@@ -1017,26 +1053,32 @@ class _PosterStat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppPalette.textSecondary,
-              fontWeight: FontWeight.w600,
-            )),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppPalette.textSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppPalette.textPrimary,
-            )),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: AppPalette.textPrimary,
+          ),
+        ),
         if (sub != null) ...[
           const SizedBox(height: 2),
-          Text(sub!,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppPalette.textSecondary,
-              )),
+          Text(
+            sub!,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppPalette.textSecondary,
+            ),
+          ),
         ],
       ],
     );

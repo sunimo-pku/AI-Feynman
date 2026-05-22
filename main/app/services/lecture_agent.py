@@ -2,8 +2,9 @@
 
 设计要点：
 
-- **单大模型多角色剧本**：用同一次 LLM 调用让 DeepSeek 同时扮演小明 / 大雄 / 班长 /
-  李老师中的 1-2 个角色，避免 N 次串行调用拉爆延迟。
+- **单大模型单角色剧本**：用同一次 LLM 调用让 DeepSeek 扮演小明 / 大雄 / 班长
+  中的**恰好 1 个**角色，避免多角色同轮发言混乱。李老师已拆到独立 `teacher_agent`，
+  仅在学生主动请求「提示」时调用。
 - **强 Schema 防御**：System Prompt 限定「只输出 JSON」、`response_format=json_object`
   双保险；解析时还要再做 markdown 去壳 + 字段白名单校验。
 - **highlightStepIds 必须命中真实 stepId**：模型最爱编造 `step_99`，路由层会把
@@ -15,8 +16,8 @@
   被路由调用，也方便后续单测。
 - **多轮上下文**：`generate_lecture_turns(...)` 接收 `round_index` 与 `history`。
   Prompt 用最近 6 条历史让 LLM 评估学生当前输入是
-  「在回答上一轮 AI 追问」还是「重新讲一遍」，并据此决定 `status` 是
-  `needs_explanation` 还是 `completed`。
+  「在回答上一轮同伴追问」还是「重新讲一遍」。同伴 Agent 只产出追问，
+  不再决定讨论是否结束（收束由用户侧「我懂了」触发，见产品规划）。
 """
 
 from __future__ import annotations
@@ -52,7 +53,8 @@ _LLM_TIMEOUT_SECONDS = 6.0
 # ---------------------------------------------------------------------------
 
 
-_ALLOWED_ROLES: tuple[str, ...] = ("xiaoming", "daxiong", "monitor", "teacher")
+_ALLOWED_ROLES: tuple[str, ...] = ("xiaoming", "daxiong", "monitor")
+_PEER_ROLES: tuple[str, ...] = _ALLOWED_ROLES
 _ALLOWED_STATUS: tuple[str, ...] = ("needs_explanation", "completed")
 _ALLOWED_DELTA: tuple[int, ...] = (-1, 0, 1)
 
@@ -119,24 +121,25 @@ _SECTION_TITLE: dict[str, str] = _load_section_titles()
 
 _SYSTEM_PROMPT = """你是「初中数学费曼学习小组剧本导演」。
 学生正在面向人教版初中数学任意章节题目做费曼讲题。
-你必须扮演他们的同伴和老师，用追问帮学生发现自己的卡点。
+你必须扮演他们的同伴，用追问帮学生发现自己的卡点。
 
-【角色清单】每次只挑选 1-2 个最合适的角色发言：
+【角色清单】每次**只能挑选 1 个**最合适的角色发言（禁止同轮多角色）：
 - xiaoming（小明）：基础不牢，追问定义、条件、为什么这一步成立。
 - daxiong（大雄）：粗心型同学，专门盯计算细节、化简错误、漏写条件。
 - monitor（班长）：归纳总结型，要求把方法、步骤、易错点提炼成一句话规则。
-- teacher（李老师）：温和的老师，做脚手架式引导和收束，不直接公布答案。
+
+李老师（teacher）**不在你的角色范围内**；学生需要提示时会单独向李老师请求。
 
 【任务规则】
 1. 围绕本题与本节核心知识点，不要泛泛聊「加油」「你真棒」。
-2. 不要一次性把答案告诉学生；老师只做引导和小结。
+2. 不要一次性把答案告诉学生；只做追问，不做收束小结。
 3. 不要嘲讽、阴阳怪气；语气友好、平视、尊重学生。
 4. 如果学生写的步骤太少或语焉不详，优先追问「这一步为什么成立」。
 5. 数学符号用 LaTeX：例如 `\\frac{a}{b}`、`x \\ge 0`、`\\angle A`、`y=kx+b`。
    推导时尽量带适用条件，比如定义域、正负号、等价变形条件、几何图形条件、统计口径。
 6. 每条发言必须挂在 `highlightStepIds` 上，且只能引用「允许的 stepId 白名单」里的值。
 7. 每条发言不超过 180 个中文字符。
-8. 整体最多 2 条发言。
+8. `turns` 数组**只能有 1 条**发言；禁止输出 2 条或更多。
 9. 根据【当前小节】和【题面】判断本题所属领域，再选择相应的追问角度。
 
 【使用学生本人输入】
@@ -174,31 +177,24 @@ H4. 题面里没有明文出现的数值、符号、公式，**绝对不要**写
 
 【多轮追问规则】
 14. 当上下文提供「上一轮历史」时，请先判断：学生这一轮的口述/步骤说明
-    到底是「在回答上一轮 AI 追问」还是「在重新讲一遍 / 改了写法」。
-15. 如果是在回答上一轮追问：
-    a. **不要重复**上一轮已经问过的问题；要先用 1 句话评价学生答得到不到位
-       （比如老师说「对，这次你补出了公式的适用条件」）。
-    b. 若学生把规则、前提条件、计算依据都讲清楚了 —— 输出 `status: "completed"`、
-       `masteryDelta: 1`，并且 `turns` 仅放 1 条「李老师」收束发言。
-    c. 若学生只复述结论、没解释「为什么」—— 继续 `needs_explanation`，
-       由 1 名 Agent 顺着学生这次说的话往**下一层**追问（不要回到上一轮原问题）。
-16. 如果学生没回答上一轮追问、而是改写了步骤：可以由小明 / 大雄追问「为什么改」，
-    然后再针对新写法继续追问。
-17. 收束 `completed` 时务必让学生看出「这一题讲清楚了」：
-    - role 必须是 `teacher`；
-    - text 中要复述学生抓到的关键规则（例如定义、定理条件、等价变形依据或计算检查点）；
-    - `highlightStepIds` 仍只能命中白名单。
+    到底是「在回答上一轮同伴追问」还是「在重新讲一遍 / 改了写法」。
+15. 如果是在回答上一轮同伴追问：
+    a. **不要重复**上一轮已经问过的问题；可先用 1 句话评价学生答得到不到位。
+    b. 若学生只复述结论、没解释「为什么」—— 顺着学生这次说的话往**下一层**追问
+       （不要回到上一轮原问题）。
+16. 如果学生没回答上一轮追问、而是改写了步骤：追问「为什么改」，再针对新写法继续。
+17. 你**不能**决定讨论是否结束；始终输出 `status: "needs_explanation"`、`masteryDelta: 0`。
 
 【输出格式】
 只输出**一个 JSON 对象**，不要 Markdown 代码块、不要解释、不要前后缀。
 JSON 必须严格匹配：
 {
-  "status": "needs_explanation" | "completed",
-  "masteryDelta": -1 | 0 | 1,
+  "status": "needs_explanation",
+  "masteryDelta": 0,
   "turns": [
     {
-      "role": "xiaoming" | "daxiong" | "monitor" | "teacher",
-      "displayName": "小明" | "大雄" | "班长" | "李老师",
+      "role": "xiaoming" | "daxiong" | "monitor",
+      "displayName": "小明" | "大雄" | "班长",
       "text": "……（含 LaTeX，不超过 180 中文字符）",
       "highlightStepIds": ["step_x"]
     }
@@ -261,11 +257,11 @@ def _sanitize_history(
     return cleaned
 
 
-def _last_ai_followup(history: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """从已清洗的 history 中找到「最近一条 AI 追问」（小明 / 大雄 / 班长 / 老师）。"""
+def _last_peer_followup(history: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """从已清洗的 history 中找到「最近一条同伴追问」（不含李老师提示）。"""
 
     for item in reversed(history):
-        if item["role"] in ("xiaoming", "daxiong", "monitor", "teacher"):
+        if item["role"] in _PEER_ROLES:
             return item
     return None
 
@@ -344,7 +340,7 @@ def _build_user_prompt(
     lines.append("- " + (", ".join(allowed_step_ids) if allowed_step_ids else "（空）"))
 
     lines.append("")
-    last_followup = _last_ai_followup(history)
+    last_followup = _last_peer_followup(history)
     if history:
         lines.append("【上一轮追问与回答历史】（按时间从早到晚，仅本题内最近若干条）")
         for h in history:
@@ -360,7 +356,7 @@ def _build_user_prompt(
         if last_followup is not None:
             lines.append("")
             lines.append(
-                f'重要：上一轮 AI（{last_followup["display_name"]}，role={last_followup["role"]}）'
+                f'重要：上一轮同伴（{last_followup["display_name"]}，role={last_followup["role"]}）'
                 f'追问的是 "{last_followup["text"]}"。'
                 "请先评估学生这次的回答是否真正答到这条追问的点上，再决定继续追问还是收束。"
             )
@@ -458,8 +454,9 @@ def _parse_and_validate(
         logger.warning("[lecture-agent] turns 字段缺失或为空")
         return None
 
-    if len(raw_turns) > 2:
-        raw_turns = raw_turns[:2]
+    if len(raw_turns) > 1:
+        logger.warning("[lecture-agent] turns 超过 1 条，只保留首条")
+        raw_turns = raw_turns[:1]
 
     allowed_set = set(allowed_step_ids)
     fallback_step = allowed_step_ids[0] if allowed_step_ids else None
@@ -654,18 +651,8 @@ def generate_lecture_turns(
     except json.JSONDecodeError as e:
         raise LectureAgentError("LLM response JSON was invalid") from e
 
-    final_status = _coerce_status(payload_obj.get("status"))
-    final_delta = _coerce_mastery_delta(payload_obj.get("masteryDelta"))
-
-    # 防御一种常见 LLM 走样：第一轮就直接 `completed`。学生连题面都没解释完，
-    # 不应该被「这一题讲清楚了」收束 —— 强制改回 `needs_explanation`。
-    # 多轮场景下 LLM 自己判定 completed 是合理的，我们不动。
-    if safe_round <= 1 and final_status == "completed":
-        logger.warning(
-            "[lecture-agent] 第一轮 LLM 直接给出 completed，强制改为 needs_explanation"
-        )
-        final_status = "needs_explanation"
-        final_delta = 0
+    final_status = "needs_explanation"
+    final_delta = 0
 
     logger.info(
         "[lecture-agent] 使用 LLM 真实剧本 section=%s round=%d history=%d "

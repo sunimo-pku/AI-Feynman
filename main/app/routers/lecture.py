@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -42,7 +42,9 @@ from app.db import (
     get_db,
 )
 from app.middleware.auth import get_current_user
-from app.services.lecture_agent import LectureAgentError, generate_lecture_turns
+from app.services.lecture_agent import LectureAgentError
+from app.services.peer_assessment_agent import generate_peer_assessments
+from app.services.teacher_agent import generate_teacher_hint, generate_teacher_summary
 
 logger = logging.getLogger(__name__)
 
@@ -143,16 +145,121 @@ class AgentTurnOut(BaseModel):
     }
 
 
+class PeerAssessmentOut(BaseModel):
+    role: Literal["xiaoming", "daxiong", "monitor"]
+    display_name: str = Field(..., serialization_alias="displayName")
+    understood: bool
+    reason: str
+    highlight_step_ids: list[str] = Field(
+        default_factory=list,
+        serialization_alias="highlightStepIds",
+    )
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
 class LectureSubmitResponse(BaseModel):
     question_id: str = Field(..., serialization_alias="questionId")
     section_id: str = Field(..., serialization_alias="sectionId")
     status: Literal["needs_explanation", "completed"] = "needs_explanation"
     mastery_delta: int = Field(0, serialization_alias="masteryDelta")
-    turns: list[AgentTurnOut]
+    all_understood: bool = Field(False, serialization_alias="allUnderstood")
+    assessments: list[PeerAssessmentOut] = Field(default_factory=list)
+    teacher_summary: AgentTurnOut | None = Field(None, serialization_alias="teacherSummary")
+    turns: list[AgentTurnOut] = Field(default_factory=list)
 
     model_config = {
         "populate_by_name": True,
     }
+
+
+class LectureHintResponse(BaseModel):
+    turn: AgentTurnOut
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 响应组装
+# ---------------------------------------------------------------------------
+
+
+def _assessments_to_turns_payload(
+    assessments: list[dict[str, Any]],
+    teacher_summary: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """把评估结果转成 turns 快照，供落库与旧字段兼容。"""
+    turns: list[dict[str, Any]] = []
+    for idx, item in enumerate(assessments, start=1):
+        if item.get("understood"):
+            continue
+        turns.append(
+            {
+                "turn_id": f"assess_{item.get('role', idx)}",
+                "role": item.get("role", "xiaoming"),
+                "display_name": item.get("display_name", ""),
+                "text": item.get("reason", ""),
+                "highlight_step_ids": list(item.get("highlight_step_ids") or []),
+            }
+        )
+    if teacher_summary:
+        turns.append(teacher_summary)
+    return turns
+
+
+def _build_submit_response(
+    *,
+    req: LectureSubmitRequest,
+    result: dict[str, Any],
+    teacher_summary: dict[str, Any] | None,
+) -> LectureSubmitResponse:
+    assessments_out = [
+        PeerAssessmentOut(
+            role=a["role"],
+            display_name=a["display_name"],
+            understood=bool(a["understood"]),
+            reason=str(a.get("reason") or ""),
+            highlight_step_ids=list(a.get("highlight_step_ids") or []),
+        )
+        for a in result.get("assessments", [])
+    ]
+    teacher_out: AgentTurnOut | None = None
+    if teacher_summary:
+        teacher_out = AgentTurnOut(
+            turn_id=teacher_summary["turn_id"],
+            role=teacher_summary["role"],
+            display_name=teacher_summary["display_name"],
+            text=teacher_summary["text"],
+            highlight_step_ids=list(teacher_summary.get("highlight_step_ids") or []),
+        )
+    turns_payload = _assessments_to_turns_payload(
+        result.get("assessments", []),
+        teacher_summary,
+    )
+    turns = [
+        AgentTurnOut(
+            turn_id=t["turn_id"],
+            role=t["role"],
+            display_name=t["display_name"],
+            text=t["text"],
+            highlight_step_ids=t.get("highlight_step_ids", []),
+        )
+        for t in turns_payload
+    ]
+    return LectureSubmitResponse(
+        question_id=req.question_id,
+        section_id=req.section_id,
+        status=result.get("status", "needs_explanation"),
+        mastery_delta=int(result.get("mastery_delta", 0) or 0),
+        all_understood=bool(result.get("all_understood")),
+        assessments=assessments_out,
+        teacher_summary=teacher_out,
+        turns=turns,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +308,120 @@ async def submit_lecture(
     ]
 
     try:
-        result = generate_lecture_turns(
+        result = generate_peer_assessments(
+            section_id=req.section_id,
+            question_id=req.question_id,
+            question_prompt=req.question_prompt,
+            student_speech_text=req.student_speech_text,
+            steps=steps_payload,
+            round_index=req.round_index,
+            history=history_payload,
+        )
+        teacher_summary: dict[str, Any] | None = None
+        if result.get("all_understood"):
+            teacher_summary = generate_teacher_summary(
+                section_id=req.section_id,
+                question_id=req.question_id,
+                question_prompt=req.question_prompt,
+                student_speech_text=req.student_speech_text,
+                steps=steps_payload,
+                round_index=req.round_index,
+                history=history_payload,
+                peer_assessments=result.get("assessments"),
+            )
+    except LectureAgentError as e:
+        logger.exception(
+            "[lecture] /submit peer assessment failed section=%s question=%s round=%d",
+            req.section_id,
+            req.question_id,
+            req.round_index,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Peer assessment failed: {e}",
+        ) from e
+
+    turns_payload = _assessments_to_turns_payload(
+        result.get("assessments", []),
+        teacher_summary,
+    )
+
+    logger.info(
+        "[lecture] /submit section=%s question=%s round=%d steps=%d "
+        "history=%d source=%s status=%s all_understood=%s assessments=%d",
+        req.section_id,
+        req.question_id,
+        req.round_index,
+        len(req.steps),
+        len(req.history),
+        result.get("source"),
+        result.get("status"),
+        result.get("all_understood"),
+        len(result.get("assessments", [])),
+    )
+
+    if user is not None:
+        try:
+            _persist_lecture_submission(
+                db=db,
+                user=user,
+                req=req,
+                steps_payload=steps_payload,
+                turns_payload=turns_payload,
+                status_value=result.get("status", "needs_explanation"),
+                mastery_delta=int(result.get("mastery_delta", 0) or 0),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "[lecture] persist submission failed user=%s err=%s",
+                user.username,
+                e,
+            )
+
+    return _build_submit_response(
+        req=req,
+        result=result,
+        teacher_summary=teacher_summary,
+    )
+
+
+@router.post(
+    "/hint",
+    response_model=LectureHintResponse,
+    response_model_by_alias=True,
+    summary="学生主动请求李老师提示（独立 Agent，失败返回 502）",
+)
+async def request_teacher_hint(
+    req: LectureSubmitRequest,
+    user: User | None = Depends(get_current_user),
+) -> LectureHintResponse:
+    if not req.steps:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one handwriting step is required before requesting a hint.",
+        )
+
+    steps_payload = [
+        {
+            "stepId": s.step_id,
+            "latex": s.latex,
+            "plainText": s.plain_text,
+            "strokeCount": s.stroke_count,
+        }
+        for s in req.steps
+    ]
+    history_payload = [
+        {
+            "role": h.role,
+            "displayName": h.display_name,
+            "text": h.text,
+            "highlightStepIds": list(h.highlight_step_ids),
+        }
+        for h in req.history
+    ]
+
+    try:
+        result = generate_teacher_hint(
             section_id=req.section_id,
             question_id=req.question_id,
             question_prompt=req.question_prompt,
@@ -212,69 +432,32 @@ async def submit_lecture(
         )
     except LectureAgentError as e:
         logger.exception(
-            "[lecture] /submit agent failed section=%s question=%s round=%d",
+            "[lecture] /hint agent failed section=%s question=%s round=%d",
             req.section_id,
             req.question_id,
             req.round_index,
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Lecture agent failed: {e}",
+            detail=f"Teacher hint failed: {e}",
         ) from e
 
     logger.info(
-        "[lecture] /submit section=%s question=%s round=%d steps=%d "
-        "history=%d source=%s status=%s turns=%d",
+        "[lecture] /hint section=%s question=%s round=%d user=%s",
         req.section_id,
         req.question_id,
         req.round_index,
-        len(req.steps),
-        len(req.history),
-        result.get("source"),
-        result.get("status"),
-        len(result.get("turns", [])),
+        user.username if user else "anonymous",
     )
 
-    turns = [
-        AgentTurnOut(
-            turn_id=t["turn_id"],
-            role=t["role"],
-            display_name=t["display_name"],
-            text=t["text"],
-            highlight_step_ids=t.get("highlight_step_ids", []),
-        )
-        for t in result.get("turns", [])
-    ]
-
-    # 第十轮：带 Bearer 时把本次提交落进 LectureSessionRecord +
-    # 实时更新 LearningProgress；匿名调用仍然走原路径，与现有
-    # /lecture/submit 演示链路完全兼容。
-    if user is not None:
-        try:
-            _persist_lecture_submission(
-                db=db,
-                user=user,
-                req=req,
-                steps_payload=steps_payload,
-                turns_payload=result.get("turns", []),
-                status_value=result.get("status", "needs_explanation"),
-                mastery_delta=int(result.get("mastery_delta", 0) or 0),
-            )
-        except Exception as e:  # noqa: BLE001
-            # 持久化失败绝不影响 Demo 链路：吞掉异常打 warning。
-            logger.warning(
-                "[lecture] persist submission failed user=%s err=%s",
-                user.username,
-                e,
-            )
-
-    return LectureSubmitResponse(
-        question_id=req.question_id,
-        section_id=req.section_id,
-        status=result.get("status", "needs_explanation"),
-        mastery_delta=result.get("mastery_delta", 0),
-        turns=turns,
+    turn = AgentTurnOut(
+        turn_id=result["turn_id"],
+        role=result["role"],
+        display_name=result["display_name"],
+        text=result["text"],
+        highlight_step_ids=result.get("highlight_step_ids", []),
     )
+    return LectureHintResponse(turn=turn)
 
 
 # ---------------------------------------------------------------------------

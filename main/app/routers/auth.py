@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.db import get_db, User
+from app.db import get_db, StudentProfile, User
 from app.middleware.auth import get_password_hash, verify_password, create_access_token, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -10,6 +10,7 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 class RegisterReq(BaseModel):
     username: str
     password: str
+    grade: str | None = None
 
 
 class LoginReq(BaseModel):
@@ -34,8 +35,17 @@ async def register(req: RegisterReq, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.username == req.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already taken")
+    safe_grade = (req.grade or "八年级").strip() or "八年级"
     user = User(username=req.username, password_hash=get_password_hash(req.password))
     db.add(user)
+    db.flush()
+    db.add(
+        StudentProfile(
+            user_id=user.id,
+            display_name=user.username,
+            grade=safe_grade,
+        )
+    )
     db.commit()
     db.refresh(user)
     return user

@@ -39,27 +39,26 @@ class Round12Service {
         : const <LeaderboardEntry>[];
   }
 
-  Future<List<BountyChallenge>> fetchBounties() async {
+  Future<BountyToday> fetchBountyToday() async {
     final json = await _getMap(ApiConfig.uri('/bounty/today'));
-    final raw = json['challenges'];
-    return raw is List
-        ? raw
-            .whereType<Map<String, dynamic>>()
-            .map(BountyChallenge.fromJson)
-            .toList(growable: false)
-        : const <BountyChallenge>[];
+    return BountyToday.fromJson(json);
   }
 
-  Future<Map<String, dynamic>> submitBounty({
+  Future<List<BountyChallenge>> fetchBounties() async {
+    return (await fetchBountyToday()).challenges;
+  }
+
+  Future<BountySubmitResult> submitBounty({
     required String challengeId,
     required Map<String, num> circledBox,
     required String transcriptText,
-  }) {
-    return _postMap(ApiConfig.uri('/bounty/submit'), {
+  }) async {
+    final json = await _postMap(ApiConfig.uri('/bounty/submit'), {
       'challengeId': challengeId,
       'circledBox': circledBox,
       'transcriptText': transcriptText,
     });
+    return BountySubmitResult.fromJson(json);
   }
 
   Future<ShopCatalog> fetchShopCatalog() async {

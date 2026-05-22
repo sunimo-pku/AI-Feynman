@@ -362,7 +362,7 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
 - 真 LLM NDJSON 流式：`main/app/services/lecture_agent_stream.py`，`/lecture/live` 默认消费 `turn_start/delta/turn_done/round_meta`；失败时发送 WebSocket `error`。
 - 学习数据：`GET/PATCH /learning/profile`、`POST /learning/reviews`、`POST /learning/progress/sync` 支持 `mode=merge|overwrite`。
 - 游戏化：`GET /gamification/me`、`POST /gamification/power/adjust`、`GET /leaderboard`、`GET /leaderboard/my-titles`。
-- 悬赏与晶石：`GET /bounty/today`、`POST /bounty/submit`、`GET /shop/catalog`、`POST /shop/redeem`、`GET /shop/orders`。
+- 每日挑战与晶石：`GET /bounty/today` 登录后返回今日 3 道找错题与完成状态；`POST /bounty/submit` 按真实圈选 IoU + 讲解评分幂等发放晶石/战力；`GET /bounty/history` 可回看挑战记录；商城接口为 `GET /shop/catalog`、`POST /shop/redeem`、`GET /shop/orders`。
 - 回放与家长端：`POST /replays`、`GET /parent/replays`、`GET /replays/{sessionId}`、`GET/POST /parent/children*`。
 - 识题与知识库：`POST /questions/upload-image`、`POST /knowledge/search`。
 - OCR/HWR：`POST /ocr/ink` 支持 `mode=rule|hwr`，响应和日志包含 `source/confidence`。
@@ -380,7 +380,8 @@ Flutter 侧同步完成：
 第十二轮把 Round 11 的 V2 API 接到平板 App 产品路径：
 
 - 首页新增 5 个学习工具入口：每日挑战、晶石奖励、学习榜单、拍照识题、我的成长。
-- 新增/接线 Flutter 页面：`BountyPage`、`ShopPage`、`GeekShopPage`、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
+- 每日挑战正式页：`DailyChallengePage` 展示今日进度、复习/弱项/进阶 3 题、错题草稿、红框圈选、讲解输入、评分反馈与“继续讲清本节”入口；不再把标准 `errorBox` 当作学生提交。
+- 新增/接线 Flutter 页面：`DailyChallengePage`、`ShopPage`、`GeekShopPage`、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
 - 回放闭环：`ReplayService` 记录 live 讲题的音频片段、白板时间轴和气泡时间轴，登录后 `POST /replays`；家长端「精彩回放」可点进播放器。
 - 家长端多孩子：`/parent/dashboard`、`/parent/reviews`、`/parent/poster` 和 `/parent/replays` 支持 `studentId` / `X-Student-Id`，App 内可绑定和切换孩子。
 - 数据化题库与知识库：`scripts/generate_section_questions.py` 生成 `data/questions/pep-junior-math-questions.json`（90 节 × 基础/巩固/挑战 3 题，共 270 题），几何/坐标/函数/统计类题附带 SVG 题图；`data/knowledge/pep-g8-down-ch16_chunks.json` 由 `knowledge_index` 注入讲题 prompt。

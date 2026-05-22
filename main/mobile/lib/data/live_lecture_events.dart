@@ -13,6 +13,8 @@
 ///     使用"，宁可静默忽略也不要让一条坏 JSON 把整个会话杀掉。
 library;
 
+import 'lecture_models.dart';
+
 /// 客户端 → 服务端事件类型。
 enum LiveClientEventType {
   sessionStart('session_start'),
@@ -20,6 +22,7 @@ enum LiveClientEventType {
   inkSnapshot('ink_snapshot'),
   pauseDetected('pause_detected'),
   studentInterrupt('student_interrupt'),
+  requestHint('request_hint'),
   sessionEnd('session_end'),
   // 应用层心跳：客户端 20s 一次发空 ping，让运营商 NAT 看到上行流量；
   // 后端 EVT_PING 静默忽略，不会回任何下行事件。
@@ -38,6 +41,7 @@ enum LiveServerEventType {
   agentTurnDelta,
   agentTurnDone,
   agentTtsChunk,
+  peerAssessments,
   roundDone,
   warning,
   error,
@@ -60,6 +64,8 @@ LiveServerEventType parseLiveServerEventType(String raw) {
       return LiveServerEventType.agentTurnDone;
     case 'agent_tts_chunk':
       return LiveServerEventType.agentTtsChunk;
+    case 'peer_assessments':
+      return LiveServerEventType.peerAssessments;
     case 'round_done':
       return LiveServerEventType.roundDone;
     case 'warning':
@@ -141,10 +147,28 @@ class LiveRoundDonePayload extends LiveServerPayload {
   const LiveRoundDonePayload({
     required this.status,
     required this.masteryDelta,
+    this.allUnderstood = false,
   });
 
   final String status;
   final int masteryDelta;
+  final bool allUnderstood;
+}
+
+class LivePeerAssessmentsPayload extends LiveServerPayload {
+  const LivePeerAssessmentsPayload({
+    required this.assessments,
+    required this.allUnderstood,
+    required this.status,
+    required this.masteryDelta,
+    this.teacherSummary,
+  });
+
+  final List<PeerAssessment> assessments;
+  final bool allUnderstood;
+  final String status;
+  final int masteryDelta;
+  final AgentTurn? teacherSummary;
 }
 
 class LiveWarningPayload extends LiveServerPayload {
@@ -219,11 +243,28 @@ class LiveServerEvent {
           audioBase64: (json['audioBase64'] as String?) ?? '',
           format: (json['format'] as String?) ?? 'mp3',
         );
+      case LiveServerEventType.peerAssessments:
+        AgentTurn? summary;
+        final summaryJson = json['teacherSummary'];
+        if (summaryJson is Map<String, dynamic>) {
+          summary = AgentTurn.fromJson(summaryJson);
+        }
+        return LivePeerAssessmentsPayload(
+          assessments: (json['assessments'] as List<dynamic>? ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .map(PeerAssessment.fromJson)
+              .toList(growable: false),
+          allUnderstood: json['allUnderstood'] == true,
+          status: (json['status'] as String?) ?? 'needs_explanation',
+          masteryDelta: (json['masteryDelta'] as num?)?.toInt() ?? 0,
+          teacherSummary: summary,
+        );
       case LiveServerEventType.roundDone:
         final delta = json['masteryDelta'];
         return LiveRoundDonePayload(
           status: (json['status'] as String?) ?? 'needs_explanation',
           masteryDelta: delta is num ? delta.toInt() : 0,
+          allUnderstood: json['allUnderstood'] == true,
         );
       case LiveServerEventType.warning:
         return LiveWarningPayload(
@@ -306,6 +347,13 @@ class LiveClientEvent {
       'type': LiveClientEventType.studentInterrupt.wire,
       'sessionId': sessionId,
       'reason': reason,
+    };
+  }
+
+  static Map<String, dynamic> requestHint({required String sessionId}) {
+    return {
+      'type': LiveClientEventType.requestHint.wire,
+      'sessionId': sessionId,
     };
   }
 

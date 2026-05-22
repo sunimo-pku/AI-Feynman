@@ -17,15 +17,18 @@ import '../services/learning_sync_service.dart';
 import '../services/lecture_service.dart';
 import '../services/live_lecture_service.dart';
 import '../services/ocr_service.dart';
+import '../services/peer_reason_playback_service.dart';
 import '../services/progress_repository.dart';
 import '../services/replay_service.dart';
 import '../services/review_repository.dart';
 import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
+import '../widgets/peer_listen_status_bar.dart';
 import '../widgets/agent_message_bubble.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
 import '../widgets/realtime_audio_panel.dart';
+import '../widgets/study_layout.dart';
 import 'privacy_notice_page.dart';
 
 /// 讲题页：左侧多 Agent 对话区，右侧手写板（横屏），手机竖屏降级为上下布局。
@@ -111,6 +114,7 @@ class _LecturePageState extends State<LecturePage> {
   final HandCanvasController _canvasController = HandCanvasController();
   final ScrollController _discussionScrollController = ScrollController();
   final LectureService _lectureService = LectureService();
+  final PeerReasonPlaybackService _reasonPlayback = PeerReasonPlaybackService();
 
   /// 学生口述讲解：第四轮新增。
   ///
@@ -178,7 +182,12 @@ class _LecturePageState extends State<LecturePage> {
   /// 在 [_resetTransientState]（下一题 / 再讲一遍）里被重置为 false。
   bool _reviewSavedForCurrentRound = false;
 
-  /// 本地历史最多保留多少条。后端也会再做一次硬上限。
+  /// 本轮三名同伴的听懂状态（P1）。
+  List<PeerAssessment> _peerAssessments = const [];
+
+  /// 李老师「需要提示」请求进行中。
+  bool _hintLoading = false;
+
   static const int _maxHistoryItems = 6;
 
   // —— 第九轮：实时双工讲题相关状态 ————————————————————————————————————
@@ -246,6 +255,7 @@ class _LecturePageState extends State<LecturePage> {
             : _questions[_questionIndex];
     _turns.add(_introTurn());
     _canvasController.addListener(_onCanvasChanged);
+    _reasonPlayback.addListener(_onReasonPlaybackChanged);
     _wireLiveServices();
     UserCosmeticsPrefs.instance.load();
   }
@@ -306,6 +316,8 @@ class _LecturePageState extends State<LecturePage> {
       c.dispose();
     }
     _lectureService.close();
+    _reasonPlayback.removeListener(_onReasonPlaybackChanged);
+    _reasonPlayback.dispose();
     unawaited(_replayService.finishAndUpload());
     _replayService.close();
     // 第九轮：实时讲题资源全部释放。subscription cancel 顺序不重要，但
@@ -325,6 +337,10 @@ class _LecturePageState extends State<LecturePage> {
     unawaited(_audioService.dispose());
     unawaited(_liveService.dispose());
     super.dispose();
+  }
+
+  void _onReasonPlaybackChanged() {
+    if (mounted) setState(() {});
   }
 
   /// 监听手写板变化：
@@ -427,8 +443,10 @@ class _LecturePageState extends State<LecturePage> {
         case AgentRole.daxiong:
         case AgentRole.classLeader:
         case AgentRole.monitor:
-        case AgentRole.teacher:
           return t;
+        case AgentRole.teacher:
+          // 李老师提示不要求学生「回答」，不算待回应追问。
+          continue;
         case AgentRole.system:
           continue;
       }
@@ -445,12 +463,13 @@ class _LecturePageState extends State<LecturePage> {
       _question.difficulty,
     );
     return AgentTurn(
-      role: AgentRole.teacher,
-      displayName: '李老师',
+      role: AgentRole.system,
+      displayName: '系统',
       text:
           '欢迎来到「${_question.sectionLabel}」讲题课，这是本节的第 $order / $total 题（$levelLabel）。'
-          '请你在右侧手写板上写出你的解题步骤，边写边想；'
-          '写完后点击「提交讲解」，小明和我会和你一起讨论。',
+          '请你在右侧手写板上写出解题步骤，边写边想；'
+          '写完后点「开始讲题」或「提交讲解」，小明、大雄和班长会各自判断有没有听懂。'
+          '卡住时可点「需要提示」，李老师才会发言。',
       highlightStepIds: const [],
     );
   }
@@ -572,6 +591,132 @@ class _LecturePageState extends State<LecturePage> {
     await _sendRequest(req, retry: true);
   }
 
+  String _assessmentRoundSummary(List<PeerAssessment> assessments) {
+    final understood =
+        assessments.where((a) => a.understood).map((a) => a.displayName).toList();
+    final confused =
+        assessments.where((a) => !a.understood).map((a) => a.displayName).toList();
+    if (confused.isEmpty) {
+      return '小明、大雄、班长都听懂了！';
+    }
+    if (understood.isEmpty) {
+      return '小明、大雄、班长都还没完全听懂，请看下面的理由再讲一轮。';
+    }
+    return '${understood.join('、')}听懂了，${confused.join('、')}还没听懂，请看理由再讲一轮。';
+  }
+
+  /// P1/P3：文字提交与实时语音共用 —— 把三人评估结果落到 UI / history / 播放队列。
+  void _applyPeerAssessmentRound({
+    required List<PeerAssessment> assessments,
+    required bool allUnderstood,
+    required String status,
+    required int masteryDelta,
+    AgentTurn? teacherSummary,
+    LectureHistoryItem? committedStudent,
+    bool omitTeacherTurn = false,
+  }) {
+    _peerAssessments = assessments;
+    _lastResponseStatus = status;
+
+    _turns.add(
+      AgentTurn(
+        role: AgentRole.system,
+        displayName: '系统',
+        text: _assessmentRoundSummary(assessments),
+        highlightStepIds: const [],
+      ),
+    );
+
+    if (allUnderstood) {
+      if (teacherSummary != null && !omitTeacherTurn) {
+        _turns.add(teacherSummary);
+        _lastSummary = teacherSummary.text.trim();
+      } else if (teacherSummary != null) {
+        _lastSummary = teacherSummary.text.trim();
+      } else {
+        _lastSummary = _composeCompletionSummary(const []);
+      }
+      _turns.add(
+        const AgentTurn(
+          role: AgentRole.system,
+          displayName: '系统',
+          text: '三名同伴都听懂了。可以点「下一题」继续，也可以点「再讲一遍」复盘。',
+          highlightStepIds: [],
+        ),
+      );
+      _status = _LectureStatus.finished;
+      unawaited(_reasonPlayback.stop());
+      _reasonPlayback.clearQueue();
+    } else {
+      for (final a in assessments.where((x) => !x.understood)) {
+        _turns.add(
+          a.toReasonTurn(turnId: 'reason_${agentRoleWire(a.role)}'),
+        );
+      }
+      _status = _LectureStatus.awaiting;
+      _reasonPlayback.setQueue(assessments);
+    }
+
+    if (committedStudent != null && committedStudent.role == 'student') {
+      _history.add(committedStudent);
+    }
+    for (final a in assessments) {
+      _history.add(a.toHistoryItem());
+    }
+    if (teacherSummary != null) {
+      _history.add(_agentTurnToHistory(teacherSummary));
+    }
+    if (_history.length > _maxHistoryItems) {
+      _history.removeRange(0, _history.length - _maxHistoryItems);
+    }
+
+    final highlightIds = assessments
+        .where((a) => !a.understood)
+        .expand((a) => a.highlightStepIds)
+        .toSet();
+    if (highlightIds.isNotEmpty) {
+      _canvasController.setHighlight(highlightIds);
+    } else if (teacherSummary != null &&
+        teacherSummary.highlightStepIds.isNotEmpty) {
+      _canvasController.setHighlight(teacherSummary.highlightStepIds);
+    }
+
+    if (allUnderstood) {
+      unawaited(
+        _persistCompletion(
+          LectureSubmitResponse(
+            questionId: _question.questionId,
+            sectionId: widget.section.id,
+            status: status,
+            masteryDelta: masteryDelta,
+            allUnderstood: true,
+            assessments: assessments,
+            teacherSummary: teacherSummary,
+          ),
+        ),
+      );
+    }
+  }
+
+  LectureHistoryItem? _buildLiveStudentHistoryItem() {
+    final stepInfos = _canvasController.collectStepInfos();
+    final speech = _speechController.text.trim();
+    final text = _composeStudentHistoryText(
+      speech: speech,
+      stepInfos: stepInfos,
+    );
+    if (text == '（学生本轮没有补充任何文字说明）' &&
+        stepInfos.every((s) => s.strokeCount <= 0)) {
+      return null;
+    }
+    return LectureHistoryItem(
+      role: 'student',
+      displayName: '我',
+      text: text,
+      highlightStepIds: stepInfos.map((s) => s.stepId).toList(growable: false),
+    );
+  }
+
   Future<void> _sendRequest(
     LectureSubmitRequest request, {
     required bool retry,
@@ -585,7 +730,7 @@ class _LecturePageState extends State<LecturePage> {
           AgentTurn(
             role: AgentRole.system,
             displayName: '系统',
-            text: '已收到第 $_round 轮讲解，AI 同伴正在阅读你的步骤、写追问……',
+            text: '已收到第 $_round 轮讲解，小明、大雄、班长正在听……',
             highlightStepIds: const [],
           ),
         );
@@ -609,56 +754,20 @@ class _LecturePageState extends State<LecturePage> {
       // request.history.last 也是同一条 student 项，不会重复追加。
       final committedStudent =
           request.history.isNotEmpty ? request.history.last : null;
-      final isCompleted = response.status == 'completed';
 
       setState(() {
-        _turns.addAll(response.turns);
-        _lastResponseStatus = response.status;
-        _status =
-            isCompleted ? _LectureStatus.finished : _LectureStatus.awaiting;
         _errorMessage = null;
         _lastFailedRequest = null;
-
-        if (committedStudent != null && committedStudent.role == 'student') {
-          _history.add(committedStudent);
-        }
-        for (final t in response.turns) {
-          _history.add(_agentTurnToHistory(t));
-        }
-        // 历史只保留最近若干条；后端也会再做一次硬上限。
-        if (_history.length > _maxHistoryItems) {
-          _history.removeRange(0, _history.length - _maxHistoryItems);
-        }
-
-        if (isCompleted) {
-          // 「这一题讲清楚了」：追加一条温和的系统收束气泡，文案与右下角
-          // 完成横幅呼应；不自动清空画布，给学生留时间回看高亮。
-          _turns.add(
-            const AgentTurn(
-              role: AgentRole.system,
-              displayName: '系统',
-              text: '这一题讲清楚了。可以点「下一题」继续，也可以点「再讲一遍」复盘。',
-              highlightStepIds: [],
-            ),
-          );
-        }
+        _applyPeerAssessmentRound(
+          assessments: response.assessments,
+          allUnderstood: response.allUnderstood,
+          status: response.status,
+          masteryDelta: response.masteryDelta,
+          teacherSummary: response.teacherSummary,
+          committedStudent: committedStudent,
+        );
       });
-
-      final highlightFromFirst =
-          response.turns.expand((t) => t.highlightStepIds).toSet();
-      if (highlightFromFirst.isNotEmpty) {
-        _canvasController.setHighlight(highlightFromFirst);
-      }
       _scrollToBottomSoon();
-
-      // 第六轮：completed 时落地本地进度。
-      //   * 不阻塞 UI：仓库内部串行化写盘，仅在写盘完成后通知首页订阅者
-      //     刷新「已完成 N 轮 · 掌握度 X/100」。
-      //   * 本题小结优先取「本轮 + 历史」里最后一条 teacher turn，没有就取
-      //     最后一条 AI turn；都没有用兜底文案。
-      if (isCompleted) {
-        unawaited(_persistCompletion(response));
-      }
     } on LectureApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -695,7 +804,13 @@ class _LecturePageState extends State<LecturePage> {
   /// 节明确要求「不要因为 progress 读取失败影响课程目录展示。失败时可以当
   /// 作空进度」，这里在写入侧也保持同样口径。
   Future<void> _persistCompletion(LectureSubmitResponse response) async {
-    final summary = _composeCompletionSummary(response.turns);
+    final summary =
+        response.teacherSummary?.text.trim() ??
+        _composeCompletionSummary(
+          response.teacherSummary != null
+              ? [response.teacherSummary!]
+              : const [],
+        );
     final result = await ProgressRepository.instance.applyCompleted(
       sectionId: widget.section.id,
       masteryDelta: response.masteryDelta,
@@ -733,7 +848,13 @@ class _LecturePageState extends State<LecturePage> {
     required LectureSubmitResponse response,
     required String summary,
   }) async {
-    final highlights = _composeAgentHighlights(response.turns);
+    final highlightTurns = <AgentTurn>[
+      ...response.assessments
+          .where((a) => !a.understood)
+          .map((a) => a.toReasonTurn()),
+      if (response.teacherSummary != null) response.teacherSummary!,
+    ];
+    final highlights = _composeAgentHighlights(highlightTurns);
     final cautions = ReviewRepository.derivCautionPoints(
       tags: _question.tags,
       summary: summary,
@@ -799,10 +920,17 @@ class _LecturePageState extends State<LecturePage> {
   /// **稳定** —— 任何一道 16.x 题在 completed 时都要能拼出一条「像样的
   /// 小结」给学生看。
   String _composeCompletionSummary(List<AgentTurn> latestTurns) {
-    String? findTeacher(Iterable<AgentTurn> turns) {
+    String? findPeerAi(Iterable<AgentTurn> turns) {
       for (final t in turns.toList().reversed) {
-        if (t.role == AgentRole.teacher && t.text.trim().isNotEmpty) {
-          return t.text.trim();
+        switch (t.role) {
+          case AgentRole.xiaoming:
+          case AgentRole.daxiong:
+          case AgentRole.classLeader:
+          case AgentRole.monitor:
+            if (t.text.trim().isNotEmpty) return t.text.trim();
+          case AgentRole.teacher:
+          case AgentRole.system:
+            continue;
         }
       }
       return null;
@@ -817,34 +945,103 @@ class _LecturePageState extends State<LecturePage> {
       return null;
     }
 
-    final teacherInLatest = findTeacher(latestTurns);
-    if (teacherInLatest != null) return teacherInLatest;
+    final peerInLatest = findPeerAi(latestTurns);
+    if (peerInLatest != null) return peerInLatest;
     final aiInLatest = findAnyAi(latestTurns);
     if (aiInLatest != null) return aiInLatest;
 
-    // 历史里的 AgentTurn 已经在 _turns 里追加过；从 _turns 里再扫一遍即可。
-    final teacherInAll = findTeacher(_turns);
-    if (teacherInAll != null) return teacherInAll;
+    final peerInAll = findPeerAi(_turns);
+    if (peerInAll != null) return peerInAll;
     final aiInAll = findAnyAi(_turns);
     if (aiInAll != null) return aiInAll;
 
     return '本题已完成一轮讲解，建议回看高亮步骤，总结这一步为什么成立。';
   }
 
-  void _onUnderstood() {
+  Future<void> _onRequestHint() async {
+    if (_canvasController.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('先在白板上写一点思路，再向李老师要提示吧。')),
+      );
+      return;
+    }
+    if (_hintLoading ||
+        _status == _LectureStatus.submitting ||
+        _liveStatus == _LiveStatus.thinking) {
+      return;
+    }
+
+    if (_liveService.isConnected) {
+      _pushInkSnapshotNow();
+      _liveService.sendRequestHint();
+      return;
+    }
+
     setState(() {
+      _hintLoading = true;
       _turns.add(
         const AgentTurn(
-          role: AgentRole.teacher,
-          displayName: '李老师',
-          text: '好。这一轮先到这里。下一题我们换一种条件，看你能不能用刚才总结的思路再讲一次。',
+          role: AgentRole.system,
+          displayName: '系统',
+          text: '已向李老师请求提示……',
           highlightStepIds: [],
         ),
       );
-      _status = _LectureStatus.finished;
     });
-    _canvasController.clearHighlight();
     _scrollToBottomSoon();
+
+    try {
+      final request = await _lectureService.enrichWithOcr(
+        _buildRequest(),
+        referenceSteps: _question.referenceSteps,
+      );
+      final response = await _lectureService.requestHint(request);
+      if (!mounted) return;
+      setState(() {
+        _hintLoading = false;
+        if (_turns.isNotEmpty && _turns.last.role == AgentRole.system) {
+          _turns.removeLast();
+        }
+        _turns.add(response.turn);
+        _history.add(_agentTurnToHistory(response.turn));
+        if (_history.length > _maxHistoryItems) {
+          _history.removeRange(0, _history.length - _maxHistoryItems);
+        }
+        if (_status == _LectureStatus.idle && _round > 0) {
+          _status = _LectureStatus.awaiting;
+        }
+      });
+      if (response.turn.highlightStepIds.isNotEmpty) {
+        _canvasController.setHighlight(response.turn.highlightStepIds);
+      }
+      _scrollToBottomSoon();
+    } on LectureApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hintLoading = false;
+        if (_turns.isNotEmpty && _turns.last.role == AgentRole.system) {
+          _turns.removeLast();
+        }
+        _errorMessage = e.userMessage;
+        if (_round > 0) {
+          _status = _LectureStatus.error;
+        }
+      });
+      _scrollToBottomSoon();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hintLoading = false;
+        if (_turns.isNotEmpty && _turns.last.role == AgentRole.system) {
+          _turns.removeLast();
+        }
+        _errorMessage = '请求提示失败：$e';
+        if (_round > 0) {
+          _status = _LectureStatus.error;
+        }
+      });
+      _scrollToBottomSoon();
+    }
   }
 
   /// 把"切下一题 / 再讲一遍"两个入口共用的临时态清理动作集中到这里：
@@ -879,6 +1076,9 @@ class _LecturePageState extends State<LecturePage> {
     // 第八轮：进入新一轮后允许再次保存 review 记录（再讲一遍同题 / 下一题
     // 都属于「新一轮」语义；不重置会导致连续两题只留下第一题的回顾）。
     _reviewSavedForCurrentRound = false;
+    _peerAssessments = const [];
+    unawaited(_reasonPlayback.stop());
+    _reasonPlayback.clearQueue();
     _cancelThinkingWatchdog();
   }
 
@@ -1023,8 +1223,18 @@ class _LecturePageState extends State<LecturePage> {
     _liveService.sendPauseDetected(silenceMs: 0);
     _armThinkingWatchdog();
     setState(() {
+      _round += 1;
+      _turns.add(
+        AgentTurn(
+          role: AgentRole.system,
+          displayName: '系统',
+          text: '已收到第 $_round 轮讲解，小明、大雄、班长正在听……',
+          highlightStepIds: const [],
+        ),
+      );
       _liveStatus = _LiveStatus.thinking;
     });
+    _scrollToBottomSoon();
   }
 
   /// 启动 thinking 看门狗。重复调用幂等：每次调用都会 cancel 旧定时器。
@@ -1145,13 +1355,14 @@ class _LecturePageState extends State<LecturePage> {
   void _onLiveEvent(LiveServerEvent event) {
     switch (event.type) {
       case LiveServerEventType.listening:
-        final isRecording =
-            _audioService.status == AudioStreamStatus.listening ||
-            _audioService.status == AudioStreamStatus.paused;
-        if (mounted && isRecording && _liveStatus != _LiveStatus.listening) {
+        if (mounted) {
           setState(() {
-            _liveStatus = _LiveStatus.listening;
             _activeStreamingTurnId = '';
+            final isRecording =
+                _audioService.status == AudioStreamStatus.listening ||
+                _audioService.status == AudioStreamStatus.paused;
+            _liveStatus =
+                isRecording ? _LiveStatus.listening : _LiveStatus.idle;
           });
         }
         break;
@@ -1265,46 +1476,32 @@ class _LecturePageState extends State<LecturePage> {
         // 第十二轮第三轮：流式 TTS 段已经在 LiveLectureService 内部按队列播放，
         // page 这里不需要任何动作；仅做 case 完整以让 dart_lints 通过。
         break;
+      case LiveServerEventType.peerAssessments:
+        _cancelThinkingWatchdog();
+        final peerPayload = event.payload as LivePeerAssessmentsPayload;
+        setState(() {
+          _applyPeerAssessmentRound(
+            assessments: peerPayload.assessments,
+            allUnderstood: peerPayload.allUnderstood,
+            status: peerPayload.status,
+            masteryDelta: peerPayload.masteryDelta,
+            teacherSummary: peerPayload.teacherSummary,
+            committedStudent: _buildLiveStudentHistoryItem(),
+            omitTeacherTurn:
+                peerPayload.allUnderstood &&
+                peerPayload.teacherSummary != null,
+          );
+          _liveStatus = _LiveStatus.idle;
+        });
+        _scrollToBottomSoon();
+        break;
       case LiveServerEventType.roundDone:
         _cancelThinkingWatchdog();
         final p = event.payload as LiveRoundDonePayload;
         setState(() {
-          _round += 1;
           _lastResponseStatus = p.status;
-          if (p.status == 'completed') {
-            _status = _LectureStatus.finished;
-            _turns.add(
-              const AgentTurn(
-                role: AgentRole.system,
-                displayName: '系统',
-                text: '这一题讲清楚了。可以点「下一题」继续，也可以点「再讲一遍」复盘。',
-                highlightStepIds: [],
-              ),
-            );
-          } else {
-            _status = _LectureStatus.awaiting;
-          }
-          // AI 追问结束后不自动继续录音；下一轮由学生再点「开始讲题」。
           _liveStatus = _LiveStatus.idle;
         });
-        if (p.status == 'completed') {
-          // 复用第六/八轮的本地落地逻辑。把"流式 turns"包成
-          // LectureSubmitResponse 喂给 _persistCompletion，让小结卡 /
-          // 回顾记录 / 进度仓库都被正确写入。
-          final fakeResp = LectureSubmitResponse(
-            questionId: _question.questionId,
-            sectionId: widget.section.id,
-            status: p.status,
-            masteryDelta: p.masteryDelta,
-            turns: List<AgentTurn>.unmodifiable(
-              _turns
-                  .where((t) => t.role != AgentRole.system)
-                  .toList(growable: false),
-            ),
-          );
-          unawaited(_persistCompletion(fakeResp));
-          unawaited(_replayService.finishAndUpload());
-        }
         _scrollToBottomSoon();
         break;
       case LiveServerEventType.warning:
@@ -1465,12 +1662,21 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   Widget _buildWideLayout() {
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(flex: 40, child: _buildDiscussionPanel()),
-        const SizedBox(width: AppSpacing.moduleGap),
-        Expanded(flex: 60, child: _buildCanvasPanel()),
+        _buildWorkspaceHeader(),
+        const SizedBox(height: AppSpacing.moduleGap),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 38, child: _buildDiscussionPanel()),
+              const SizedBox(width: AppSpacing.moduleGap),
+              Expanded(flex: 62, child: _buildCanvasPanel()),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1479,6 +1685,8 @@ class _LecturePageState extends State<LecturePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _buildWorkspaceHeader(),
+        const SizedBox(height: AppSpacing.moduleGap),
         Expanded(flex: 5, child: _buildDiscussionPanel()),
         const SizedBox(height: AppSpacing.moduleGap),
         Expanded(flex: 7, child: _buildCanvasPanel()),
@@ -1486,13 +1694,16 @@ class _LecturePageState extends State<LecturePage> {
     );
   }
 
+  Widget _buildWorkspaceHeader() {
+    return _QuestionCard(
+      question: _question,
+      order: _questionIndex + 1,
+      total: _questions.isEmpty ? 1 : _questions.length,
+    );
+  }
+
   Widget _buildDiscussionPanel() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: AppRadius.cardR,
-        border: Border.all(color: AppPalette.outlineSoft),
-      ),
+    return StudyPanel(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1507,18 +1718,28 @@ class _LecturePageState extends State<LecturePage> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '多 Agent 讨论 · ${_question.sectionLabel}',
+                  'AI 同伴讨论',
                   style: Theme.of(context).textTheme.titleMedium,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          _QuestionCard(
-            question: _question,
-            order: _questionIndex + 1,
-            total: _questions.isEmpty ? 1 : _questions.length,
+          const SizedBox(height: 6),
+          Text(
+            '小明、大雄、班长各自判断有没有听懂；都听懂后李老师才总结。',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
+          AnimatedBuilder(
+            animation: _reasonPlayback,
+            builder:
+                (context, _) => PeerListenStatusBar(
+                  assessments: _peerAssessments,
+                  playingRole: _reasonPlayback.playingRole,
+                  onConfusedPeerTap:
+                      (role) => unawaited(_reasonPlayback.playPeer(role)),
+                ),
           ),
           const SizedBox(height: 14),
           Expanded(
@@ -1533,17 +1754,37 @@ class _LecturePageState extends State<LecturePage> {
                   return const _ThinkingBubble();
                 }
                 final turn = _turns[index];
-                return AgentMessageBubble(
-                  turn: turn,
-                  isHighlighted: turn.highlightStepIds.any(
-                    _canvasController.highlightStepIds.contains,
-                  ),
-                  onHighlightTap:
-                      turn.highlightStepIds.isEmpty
-                          ? null
-                          : () => _canvasController.setHighlight(
-                            turn.highlightStepIds,
-                          ),
+                final isReasonTurn = turn.turnId?.startsWith('reason_') ?? false;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AgentMessageBubble(
+                      turn: turn,
+                      isHighlighted: turn.highlightStepIds.any(
+                        _canvasController.highlightStepIds.contains,
+                      ),
+                      onHighlightTap:
+                          turn.highlightStepIds.isEmpty
+                              ? null
+                              : () => _canvasController.setHighlight(
+                                turn.highlightStepIds,
+                              ),
+                    ),
+                    if (isReasonTurn)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed:
+                              _reasonPlayback.isPlaying
+                                  ? null
+                                  : () => unawaited(
+                                    _reasonPlayback.playPeer(turn.role),
+                                  ),
+                          icon: const Icon(Icons.volume_up, size: 18),
+                          label: Text('听${turn.displayName}说'),
+                        ),
+                      ),
+                  ],
                 );
               },
             ),
@@ -1583,27 +1824,35 @@ class _LecturePageState extends State<LecturePage> {
                 ),
               ],
             ),
-          ] else if (_status == _LectureStatus.awaiting ||
-              _status == _LectureStatus.finished) ...[
+          ] else if (_status == _LectureStatus.awaiting) ...[
+            if (_reasonPlayback.hasQueue) ...[
+              const SizedBox(height: 12),
+              _ReasonPlaybackBar(playback: _reasonPlayback),
+            ],
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _onUnderstood,
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text('我懂了'),
+                    onPressed: _hintLoading ? null : _onRequestHint,
+                    icon: const Icon(Icons.lightbulb_outline),
+                    label: const Text('需要提示'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _onContinue,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('下一题'),
+                    onPressed: _onSubmit,
+                    icon: const Icon(Icons.mic_none),
+                    label: const Text('再讲一轮'),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(onPressed: _onContinue, child: const Text('下一题')),
             ),
           ],
         ],
@@ -1618,25 +1867,16 @@ class _LecturePageState extends State<LecturePage> {
             _status == _LectureStatus.error) &&
         !_canvasController.isEmpty;
     final submitting = _status == _LectureStatus.submitting;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.edit_outlined,
-              size: 20,
-              color: AppPalette.primary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '手写板 · 写出你的解题步骤',
-                style: Theme.of(context).textTheme.titleMedium,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            AnimatedBuilder(
+    return StudyPanel(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SectionHeader(
+            title: '手写白板',
+            subtitle: '像在草稿纸上一样写步骤，讲完后交给 AI 同伴追问。',
+            icon: Icons.edit_outlined,
+            action: AnimatedBuilder(
               animation: _canvasController,
               builder: (context, _) {
                 final count = _canvasController.collectStepIds().length;
@@ -1646,110 +1886,119 @@ class _LecturePageState extends State<LecturePage> {
                 );
               },
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: AnimatedBuilder(
-            animation: UserCosmeticsPrefs.instance,
-            builder:
-                (context, _) => HandCanvas(
-                  controller: _canvasController,
-                  penStyle: UserCosmeticsPrefs.instance.penStyle,
-                ),
           ),
-        ),
-        const SizedBox(height: 12),
-        // 第九轮：白板下方默认展示实时音频面板（替换第四轮的文字输入区）。
-        // 兜底情况下（_kShowLegacyTextInputByDefault=true 或 disconnected /
-        // permissionDenied / failed）才再展示文字输入区作为白板-only 兜底
-        // 提交的辅助。brief 第 9 节"默认不展示文字输入框，但允许白板-only
-        // 兜底提交"。
-        RealtimeAudioPanel(
-          state: _panelState,
-          onStart: _onStartLive,
-          onStop: _onStopLive,
-          onEndQuestion: _onEndLiveSession,
-          onManualPause: _onManualPause,
-          onFallbackSubmit: _onFallbackTextSubmit,
-          // 「讲题结束」按钮：只要正在听就允许学生主动收束当前语音段。
-          // 不再等待 ASR 字数，也不再根据静音自动触发。
-          canManualPause:
-              (_liveStatus == _LiveStatus.listening ||
-                  _liveStatus == _LiveStatus.paused),
-          shouldHighlightManualPause: false,
-          failureReason: _liveFailureReason,
-        ),
-        if (_debugOcr) ...[const SizedBox(height: 12), _buildDebugOcrPanel()],
-        if (_kShowLegacyTextInputByDefault ||
-            _liveStatus == _LiveStatus.disconnected ||
-            _liveStatus == _LiveStatus.permissionDenied ||
-            _liveStatus == _LiveStatus.failed) ...[
           const SizedBox(height: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 240),
-            child: SingleChildScrollView(
-              child: AnimatedBuilder(
-                animation: _canvasController,
-                builder: (context, _) => _buildSemanticInputsPanel(context),
-              ),
+          Expanded(
+            child: AnimatedBuilder(
+              animation: UserCosmeticsPrefs.instance,
+              builder:
+                  (context, _) => HandCanvas(
+                    controller: _canvasController,
+                    penStyle: UserCosmeticsPrefs.instance.penStyle,
+                  ),
             ),
           ),
-        ],
-        const SizedBox(height: 12),
-        AnimatedBuilder(
-          animation: _canvasController,
-          builder: (context, _) {
-            return Row(
-              children: [
-                OutlinedButton.icon(
-                  onPressed:
-                      _canvasController.canUndo && !submitting
-                          ? _canvasController.undo
-                          : null,
-                  icon: const Icon(Icons.undo),
-                  label: const Text('撤销'),
+          const SizedBox(height: 12),
+          // 第九轮：白板下方默认展示实时音频面板（替换第四轮的文字输入区）。
+          // 兜底情况下（_kShowLegacyTextInputByDefault=true 或 disconnected /
+          // permissionDenied / failed）才再展示文字输入区作为白板-only 兜底
+          // 提交的辅助。brief 第 9 节"默认不展示文字输入框，但允许白板-only
+          // 兜底提交"。
+          RealtimeAudioPanel(
+            state: _panelState,
+            onStart: _onStartLive,
+            onStop: _onStopLive,
+            onEndQuestion: _onEndLiveSession,
+            onManualPause: _onManualPause,
+            onFallbackSubmit: _onFallbackTextSubmit,
+            // 「讲题结束」按钮：只要正在听就允许学生主动收束当前语音段。
+            // 不再等待 ASR 字数，也不再根据静音自动触发。
+            canManualPause:
+                (_liveStatus == _LiveStatus.listening ||
+                    _liveStatus == _LiveStatus.paused),
+            shouldHighlightManualPause: false,
+            failureReason: _liveFailureReason,
+          ),
+          if (_debugOcr) ...[const SizedBox(height: 12), _buildDebugOcrPanel()],
+          if (_kShowLegacyTextInputByDefault ||
+              _liveStatus == _LiveStatus.disconnected ||
+              _liveStatus == _LiveStatus.permissionDenied ||
+              _liveStatus == _LiveStatus.failed) ...[
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 240),
+              child: SingleChildScrollView(
+                child: AnimatedBuilder(
+                  animation: _canvasController,
+                  builder: (context, _) => _buildSemanticInputsPanel(context),
                 ),
-                const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  onPressed:
-                      _canvasController.isEmpty || submitting
-                          ? null
-                          : _canvasController.clear,
-                  icon: const Icon(Icons.cleaning_services_outlined),
-                  label: const Text('清空'),
-                ),
-                const Spacer(),
-                // 第九轮：原"提交讲解"按钮降级为兜底入口，仅当 disconnected /
-                // permissionDenied / failed / 显式 fallback 模式下可见。
-                if (_kShowLegacyTextInputByDefault ||
-                    _liveStatus == _LiveStatus.disconnected ||
-                    _liveStatus == _LiveStatus.permissionDenied ||
-                    _liveStatus == _LiveStatus.failed)
-                  FilledButton.icon(
-                    onPressed: canSubmit && !submitting ? _onSubmit : null,
-                    icon:
-                        submitting
-                            ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                            : Icon(
-                              _status == _LectureStatus.error
-                                  ? Icons.replay
-                                  : Icons.send_outlined,
-                            ),
-                    label: Text(_submitLabel(submitting)),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          AnimatedBuilder(
+            animation: _canvasController,
+            builder: (context, _) {
+              return PrimaryActionBar(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed:
+                        _canvasController.isEmpty || submitting || _hintLoading
+                            ? null
+                            : _onRequestHint,
+                    icon: const Icon(Icons.lightbulb_outline),
+                    label: const Text('需要提示'),
                   ),
-              ],
-            );
-          },
-        ),
-      ],
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _canvasController.canUndo && !submitting
+                            ? _canvasController.undo
+                            : null,
+                    icon: const Icon(Icons.undo),
+                    label: const Text('撤销'),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _canvasController.isEmpty || submitting
+                            ? null
+                            : _canvasController.clear,
+                    icon: const Icon(Icons.cleaning_services_outlined),
+                    label: const Text('清空'),
+                  ),
+                  const Spacer(),
+                  // 第九轮：原"提交讲解"按钮降级为兜底入口，仅当 disconnected /
+                  // permissionDenied / failed / 显式 fallback 模式下可见。
+                  if (_kShowLegacyTextInputByDefault ||
+                      _liveStatus == _LiveStatus.disconnected ||
+                      _liveStatus == _LiveStatus.permissionDenied ||
+                      _liveStatus == _LiveStatus.failed)
+                    FilledButton.icon(
+                      onPressed: canSubmit && !submitting ? _onSubmit : null,
+                      icon:
+                          submitting
+                              ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                              : Icon(
+                                _status == _LectureStatus.error
+                                    ? Icons.replay
+                                    : Icons.send_outlined,
+                              ),
+                      label: Text(_submitLabel(submitting)),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -2622,6 +2871,97 @@ class _MasteryBadge extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
+      ),
+    );
+  }
+}
+
+/// P2：没听懂理由的 TTS 播放控制条。
+class _ReasonPlaybackBar extends StatelessWidget {
+  const _ReasonPlaybackBar({required this.playback});
+
+  final PeerReasonPlaybackService playback;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final current = playback.current;
+    final playing = playback.isPlaying;
+    final atEnd =
+        playback.currentIndex >= 0 &&
+        playback.currentIndex >= playback.queue.length - 1 &&
+        !playing;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        borderRadius: AppRadius.cardR,
+        border: Border.all(color: AppPalette.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '先听完同伴的疑问，再点「再讲一轮」补充说明。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppPalette.textSecondary,
+            ),
+          ),
+          if (playback.lastError != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              playback.lastError!,
+              style: theme.textTheme.bodySmall?.copyWith(color: AppPalette.error),
+            ),
+          ],
+          if (current != null && playing) ...[
+            const SizedBox(height: 6),
+            Text(
+              '正在播放：${current.displayName} 的理由（'
+              '${playback.currentIndex + 1}/${playback.queue.length}）',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppPalette.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ] else if (atEnd) ...[
+            const SizedBox(height: 6),
+            Text(
+              '理由已听完，可以开始再讲一轮。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF16A34A),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  onPressed:
+                      playing ? null : () => unawaited(playback.playAll()),
+                  icon: Icon(playing ? Icons.hourglass_top : Icons.playlist_play),
+                  label: Text(playing ? '播放中…' : '依次听取理由'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed:
+                      playing
+                          ? () => unawaited(playback.stop())
+                          : (playback.canPlayNext && !atEnd
+                              ? () => unawaited(playback.playNext())
+                              : null),
+                  child: Text(playing ? '停止' : '下一位'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

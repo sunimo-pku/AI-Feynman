@@ -29,8 +29,8 @@ from app.db import (
     ensure_student_profile,
 )
 from app.middleware.auth import decode_token
-from app.services.lecture_agent import generate_lecture_turns
-from app.services.lecture_agent_stream import generate_turn_events
+from app.services.peer_assessment_agent import generate_peer_assessments
+from app.services.teacher_agent import generate_teacher_hint, generate_teacher_summary
 from app.services.live_lecture_session import (
     EVT_ERROR,
     LiveLectureSession,
@@ -134,8 +134,9 @@ async def lecture_live(websocket: WebSocket) -> None:
                     event,
                     send=send,
                     recognize_fn=volc_recognize,
-                    lecture_agent_fn=generate_lecture_turns,
-                    stream_agent_fn=generate_turn_events,
+                    peer_assessment_fn=generate_peer_assessments,
+                    teacher_summary_fn=generate_teacher_summary,
+                    teacher_hint_fn=generate_teacher_hint,
                 )
             except Exception as e:  # noqa: BLE001
                 logger.exception("[lecture-live] handle_event 异常：%s", e)
@@ -222,11 +223,11 @@ def _persist_live_session_if_needed(
             section_id=session.section_id or "",
             question_id=session.question_id or "",
             question_prompt=session.question_prompt or "",
-            status="needs_explanation",
+            status=session.last_status or "needs_explanation",
             transcript_text=transcript,
             steps_json=dump_json(steps_payload),
             turns_json=dump_json(turns_payload),
-            mastery_delta=0,
+            mastery_delta=int(session.last_mastery_delta or 0),
             round_count=session.round_index,
             started_at=datetime.utcnow(),
             completed_at=datetime.utcnow(),
@@ -245,12 +246,14 @@ def _persist_live_session_if_needed(
                 )
                 .first()
             )
+            delta = int(session.last_mastery_delta or 0)
+            score_gain = max(8, delta * 8) if delta > 0 else 8
             if progress is None:
                 progress = LearningProgress(
                     student_id=profile.id,
                     section_id=session.section_id,
                     completed_rounds=1,
-                    mastery_score=8,
+                    mastery_score=min(100, score_gain),
                     last_practiced_at=datetime.utcnow(),
                     last_summary=transcript[:200],
                 )
@@ -260,7 +263,7 @@ def _persist_live_session_if_needed(
                     int(progress.completed_rounds or 0) + 1
                 )
                 progress.mastery_score = min(
-                    100, int(progress.mastery_score or 0) + 8
+                    100, int(progress.mastery_score or 0) + score_gain
                 )
                 progress.last_practiced_at = datetime.utcnow()
                 if transcript:

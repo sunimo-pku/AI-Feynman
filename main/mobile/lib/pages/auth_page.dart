@@ -28,10 +28,13 @@ class AuthPage extends StatefulWidget {
 
 enum AuthPageMode { login, register }
 
+const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
+
 class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   late final TabController _tabController;
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  String _selectedGrade = '八年级';
 
   bool _submitting = false;
   String? _errorMessage;
@@ -75,15 +78,17 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       _errorMessage = null;
     });
     final isLogin = _tabController.index == 0;
-    final result = isLogin
-        ? await AuthService.instance.login(
-            username: username,
-            password: password,
-          )
-        : await AuthService.instance.register(
-            username: username,
-            password: password,
-          );
+    final result =
+        isLogin
+            ? await AuthService.instance.login(
+              username: username,
+              password: password,
+            )
+            : await AuthService.instance.register(
+              username: username,
+              password: password,
+              grade: _selectedGrade,
+            );
     if (!mounted) return;
     setState(() => _submitting = false);
     if (!result.ok) {
@@ -123,10 +128,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                     labelColor: AppPalette.primary,
                     unselectedLabelColor: AppPalette.textSecondary,
                     indicatorColor: AppPalette.primary,
-                    tabs: const [
-                      Tab(text: '登录'),
-                      Tab(text: '注册'),
-                    ],
+                    tabs: const [Tab(text: '登录'), Tab(text: '注册')],
                   ),
                   const SizedBox(height: AppSpacing.moduleGap),
                   _Field(
@@ -141,6 +143,53 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                     label: '密码（≥ 6 位）',
                     obscure: true,
                     autofillHints: const [AutofillHints.password],
+                  ),
+                  AnimatedBuilder(
+                    animation: _tabController,
+                    builder: (context, _) {
+                      if (_tabController.index == 0) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: AppSpacing.itemGap),
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _selectedGrade,
+                          decoration: const InputDecoration(
+                            labelText: '当前年级',
+                            filled: true,
+                            fillColor: AppPalette.surface,
+                            border: OutlineInputBorder(
+                              borderRadius: AppRadius.buttonR,
+                              borderSide: BorderSide(color: AppPalette.outline),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: AppRadius.buttonR,
+                              borderSide: BorderSide(color: AppPalette.outline),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: AppRadius.buttonR,
+                              borderSide: BorderSide(
+                                color: AppPalette.primary,
+                                width: 1.6,
+                              ),
+                            ),
+                          ),
+                          items:
+                              _gradeOptions
+                                  .map(
+                                    (grade) => DropdownMenuItem(
+                                      value: grade,
+                                      child: Text(grade),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged:
+                              (value) => setState(
+                                () => _selectedGrade = value ?? _selectedGrade,
+                              ),
+                        ),
+                      );
+                    },
                   ),
                   if (_errorMessage != null) ...[
                     const SizedBox(height: AppSpacing.itemGap),
@@ -166,16 +215,17 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                   const SizedBox(height: AppSpacing.moduleGap),
                   FilledButton.icon(
                     onPressed: _submitting ? null : _onSubmit,
-                    icon: _submitting
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.lock_open_outlined, size: 16),
+                    icon:
+                        _submitting
+                            ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                            : const Icon(Icons.lock_open_outlined, size: 16),
                     label: Text(_tabController.index == 0 ? '登录' : '注册并登录'),
                   ),
                   const SizedBox(height: AppSpacing.tightGap),
@@ -215,22 +265,16 @@ class _AuthHeader extends StatelessWidget {
               color: AppPalette.primary.withValues(alpha: 0.10),
               borderRadius: AppRadius.buttonR,
             ),
-            child: const Icon(
-              Icons.school_outlined,
-              color: AppPalette.primary,
-            ),
+            child: const Icon(Icons.school_outlined, color: AppPalette.primary),
           ),
           const SizedBox(height: 16),
-          Text(
-            '先登录，再开始讲题',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
+          Text('先登录，再开始讲题', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(
             '登录后会保存练习进度、讲题回顾和家长端报告。换设备学习时，也能继续接上上一次的记录。',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppPalette.textSecondary,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppPalette.textSecondary),
           ),
         ],
       ),

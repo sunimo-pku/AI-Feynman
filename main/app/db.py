@@ -255,18 +255,25 @@ class LeaderboardSnapshot(Base):
 class BountyAttempt(Base):
     __tablename__ = "bounty_attempts"
     __table_args__ = (
-        UniqueConstraint("student_id", "challenge_id", name="uq_bounty_student_challenge"),
+        UniqueConstraint("student_id", "date_key", "challenge_id", name="uq_bounty_student_date_challenge"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    date_key = Column(String(16), default="", index=True)
     challenge_id = Column(String(64), nullable=False, index=True)
     section_id = Column(String(64), nullable=False, index=True)
     circled_correctly = Column(Integer, default=0)
+    selected_box_json = Column(Text, default="{}")
+    iou_score = Column(Float, default=0)
+    explanation_score = Column(Integer, default=0)
+    feedback_json = Column(Text, default="{}")
+    attempt_count = Column(Integer, default=0)
     transcript_text = Column(Text, default="")
     crystal_reward = Column(Integer, default=0)
     power_reward = Column(Integer, default=0)
-    completed_at = Column(DateTime, default=datetime.utcnow)
+    reward_granted_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
 
 
 class CrystalWallet(Base):
@@ -387,6 +394,26 @@ def _run_lightweight_migrations() -> None:
                     logger.info("[db-migrate] added student_profiles.%s", col)
                 except Exception as e:  # noqa: BLE001
                     logger.warning("[db-migrate] add student_profiles.%s failed: %s", col, e)
+
+        bounty_cols = _columns("bounty_attempts")
+        bounty_additions = {
+            "date_key": "ALTER TABLE bounty_attempts ADD COLUMN date_key VARCHAR(16) DEFAULT ''",
+            "selected_box_json": "ALTER TABLE bounty_attempts ADD COLUMN selected_box_json TEXT DEFAULT '{}'",
+            "iou_score": "ALTER TABLE bounty_attempts ADD COLUMN iou_score FLOAT DEFAULT 0",
+            "explanation_score": "ALTER TABLE bounty_attempts ADD COLUMN explanation_score INTEGER DEFAULT 0",
+            "feedback_json": "ALTER TABLE bounty_attempts ADD COLUMN feedback_json TEXT DEFAULT '{}'",
+            "attempt_count": "ALTER TABLE bounty_attempts ADD COLUMN attempt_count INTEGER DEFAULT 0",
+            "reward_granted_at": "ALTER TABLE bounty_attempts ADD COLUMN reward_granted_at DATETIME",
+        }
+        if bounty_cols:
+            for col, sql in bounty_additions.items():
+                if col in bounty_cols:
+                    continue
+                try:
+                    conn.execute(text(sql))
+                    logger.info("[db-migrate] added bounty_attempts.%s", col)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[db-migrate] add bounty_attempts.%s failed: %s", col, e)
 
         try:
             conn.commit()
