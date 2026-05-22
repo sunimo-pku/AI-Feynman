@@ -77,6 +77,11 @@ class BountyStepQuizBar extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 height: 1.4,
               ),
+              formulaStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppPalette.primary,
+                fontWeight: FontWeight.w700,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: 8),
             Wrap(

@@ -228,6 +228,10 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                       FormulaText(
                         challenge.prompt,
                         style: Theme.of(ctx).textTheme.titleMedium,
+                        formulaStyle: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                          color: AppPalette.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                   ),
@@ -412,12 +416,18 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
           child: Row(
             children: [
               Expanded(
-                child: Text(
+                child: FormulaText(
                   challenge.prompt,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
+                    height: 1.4,
+                  ),
+                  formulaStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppPalette.primary,
+                    fontWeight: FontWeight.w700,
+                    height: 1.4,
                   ),
                 ),
               ),

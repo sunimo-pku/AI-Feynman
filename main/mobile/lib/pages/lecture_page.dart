@@ -198,6 +198,9 @@ class _LecturePageState extends State<LecturePage> {
   /// 右侧头像轨：当前展开全文追问气泡的角色（再点一次收起）。
   AgentRole? _expandedPeerBubble;
 
+  /// 讲题白板工具：画笔 / 橡皮擦。
+  CanvasDrawMode _canvasDrawMode = CanvasDrawMode.pen;
+
   static const int _maxHistoryItems = 6;
 
   // —— 第九轮：实时双工讲题相关状态 ————————————————————————————————————
@@ -998,12 +1001,6 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   Future<void> _onRequestHint() async {
-    if (_canvasController.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('先在白板上写一点思路，再向李老师要提示吧。')),
-      );
-      return;
-    }
     if (_hintLoading || _status == _LectureStatus.submitting) {
       return;
     }
@@ -1147,6 +1144,7 @@ class _LecturePageState extends State<LecturePage> {
     _reviewSavedForCurrentRound = false;
     _peerAssessments = const [];
     _expandedPeerBubble = null;
+    _canvasDrawMode = CanvasDrawMode.pen;
     unawaited(_reasonPlayback.stop());
     _reasonPlayback.clearQueue();
     _cancelThinkingWatchdog();
@@ -1761,6 +1759,13 @@ class _LecturePageState extends State<LecturePage> {
         (t) => t.role == AgentRole.teacher && t.text.trim().isNotEmpty,
       );
 
+  /// 点「开始讲题」后才允许落笔；思考 / AI 发言时仍可补写。
+  bool get _canDrawOnCanvas =>
+      _liveStatus == _LiveStatus.listening ||
+      _liveStatus == _LiveStatus.paused ||
+      _liveStatus == _LiveStatus.thinking ||
+      _liveStatus == _LiveStatus.aiSpeaking;
+
   PeerInlineMessage? _peerInlineMessage(AgentRole role) {
     final assessment = _assessmentFor(role);
     if (assessment != null &&
@@ -1790,12 +1795,15 @@ class _LecturePageState extends State<LecturePage> {
       return;
     }
     setState(() {
-      _expandedPeerBubble = _expandedPeerBubble == role ? null : role;
+      if (_expandedPeerBubble == role) {
+        _expandedPeerBubble = null;
+      } else {
+        _expandedPeerBubble = role;
+      }
     });
   }
 
   void _showQuestionSheet() {
-    final total = _questions.isEmpty ? 1 : _questions.length;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1826,11 +1834,7 @@ class _LecturePageState extends State<LecturePage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      _QuestionCard(
-                        question: _question,
-                        order: _questionIndex + 1,
-                        total: total,
-                      ),
+                      _QuestionCard(question: _question),
                     ],
                   ),
                 ),
@@ -2000,6 +2004,10 @@ class _LecturePageState extends State<LecturePage> {
                     penStyle: UserCosmeticsPrefs.instance.penStyle,
                     backgroundColor: AppPalette.surface,
                     edgeToEdge: true,
+                    drawingEnabled: _canDrawOnCanvas,
+                    stylusOnly: true,
+                    drawMode: _canvasDrawMode,
+                    twoFingerPanEnabled: true,
                   ),
             ),
           ),
@@ -2016,19 +2024,22 @@ class _LecturePageState extends State<LecturePage> {
             child: AnimatedBuilder(
               animation: _reasonPlayback,
               builder:
-                  (context, _) => LecturePeerRail(
-                    assessments: _peerAssessments,
-                    playingRole: _reasonPlayback.playingRole,
-                    activeSpeakingRole: _activeSpeakingRole,
-                    teacherHasMessage: _teacherHasMessage,
-                    expandedRole: _expandedPeerBubble,
-                    messageForRole: _peerInlineMessage,
-                    onAvatarTap: _onPeerAvatarTap,
-                    onPlayAudio:
-                        (role) => unawaited(_reasonPlayback.playPeer(role)),
-                    onHighlightSteps: (_, ids) {
-                      _canvasController.setHighlight(ids);
-                    },
+                  (context, _) => SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: LecturePeerRail(
+                      assessments: _peerAssessments,
+                      playingRole: _reasonPlayback.playingRole,
+                      activeSpeakingRole: _activeSpeakingRole,
+                      teacherHasMessage: _teacherHasMessage,
+                      expandedRole: _expandedPeerBubble,
+                      messageForRole: _peerInlineMessage,
+                      onAvatarTap: _onPeerAvatarTap,
+                      onPlayAudio:
+                          (role) => unawaited(_reasonPlayback.playPeer(role)),
+                      onHighlightSteps: (_, ids) {
+                        _canvasController.setHighlight(ids);
+                      },
+                    ),
                   ),
             ),
           ),
@@ -2147,9 +2158,6 @@ class _LecturePageState extends State<LecturePage> {
               padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
               child: _QuestionCard(
                 question: _question,
-                order: order,
-                total: total,
-                compactHeader: true,
               ),
             ),
           ),
@@ -2245,21 +2253,41 @@ class _LecturePageState extends State<LecturePage> {
         break;
     }
 
+    final canvasToolsEnabled = _canDrawOnCanvas && !submitting;
+
     orbs.addAll([
       LectureOrbButton(
         icon: Icons.lightbulb_outline,
         tooltip: '需要提示',
         onPressed:
-            _canvasController.isEmpty || submitting || _hintLoading
+            submitting || _hintLoading || _liveStatus == _LiveStatus.thinking
                 ? null
                 : _onRequestHint,
         loading: _hintLoading,
       ),
       LectureOrbButton(
+        icon: Icons.edit_outlined,
+        tooltip: '画笔',
+        filled: _canvasDrawMode == CanvasDrawMode.pen,
+        onPressed:
+            canvasToolsEnabled
+                ? () => setState(() => _canvasDrawMode = CanvasDrawMode.pen)
+                : null,
+      ),
+      LectureOrbButton(
+        icon: Icons.auto_fix_off_outlined,
+        tooltip: '橡皮擦',
+        filled: _canvasDrawMode == CanvasDrawMode.eraser,
+        onPressed:
+            canvasToolsEnabled
+                ? () => setState(() => _canvasDrawMode = CanvasDrawMode.eraser)
+                : null,
+      ),
+      LectureOrbButton(
         icon: Icons.undo,
         tooltip: '撤销',
         onPressed:
-            _canvasController.canUndo && !submitting
+            _canvasController.canUndo && canvasToolsEnabled
                 ? _canvasController.undo
                 : null,
       ),
@@ -2267,7 +2295,7 @@ class _LecturePageState extends State<LecturePage> {
         icon: Icons.cleaning_services_outlined,
         tooltip: '清空',
         onPressed:
-            _canvasController.isEmpty || submitting
+            _canvasController.isEmpty || !canvasToolsEnabled
                 ? null
                 : _canvasController.clear,
       ),
@@ -2775,31 +2803,13 @@ class _MasteryDeltaRow extends StatelessWidget {
 }
 
 class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({
-    required this.question,
-    required this.order,
-    required this.total,
-    this.compactHeader = false,
-  });
+  const _QuestionCard({required this.question});
 
   final LectureQuestion question;
-
-  /// 当前题在本节的序号（从 1 开始）。
-  final int order;
-
-  /// 本节总题数。
-  final int total;
-
-  /// 顶部题面坞已展示小节标题时，卡片内不再重复一行标题。
-  final bool compactHeader;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final difficultyLabel = MockLectureRepository.instance.difficultyLabel(
-      question.difficulty,
-    );
-    final tags = question.tags.take(3).toList(growable: false);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -2811,40 +2821,6 @@ class _QuestionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!compactHeader) ...[
-            Row(
-              children: [
-                const Icon(
-                  Icons.menu_book_outlined,
-                  size: 16,
-                  color: AppPalette.primary,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    '${question.sectionLabel} · 第 $order / $total 题',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: AppPalette.primary,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _DifficultyChip(
-                label: difficultyLabel,
-                level: question.difficulty,
-              ),
-              for (final t in tags) _TagChip(label: t),
-            ],
-          ),
-          const SizedBox(height: 10),
           FormulaText(
             question.prompt,
             style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
@@ -2858,16 +2834,6 @@ class _QuestionCard extends StatelessWidget {
             const SizedBox(height: 12),
             _QuestionImage(image: question.image!),
           ],
-          const SizedBox(height: 8),
-          FormulaText(
-            question.hint,
-            style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
-            formulaStyle: theme.textTheme.bodySmall?.copyWith(
-              color: AppPalette.primaryAccent,
-              fontWeight: FontWeight.w600,
-              height: 1.4,
-            ),
-          ),
         ],
       ),
     );
@@ -2944,73 +2910,6 @@ class _QuestionImage extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-/// 难度 chip：基础（湖青）/ 巩固（深蓝）/ 挑战（警示红）。
-///
-/// 配色范围严格限定在 `AppPalette` 已有的几个柔和色，**不**引入红橙渐变
-/// 等"游戏化徽章"风（见 `MOBILE_STYLE.md` 第 1 节远离清单）。
-class _DifficultyChip extends StatelessWidget {
-  const _DifficultyChip({required this.label, required this.level});
-
-  final String label;
-  final int level;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (level) {
-      3 => AppPalette.error,
-      2 => AppPalette.primary,
-      _ => AppPalette.primaryAccent,
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: const BorderRadius.all(Radius.circular(AppRadius.chip)),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-/// 知识标签 chip：纯文本、柔和湖青描边，仅前端展示用。
-///
-/// 与 `home_page.dart` 里的 `_Tag` 风格一致，但本控件刻意**不**复用 ——
-/// 那个是 home page 私有的，跨文件引用会变成隐性公共契约，得不偿失。
-class _TagChip extends StatelessWidget {
-  const _TagChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    const color = AppPalette.primaryAccent;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: const BorderRadius.all(Radius.circular(AppRadius.chip)),
-        border: Border.all(color: color.withValues(alpha: 0.32)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
       ),
     );
   }

@@ -2,9 +2,13 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+
+/// 手写板工具：画笔 / 橡皮擦。
+enum CanvasDrawMode { pen, eraser }
 
 /// 单个 step 的笔迹信息，供后端 `boundingBox` 占位使用。
 class HandCanvasStepInfo {
@@ -145,6 +149,25 @@ class HandCanvasController extends ChangeNotifier {
     _bump();
   }
 
+  /// 橡皮擦：移除与 [point] 距离在 [radius] 内的笔画。
+  void eraseAt(Offset point, {double radius = 24}) {
+    if (_strokes.isEmpty) return;
+    final r2 = radius * radius;
+    _strokes.removeWhere((stroke) {
+      for (final p in stroke.points) {
+        final dx = p.dx - point.dx;
+        final dy = p.dy - point.dy;
+        if (dx * dx + dy * dy <= r2) return true;
+      }
+      return stroke.bounds.inflate(radius).contains(point);
+    });
+    if (_strokes.isEmpty) {
+      _nextStepIndex = 1;
+      _lastPointerAt = null;
+    }
+    _bump();
+  }
+
   // —— 以下方法仅供 HandCanvas 内部调用 ——
 
   void _beginStroke(Offset point, DateTime now) {
@@ -181,7 +204,7 @@ class HandCanvasController extends ChangeNotifier {
 /// 平板手写板。
 ///
 /// * 默认笔色 `#3B82F6`，圆头，3.0dp。
-/// * 多点触控仅识别第一根手指（防误触）。
+/// * [stylusOnly] 时仅接受电容笔，手指用于双指平移。
 /// * 用 `RepaintBoundary` 与左侧讨论区做重绘隔离，符合 `MOBILE_STYLE.md` §4.2。
 class HandCanvas extends StatefulWidget {
   const HandCanvas({
@@ -190,6 +213,10 @@ class HandCanvas extends StatefulWidget {
     this.backgroundColor = AppPalette.canvas,
     this.penStyle = 'default',
     this.edgeToEdge = false,
+    this.drawingEnabled = true,
+    this.stylusOnly = false,
+    this.drawMode = CanvasDrawMode.pen,
+    this.twoFingerPanEnabled = false,
   });
 
   final HandCanvasController controller;
@@ -199,12 +226,28 @@ class HandCanvas extends StatefulWidget {
   /// 讲题页全屏白板：去掉卡片圆角与粗边框，占满父级区域。
   final bool edgeToEdge;
 
+  /// 为 false 时不接受书写 / 橡皮擦（仍可双指平移）。
+  final bool drawingEnabled;
+
+  /// 仅电容笔书写；手指不参与落笔（双指仍可平移）。
+  final bool stylusOnly;
+
+  final CanvasDrawMode drawMode;
+
+  /// 双指拖动平移画布视口。
+  final bool twoFingerPanEnabled;
+
   @override
   State<HandCanvas> createState() => _HandCanvasState();
 }
 
 class _HandCanvasState extends State<HandCanvas> {
-  int? _activePointer;
+  int? _drawPointer;
+  final Map<int, Offset> _pointers = <int, Offset>{};
+  Offset? _lastPanFocal;
+  Offset _panOffset = Offset.zero;
+
+  static const double _eraserRadius = 24;
 
   @override
   Widget build(BuildContext context) {
@@ -226,44 +269,131 @@ class _HandCanvasState extends State<HandCanvas> {
           onPointerUp: _onPointerUp,
           onPointerCancel: _onPointerCancel,
           behavior: HitTestBehavior.opaque,
-          child: AnimatedBuilder(
-            animation: widget.controller,
-            builder: (context, _) {
-              return CustomPaint(
-                painter: _HandCanvasPainter(
-                  strokes: widget.controller._strokes,
-                  highlight: widget.controller._highlight,
-                  version: widget.controller._version,
-                  penStyle: widget.penStyle,
-                ),
-                size: Size.infinite,
-              );
-            },
+          child: Transform.translate(
+            offset: _panOffset,
+            child: AnimatedBuilder(
+              animation: widget.controller,
+              builder: (context, _) {
+                return CustomPaint(
+                  painter: _HandCanvasPainter(
+                    strokes: widget.controller._strokes,
+                    highlight: widget.controller._highlight,
+                    version: widget.controller._version,
+                    penStyle: widget.penStyle,
+                    eraserMode: widget.drawMode == CanvasDrawMode.eraser,
+                    eraserAt: _drawPointer != null && widget.drawMode == CanvasDrawMode.eraser
+                        ? _pointers[_drawPointer]
+                        : null,
+                  ),
+                  size: Size.infinite,
+                );
+              },
+            ),
           ),
         ),
       ),
     );
   }
 
+  Offset _toCanvasSpace(Offset local) => local - _panOffset;
+
+  bool _isDrawingTool(PointerDownEvent event) {
+    if (!widget.drawingEnabled) return false;
+    if (widget.stylusOnly && !_isStylus(event)) return false;
+    return true;
+  }
+
+  bool _isStylus(PointerEvent event) {
+    if (event.kind == ui.PointerDeviceKind.stylus ||
+        event.kind == ui.PointerDeviceKind.invertedStylus) {
+      return true;
+    }
+    // 桌面调试时允许鼠标落笔，真机仍只认电容笔。
+    return kDebugMode && event.kind == ui.PointerDeviceKind.mouse;
+  }
+
   void _onPointerDown(PointerDownEvent event) {
-    if (_activePointer != null) return;
-    _activePointer = event.pointer;
-    widget.controller._beginStroke(event.localPosition, DateTime.now());
+    _pointers[event.pointer] = event.localPosition;
+
+    if (widget.twoFingerPanEnabled && _pointers.length >= 2) {
+      _cancelDraw();
+      _lastPanFocal = _focalPoint();
+      return;
+    }
+
+    if (!_isDrawingTool(event)) return;
+    if (_pointers.length > 1) return;
+
+    _drawPointer = event.pointer;
+    final point = _toCanvasSpace(event.localPosition);
+
+    if (widget.drawMode == CanvasDrawMode.eraser) {
+      widget.controller.eraseAt(point, radius: _eraserRadius);
+      return;
+    }
+
+    widget.controller._beginStroke(point, DateTime.now());
   }
 
   void _onPointerMove(PointerMoveEvent event) {
-    if (_activePointer != event.pointer) return;
-    widget.controller._extendStroke(event.localPosition);
+    _pointers[event.pointer] = event.localPosition;
+
+    if (widget.twoFingerPanEnabled && _pointers.length >= 2) {
+      final focal = _focalPoint();
+      if (_lastPanFocal != null) {
+        setState(() {
+          _panOffset += focal - _lastPanFocal!;
+        });
+      }
+      _lastPanFocal = focal;
+      return;
+    }
+
+    if (_drawPointer != event.pointer) return;
+
+    final point = _toCanvasSpace(event.localPosition);
+    if (widget.drawMode == CanvasDrawMode.eraser) {
+      widget.controller.eraseAt(point, radius: _eraserRadius);
+      return;
+    }
+
+    widget.controller._extendStroke(point);
   }
 
   void _onPointerUp(PointerUpEvent event) {
-    if (_activePointer != event.pointer) return;
-    _activePointer = null;
+    _pointers.remove(event.pointer);
+    if (_pointers.length < 2) {
+      _lastPanFocal = null;
+    }
+    if (_drawPointer == event.pointer) {
+      _drawPointer = null;
+    }
   }
 
   void _onPointerCancel(PointerCancelEvent event) {
-    if (_activePointer != event.pointer) return;
-    _activePointer = null;
+    _pointers.remove(event.pointer);
+    if (_pointers.length < 2) {
+      _lastPanFocal = null;
+    }
+    if (_drawPointer == event.pointer) {
+      _drawPointer = null;
+    }
+  }
+
+  void _cancelDraw() {
+    _drawPointer = null;
+  }
+
+  Offset _focalPoint() {
+    if (_pointers.isEmpty) return Offset.zero;
+    var x = 0.0;
+    var y = 0.0;
+    for (final p in _pointers.values) {
+      x += p.dx;
+      y += p.dy;
+    }
+    final n = _pointers.length;
+    return Offset(x / n, y / n);
   }
 }
 
@@ -273,12 +403,16 @@ class _HandCanvasPainter extends CustomPainter {
     required this.highlight,
     required this.version,
     required this.penStyle,
+    required this.eraserMode,
+    this.eraserAt,
   });
 
   final List<_Stroke> strokes;
   final Set<String> highlight;
   final int version;
   final String penStyle;
+  final bool eraserMode;
+  final Offset? eraserAt;
 
   static const double _baseStrokeWidth = 3.0;
   static const double _highlightStrokeWidth = 4.0;
@@ -340,6 +474,14 @@ class _HandCanvasPainter extends CustomPainter {
       }
       canvas.drawPath(path, paint);
     }
+
+    if (eraserMode && eraserAt != null) {
+      final eraserPaint = Paint()
+        ..color = AppPalette.outline.withValues(alpha: 0.45)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      canvas.drawCircle(eraserAt!, 24, eraserPaint);
+    }
   }
 
   /// 浅淡的水平参考线，模仿练习本网格。
@@ -359,7 +501,9 @@ class _HandCanvasPainter extends CustomPainter {
   bool shouldRepaint(covariant _HandCanvasPainter old) {
     return old.version != version ||
         old.highlight != highlight ||
-        old.penStyle != penStyle;
+        old.penStyle != penStyle ||
+        old.eraserMode != eraserMode ||
+        old.eraserAt != eraserAt;
   }
 
   static Color _colorForPenStyle(String style) {

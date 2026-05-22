@@ -14,12 +14,16 @@ class FormulaText extends StatelessWidget {
     this.style,
     this.formulaStyle,
     this.textAlign,
+    this.maxLines,
+    this.overflow,
   });
 
   final String source;
   final TextStyle? style;
   final TextStyle? formulaStyle;
   final TextAlign? textAlign;
+  final int? maxLines;
+  final TextOverflow? overflow;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +38,13 @@ class FormulaText extends StatelessWidget {
 
     final normalized = _normalizeDelimiters(source);
     if (!_looksLikeFormula(normalized)) {
-      return Text(normalized, style: base, textAlign: textAlign);
+      return Text(
+        normalized,
+        style: base,
+        textAlign: textAlign,
+        maxLines: maxLines,
+        overflow: overflow,
+      );
     }
     if (!normalized.contains(r'$') && normalized.contains('\\')) {
       return RepaintBoundary(
@@ -43,6 +53,8 @@ class FormulaText extends StatelessWidget {
     }
     return RepaintBoundary(
       child: RichText(
+        maxLines: maxLines,
+        overflow: overflow ?? TextOverflow.clip,
         text: TextSpan(style: base, children: _buildSpans(normalized, base, formula)),
         textAlign: textAlign ?? TextAlign.start,
       ),

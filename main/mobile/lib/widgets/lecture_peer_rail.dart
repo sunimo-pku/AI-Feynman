@@ -20,7 +20,7 @@ class PeerInlineMessage {
 
 /// 讲题页右侧四人头像轨：小明 / 大雄 / 班长 / 李老师。
 ///
-/// 有追问/发言时，在头像左侧显示内联气泡（默认缩略两行，点击展开全文）。
+/// 有追问时仅在头像旁显示「有话要说」；点击头像展开全文，同时收起其它人。
 class LecturePeerRail extends StatelessWidget {
   const LecturePeerRail({
     super.key,
@@ -130,23 +130,29 @@ class _PeerRailRow extends StatelessWidget {
     };
 
     final msg = message;
-    final showBubble = msg != null && msg.text.trim().isNotEmpty;
+    final hasMessage = msg != null && msg.text.trim().isNotEmpty;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        if (showBubble) ...[
+        if (hasMessage && isExpanded) ...[
           _InlinePeerBubble(
             palette: palette,
             message: msg,
-            expanded: isExpanded,
-            onToggle: onAvatarTap,
+            onCollapse: onAvatarTap,
             onPlay: msg.showPlay ? onPlayAudio : null,
             onHighlight:
                 msg.highlightStepIds.isNotEmpty ? onHighlightSteps : null,
           ),
           const SizedBox(width: 8),
+        ] else if (hasMessage && !isExpanded) ...[
+          _PendingMessageChip(
+            label: palette.label,
+            accent: palette.accent,
+            onTap: onAvatarTap,
+          ),
+          const SizedBox(width: 6),
         ],
         GestureDetector(
           onTap: onAvatarTap,
@@ -162,34 +168,70 @@ class _PeerRailRow extends StatelessWidget {
   }
 }
 
-/// 头像左侧内联气泡：默认最多 2 行，点击切换展开/收起。
+/// 未展开时：轻量「有话要说」入口，不占缩略气泡高度。
+class _PendingMessageChip extends StatelessWidget {
+  const _PendingMessageChip({
+    required this.label,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppPalette.surface.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: accent.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.chat_bubble_outline, size: 14, color: accent),
+              const SizedBox(width: 4),
+              Text(
+                '有话要说',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 头像左侧展开气泡：全文 + 可选操作。
 class _InlinePeerBubble extends StatelessWidget {
   const _InlinePeerBubble({
     required this.palette,
     required this.message,
-    required this.expanded,
-    required this.onToggle,
+    required this.onCollapse,
     this.onPlay,
     this.onHighlight,
   });
 
   final _PeerPalette palette;
   final PeerInlineMessage message;
-  final bool expanded;
-  final VoidCallback onToggle;
+  final VoidCallback onCollapse;
   final VoidCallback? onPlay;
   final void Function(List<String> stepIds)? onHighlight;
 
   static const double _maxWidth = 200;
-  static const int _collapsedLines = 2;
-
-  static String _plainPreview(String raw) {
-    return raw
-        .replaceAll(RegExp(r'\$\$?'), '')
-        .replaceAll(RegExp(r'\\[a-zA-Z]+(\{[^}]*\})?'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
+  static const double _maxTextHeight = 180;
 
   @override
   Widget build(BuildContext context) {
@@ -197,7 +239,7 @@ class _InlinePeerBubble extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onToggle,
+        onTap: onCollapse,
         borderRadius: BorderRadius.circular(14),
         child: Container(
           constraints: const BoxConstraints(maxWidth: _maxWidth),
@@ -229,30 +271,29 @@ class _InlinePeerBubble extends StatelessWidget {
                   ),
                   const Spacer(),
                   Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
+                    Icons.expand_less,
                     size: 16,
                     color: AppPalette.textSecondary,
                   ),
                 ],
               ),
               const SizedBox(height: 4),
-              expanded
-                  ? FormulaText(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: _maxTextHeight),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: FormulaText(
                     message.text,
                     style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
                     formulaStyle: theme.textTheme.bodySmall?.copyWith(
                       color: palette.accent,
                       fontWeight: FontWeight.w600,
                     ),
-                  )
-                  : Text(
-                    _plainPreview(message.text),
-                    maxLines: _collapsedLines,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
                   ),
-              if (expanded && (onPlay != null || onHighlight != null)) ...[
-                const SizedBox(height: 6),
+                ),
+              ),
+              if (onPlay != null || onHighlight != null) ...[
+                const SizedBox(height: 4),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

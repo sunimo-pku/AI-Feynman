@@ -849,13 +849,6 @@ class LiveLectureSession:
                 "message": "thinking_in_progress",
             })
             return
-        if not self.latest_steps:
-            await self._safe_send(send, {
-                "type": EVT_WARNING,
-                "sessionId": self.session_id,
-                "message": "no_steps_yet",
-            })
-            return
 
         self.is_thinking = True
         self._interrupt_event.clear()

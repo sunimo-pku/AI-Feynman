@@ -395,12 +395,6 @@ async def request_teacher_hint(
     req: LectureSubmitRequest,
     user: User | None = Depends(get_current_user),
 ) -> LectureHintResponse:
-    if not req.steps:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one handwriting step is required before requesting a hint.",
-        )
-
     steps_payload = [
         {
             "stepId": s.step_id,
