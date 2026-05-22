@@ -204,6 +204,97 @@ sectionId={section_id or "unknown"} questionId={question_id or "unknown"}
         return {"error": f"qwen_vl_error:{e}"}
 
 
+def recognize_ink_board(
+    *,
+    image_base64: str,
+    section_id: str = "",
+    question_id: str = "",
+    reference_hints: list[str] | None = None,
+) -> dict[str, Any]:
+    """Recognize the full whiteboard handwriting in one Qwen-VL call."""
+
+    if not Config.ALIYUN_API_KEY:
+        return {"error": "ALIYUN_API_KEY not configured"}
+    if not image_base64:
+        return {"error": "empty image"}
+
+    try:
+        raw = base64.b64decode(image_base64, validate=True)
+    except Exception:  # noqa: BLE001
+        return {"error": "invalid base64"}
+    if len(raw) < _MIN_INK_IMAGE_BYTES:
+        return {"error": "image too small"}
+
+    hints = [h.strip() for h in (reference_hints or []) if isinstance(h, str) and h.strip()]
+    hint_block = ""
+    if hints:
+        joined = "；".join(hints[:5])
+        hint_block = (
+            f"\n题目解题框架标签（仅供你对照题型，**不是**学生已写内容）：{joined}"
+        )
+
+    prompt = f"""
+你是初中数学手写识别助手。图片是学生讲题白板的**完整内容**（可能含多行算式与简短中文说明）。
+请识别学生**实际写了什么**，只输出 JSON 对象，不要 Markdown：
+{{
+  "latex": "尽量用 LaTeX 概括整板主要算式；若主要是中文步骤说明则留空",
+  "plainText": "用中文概括整板写了什么（按从上到下阅读顺序）",
+  "confidence": 0.0
+}}
+规则：
+- 只认图片里的真实笔迹，禁止编造。
+- 看不清、空白或无法辨认时 latex/plainText 留空，confidence <= 0.2。
+- 不要把解题框架标签当成识别结果。{hint_block}
+sectionId={section_id or "unknown"} questionId={question_id or "unknown"}
+""".strip()
+
+    client = OpenAI(api_key=Config.ALIYUN_API_KEY, base_url=Config.ALIYUN_BASE_URL)
+    data_url = f"data:image/png;base64,{image_base64}"
+    try:
+        resp = client.with_options(max_retries=0).chat.completions.create(
+            model=Config.QWEN_VL_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+            temperature=0.1,
+            max_tokens=512,
+            timeout=25.0,
+        )
+        raw_text = (resp.choices[0].message.content or "").strip()
+        parsed = _parse_json(raw_text)
+        latex = str(parsed.get("latex") or "").strip()
+        plain = str(parsed.get("plainText") or parsed.get("plain_text") or "").strip()
+        confidence = parsed.get("confidence", 0.0)
+        try:
+            conf = max(0.0, min(1.0, float(confidence)))
+        except (TypeError, ValueError):
+            conf = 0.55 if latex or plain else 0.0
+        if not latex and not plain:
+            conf = min(conf, 0.2)
+        logger.info(
+            "[qwen-vision] board section=%s conf=%.2f latex_len=%d plain_len=%d",
+            section_id,
+            conf,
+            len(latex),
+            len(plain),
+        )
+        return {
+            "latex": latex,
+            "plainText": plain,
+            "confidence": conf,
+            "source": "qwen_vl" if latex or plain else "empty",
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[qwen-vision] board failed section=%s: %s", section_id, e)
+        return {"error": f"qwen_vl_error:{e}"}
+
+
 def _parse_json(raw: str) -> dict[str, Any]:
     try:
         decoded = json.loads(raw)

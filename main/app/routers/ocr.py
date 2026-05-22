@@ -1,15 +1,12 @@
-"""白板 OCR / Ink Parser（第十轮 + Qwen-VL HWR）。
+"""白板 OCR / Ink Parser（整板 Qwen-VL HWR）。
 
-V1 没有真实专用 HWR 引擎时，**禁止**把题目的 `referenceSteps` 当成学生
-手写内容回填到 `latex` / `plainText`——否则同伴会把「写出已知」这类
-解题框架标签误说成「你白板上写了…」。
+V1 白板识别：**整板 PNG 一次 OCR**，不按 step 裁切多次识别。
+`referenceSteps` 仅作 Qwen-VL prompt 里的题型对照 hint，**不得**写入学生字段。
 
-- `mode=rule`（默认）：只上报 step 结构（stepId / strokeCount），识别
-  字段留空；
-- `mode=hwr`：有 `ALIYUN_API_KEY` 且 step 带 PNG `imageBase64` 时走
-  Qwen-VL 视觉识别；失败或未配置时返回空，不拿 referenceSteps 凑数；
-- 永远返回 200，失败 step 的 `latex` / `plainText` 留空，调用方继续走
-  「笔画数 + 音频」追问。
+- `mode=rule`（默认）：只上报 step 结构（stepId / strokeCount），识别字段留空；
+- `mode=hwr`：有 `boardImageBase64` + `ALIYUN_API_KEY` 时整板走 Qwen-VL；
+  失败或未配置时 `board` 留空，不拿 referenceSteps 凑数；
+- 永远返回 200，失败时 latex/plainText 留空，调用方继续走「笔画数 + 音频」。
 """
 
 from __future__ import annotations
@@ -20,7 +17,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.config import Config
-from app.services.qwen_vision import recognize_ink_step
+from app.services.qwen_vision import recognize_ink_board
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +37,7 @@ class InkRequest(BaseModel):
     section_id: str = Field(..., alias="sectionId", min_length=1, max_length=64)
     question_id: str = Field("", alias="questionId", max_length=64)
     mode: str = Field("rule", pattern="^(rule|hwr)$")
+    board_image_base64: str = Field("", alias="boardImageBase64")
     reference_steps: list[str] = Field(
         default_factory=list,
         alias="referenceSteps",
@@ -60,17 +58,25 @@ class InkStepOut(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class InkBoardOut(BaseModel):
+    latex: str = ""
+    plain_text: str = Field("", serialization_alias="plainText")
+    confidence: float = 0.0
+    source: str = "empty"
+    mode: str = "hwr"
+
+    model_config = {"populate_by_name": True}
+
+
 class InkResponse(BaseModel):
     steps: list[InkStepOut]
+    board: InkBoardOut | None = None
     section_id: str = Field(..., serialization_alias="sectionId")
 
     model_config = {"populate_by_name": True}
 
 
 def _plain_for(latex: str) -> str:
-    """非常粗的 LaTeX → 普通话翻译。仅给 LLM 做一手语义证据用，
-    学生 / 家长不会直接看到这段文字。"""
-
     if not latex:
         return ""
     s = latex
@@ -83,33 +89,36 @@ def _plain_for(latex: str) -> str:
     return s.strip()
 
 
-def _recognize_step_with_qwen(
+def _empty_board(mode: str = "hwr") -> InkBoardOut:
+    return InkBoardOut(
+        latex="",
+        plain_text="",
+        confidence=0.0,
+        source="empty",
+        mode=mode,
+    )
+
+
+def _recognize_board_with_qwen(
     *,
-    step: InkStepIn,
+    board_image_base64: str,
     section_id: str,
     question_id: str,
     reference_hints: list[str],
-) -> InkStepOut:
-    vision = recognize_ink_step(
-        image_base64=step.image_base64,
+) -> InkBoardOut:
+    vision = recognize_ink_board(
+        image_base64=board_image_base64,
         section_id=section_id,
         question_id=question_id,
         reference_hints=reference_hints,
     )
     if vision.get("error"):
         logger.info(
-            "[ocr-ink] qwen_vl_skip step=%s err=%s",
-            step.step_id,
+            "[ocr-ink] qwen_vl_board_skip section=%s err=%s",
+            section_id,
             vision.get("error"),
         )
-        return InkStepOut(
-            step_id=step.step_id,
-            latex="",
-            plain_text="",
-            confidence=0.0,
-            source="empty",
-            mode="hwr",
-        )
+        return _empty_board()
 
     latex = str(vision.get("latex") or "").strip()
     plain = str(vision.get("plainText") or vision.get("plain_text") or "").strip()
@@ -124,8 +133,7 @@ def _recognize_step_with_qwen(
         source = "empty"
         conf = 0.0
 
-    return InkStepOut(
-        step_id=step.step_id,
+    return InkBoardOut(
         latex=latex,
         plain_text=plain,
         confidence=conf,
@@ -134,83 +142,72 @@ def _recognize_step_with_qwen(
     )
 
 
-def recognize_steps(req: InkRequest) -> list[InkStepOut]:
-    """V1 OCR 主入口。
-
-    无真实 HWR 结果时一律返回空 latex/plainText。`referenceSteps` 仅作
-    Qwen-VL prompt 里的题型对照 hint，**不得**写入学生 step 字段。
-    """
-
-    out: list[InkStepOut] = []
-    if not req.steps:
-        return out
+def recognize_steps(req: InkRequest) -> tuple[list[InkStepOut], InkBoardOut | None]:
+    """V1 OCR 主入口：整板识别一次；steps 只回传结构字段。"""
 
     refs = [r.strip() for r in req.reference_steps if isinstance(r, str)]
     refs = [r for r in refs if r]
 
+    board: InkBoardOut | None = None
+    if (
+        req.mode == "hwr"
+        and req.board_image_base64.strip()
+        and Config.ALIYUN_API_KEY
+    ):
+        board = _recognize_board_with_qwen(
+            board_image_base64=req.board_image_base64.strip(),
+            section_id=req.section_id,
+            question_id=req.question_id,
+            reference_hints=refs,
+        )
+        logger.info(
+            "[ocr-ink] board section=%s source=%s conf=%.2f mode=hwr",
+            req.section_id,
+            board.source,
+            board.confidence,
+        )
+    elif req.mode == "hwr" and req.board_image_base64.strip() and not Config.ALIYUN_API_KEY:
+        logger.info("[ocr-ink] hwr_no_vision_key section=%s", req.section_id)
+        board = _empty_board()
+
+    out: list[InkStepOut] = []
     for step in req.steps:
-        latex = ""
-        plain = ""
-        source = "empty"
-        confidence = 0.0
-        mode = req.mode
-
-        if req.mode == "hwr" and step.image_base64 and Config.ALIYUN_API_KEY:
-            recognized = _recognize_step_with_qwen(
-                step=step,
-                section_id=req.section_id,
-                question_id=req.question_id,
-                reference_hints=refs,
-            )
-            out.append(recognized)
-            logger.info(
-                "[ocr-ink] step=%s source=%s conf=%.2f mode=%s",
-                step.step_id,
-                recognized.source,
-                recognized.confidence,
-                recognized.mode,
-            )
-            continue
-
-        if req.mode == "hwr" and step.image_base64 and not Config.ALIYUN_API_KEY:
-            logger.info(
-                "[ocr-ink] hwr_no_vision_key step=%s",
-                step.step_id,
-            )
-
         out.append(
             InkStepOut(
                 step_id=step.step_id,
-                latex=latex,
-                plain_text=plain,
-                confidence=confidence,
-                source=source,
-                mode=mode,
+                latex="",
+                plain_text="",
+                confidence=0.0,
+                source="empty",
+                mode=req.mode,
             )
         )
         logger.info(
-            "[ocr-ink] step=%s source=%s conf=%.2f mode=%s",
+            "[ocr-ink] step=%s source=empty conf=0.00 mode=%s strokes=%d",
             step.step_id,
-            source,
-            confidence,
-            mode,
+            req.mode,
+            step.stroke_count,
         )
-    return out
+    return out, board
 
 
 @router.post(
     "/ink",
     response_model=InkResponse,
     response_model_by_alias=True,
-    summary="白板 ink → 结构化 LaTeX/plainText（Qwen-VL HWR）",
+    summary="白板 ink → 整板 LaTeX/plainText（Qwen-VL HWR）",
 )
 async def ocr_ink(req: InkRequest) -> InkResponse:
-    steps_out = recognize_steps(req)
+    steps_out, board_out = recognize_steps(req)
     logger.info(
-        "[ocr-ink] section=%s steps_in=%d refs=%d steps_out=%d",
+        "[ocr-ink] section=%s steps_in=%d refs=%d board=%s",
         req.section_id,
         len(req.steps),
         len(req.reference_steps),
-        len(steps_out),
+        "yes" if board_out and board_out.source != "empty" else "no",
     )
-    return InkResponse(section_id=req.section_id, steps=steps_out)
+    return InkResponse(
+        section_id=req.section_id,
+        steps=steps_out,
+        board=board_out,
+    )

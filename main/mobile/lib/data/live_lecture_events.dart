@@ -345,11 +345,15 @@ class LiveClientEvent {
   static Map<String, dynamic> inkSnapshot({
     required String sessionId,
     required List<Map<String, dynamic>> steps,
+    String boardLatex = '',
+    String boardPlainText = '',
   }) {
     return {
       'type': LiveClientEventType.inkSnapshot.wire,
       'sessionId': sessionId,
       'steps': steps,
+      if (boardLatex.isNotEmpty) 'boardLatex': boardLatex,
+      if (boardPlainText.isNotEmpty) 'boardPlainText': boardPlainText,
     };
   }
 

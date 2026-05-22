@@ -158,6 +158,58 @@ class HandCanvasController extends ChangeNotifier {
     }
   }
 
+  /// 导出整板 PNG（所有笔迹一次裁切），供整板 Qwen-VL OCR。
+  Future<Uint8List?> exportBoardPng({String penStyle = 'default'}) async {
+    final allStrokes =
+        _strokes.where((s) => s.points.isNotEmpty).toList(growable: false);
+    if (allStrokes.isEmpty) return null;
+
+    var bounds = allStrokes.first.bounds;
+    for (final s in allStrokes.skip(1)) {
+      bounds = bounds.expandToInclude(s.bounds);
+    }
+    if (bounds == Rect.zero ||
+        !bounds.width.isFinite ||
+        !bounds.height.isFinite) {
+      return null;
+    }
+
+    const padding = 36.0;
+    const minDim = 160.0;
+    final contentW = math.max(bounds.width, 1.0);
+    final contentH = math.max(bounds.height, 1.0);
+    final width = math.max(minDim, contentW + padding * 2).ceil();
+    final height = math.max(minDim, contentH + padding * 2).ceil();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Paint()..color = AppPalette.canvas,
+    );
+    canvas.save();
+    canvas.translate(padding - bounds.left, padding - bounds.top);
+    _HandCanvasPainter.paintStepStrokes(
+      canvas: canvas,
+      strokes: allStrokes,
+      penStyle: penStyle,
+    );
+    canvas.restore();
+
+    final picture = recorder.endRecording();
+    try {
+      final image = await picture.toImage(width, height);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
   Set<String> get highlightStepIds => _highlight;
 
   void setHighlight(Iterable<String> stepIds) {

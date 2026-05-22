@@ -238,33 +238,62 @@ def _build_user_prompt(
     else:
         lines.append("【学生口述】（本轮学生没有有效语音转写；不要假装学生说过什么）")
     lines.append("")
-    lines.append(
-        "【学生白板步骤】下列 plainText / LaTeX 来自学生手敲说明或真实 OCR；"
-        "**不是**语音口述，也**不是**题目自带的 referenceSteps 解题框架。"
-        "描述时用「你写的」「白板上」；只有【学生口述】区块才能用「你说」。"
-        "若某步只有笔画数、无文字/LaTeX，只能说「这一步有手写」，"
-        "**禁止**猜测具体算式或把框架标签当成学生写的内容："
+    board_step = next(
+        (
+            s
+            for s in steps
+            if str(s.get("stepId") or s.get("step_id") or "").strip() == "board"
+        ),
+        None,
     )
-    lines.append("按提交顺序，每行一条：")
-    if not steps:
-        lines.append("- （学生未写任何步骤）")
+    board_latex = (board_step.get("latex") or "").strip() if board_step else ""
+    board_plain = (
+        (board_step.get("plainText") or board_step.get("plain_text") or "").strip()
+        if board_step
+        else ""
+    )
+    if board_latex or board_plain:
+        lines.append(
+            "【学生白板整板识别】下列内容来自整板 OCR（不是逐步拆开）；"
+            "描述时用「你白板上写的」："
+        )
+        if board_plain:
+            lines.append(f'- 整板说明="{board_plain}"')
+        if board_latex:
+            lines.append(f"- 整板 LaTeX=`{board_latex}`")
+        strokes = (board_step or {}).get("strokeCount") or (
+            board_step or {}
+        ).get("stroke_count")
+        if strokes:
+            lines.append(f"- 总笔画数={strokes}")
     else:
-        for s in steps:
-            sid = s.get("stepId") or s.get("step_id") or ""
-            latex = (s.get("latex") or "").strip()
-            plain = (s.get("plainText") or s.get("plain_text") or "").strip()
-            strokes = s.get("strokeCount") or s.get("stroke_count") or 0
-            descr_bits: list[str] = []
-            if plain:
-                descr_bits.append(f'步骤说明="{plain}"')
-            if latex:
-                descr_bits.append(f"步骤 LaTeX=`{latex}`")
-            if not plain and not latex:
-                descr_bits.append(
-                    "（仅有手写笔画，无文字/OCR；禁止猜测具体写了什么）"
-                )
-            descr_bits.append(f"笔画数={strokes}")
-            lines.append(f"- {sid}: " + "; ".join(descr_bits))
+        lines.append(
+            "【学生白板步骤】下列 plainText / LaTeX 来自学生手敲说明或真实 OCR；"
+            "**不是**语音口述，也**不是**题目自带的 referenceSteps 解题框架。"
+            "描述时用「你写的」「白板上」；只有【学生口述】区块才能用「你说」。"
+            "若某步只有笔画数、无文字/LaTeX，只能说「这一步有手写」，"
+            "**禁止**猜测具体算式或把框架标签当成学生写的内容："
+        )
+        lines.append("按提交顺序，每行一条：")
+        if not steps:
+            lines.append("- （学生未写任何步骤）")
+        else:
+            for s in steps:
+                sid = s.get("stepId") or s.get("step_id") or ""
+                latex = (s.get("latex") or "").strip()
+                plain = (s.get("plainText") or s.get("plain_text") or "").strip()
+                strokes = s.get("strokeCount") or s.get("stroke_count") or 0
+                descr_bits: list[str] = []
+                if plain:
+                    descr_bits.append(f'步骤说明="{plain}"')
+                if latex:
+                    descr_bits.append(f"步骤 LaTeX=`{latex}`")
+                if not plain and not latex:
+                    descr_bits.append(
+                        "（仅有手写笔画，无文字/OCR；禁止猜测具体写了什么）"
+                    )
+                descr_bits.append(f"笔画数={strokes}")
+                lines.append(f"- {sid}: " + "; ".join(descr_bits))
 
     lines.append("")
     lines.append(

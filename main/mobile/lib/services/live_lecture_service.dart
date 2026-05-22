@@ -298,64 +298,80 @@ class LiveLectureService {
     ));
   }
 
-  void sendInkSnapshot(List<Map<String, dynamic>> steps) {
+  void sendInkSnapshot(
+    List<Map<String, dynamic>> steps, {
+    String boardImageBase64 = '',
+  }) {
     if (!_isConnected || _sessionId.isEmpty) return;
-    // 第十轮：snapshot 上送之前先**异步**走一遍 /ocr/ink，把 latex/plainText
-    // 补进每个 step；OCR 失败不影响主流程，仍发空 latex 上送。
-    if (steps.isEmpty) {
+    if (steps.isEmpty && boardImageBase64.isEmpty) {
       _sendJson(LiveClientEvent.inkSnapshot(
         sessionId: _sessionId,
         steps: steps,
       ));
       return;
     }
-    unawaited(_enrichAndSendSnapshot(steps));
+    unawaited(_enrichAndSendSnapshot(
+      steps,
+      boardImageBase64: boardImageBase64,
+    ));
   }
 
-  Future<void> _enrichAndSendSnapshot(List<Map<String, dynamic>> steps) async {
-    // 若调用方已经手动填了 latex / plainText（譬如学生手敲），保留它；
-    // 仅对空字段做覆盖。
-    List<Map<String, dynamic>> enriched = steps;
-    final needsOcr = steps.any((s) {
+  Future<void> _enrichAndSendSnapshot(
+    List<Map<String, dynamic>> steps, {
+    String boardImageBase64 = '',
+  }) async {
+    var boardLatex = '';
+    var boardPlain = '';
+    final totalStrokes = steps.fold<int>(
+      0,
+      (sum, s) => sum + ((s['strokeCount'] as int?) ?? 0),
+    );
+    final hasManualText = steps.any((s) {
       final latex = (s['latex'] as String? ?? '').trim();
       final plain = (s['plainText'] as String? ?? '').trim();
-      return latex.isEmpty && plain.isEmpty;
+      return latex.isNotEmpty || plain.isNotEmpty;
     });
-    if (needsOcr && _currentSectionId.isNotEmpty) {
+    if (!hasManualText &&
+        boardImageBase64.isNotEmpty &&
+        _currentSectionId.isNotEmpty) {
       try {
-        final guesses = await _ocrService.recognize(
+        final board = await _ocrService.recognizeBoard(
           sectionId: _currentSectionId,
           questionId: _currentQuestionId,
           referenceSteps: _currentReferenceSteps,
+          boardImageBase64: boardImageBase64,
+          totalStrokeCount: totalStrokes,
           steps: steps
               .map((s) => OcrStepInput(
                     stepId: s['stepId'] as String? ?? '',
                     strokeCount: (s['strokeCount'] as int?) ?? 0,
                     boundingBox: s['boundingBox'] as Map<String, dynamic>?,
-                    imageBase64: s['imageBase64'] as String? ?? '',
                   ))
               .toList(growable: false),
         );
-        if (guesses != null && guesses.isNotEmpty) {
-          final byStep = {for (final g in guesses) g.stepId: g};
-          enriched = steps
-              .map((s) => <String, dynamic>{
-                    ...s,
-                    if ((s['latex'] as String? ?? '').isEmpty)
-                      'latex': byStep[s['stepId']]?.latex ?? '',
-                    if ((s['plainText'] as String? ?? '').isEmpty)
-                      'plainText': byStep[s['stepId']]?.plainText ?? '',
-                  })
-              .toList(growable: false);
+        if (board != null) {
+          boardLatex = board.latex;
+          boardPlain = board.plainText;
         }
       } catch (e) {
         _emitError('OCR 调用失败：$e');
       }
     }
     if (!_isConnected || _sessionId.isEmpty) return;
+    final payloadSteps = steps
+        .map((s) => <String, dynamic>{
+              'stepId': s['stepId'],
+              'strokeCount': s['strokeCount'],
+              if (s['boundingBox'] != null) 'boundingBox': s['boundingBox'],
+              'latex': '',
+              'plainText': '',
+            })
+        .toList(growable: false);
     _sendJson(LiveClientEvent.inkSnapshot(
       sessionId: _sessionId,
-      steps: enriched,
+      steps: payloadSteps,
+      boardLatex: boardLatex,
+      boardPlainText: boardPlain,
     ));
   }
 

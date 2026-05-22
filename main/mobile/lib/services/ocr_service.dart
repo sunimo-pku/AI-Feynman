@@ -7,34 +7,30 @@ import 'package:flutter/foundation.dart';
 
 import '../config/api_config.dart';
 
-/// 调用后端 `/ocr/ink` 的辅助 service（第十轮）。
-///
-/// 把当前题目的 step 列表送给 `/ocr/ink`。
-///
-/// V1 无真实 HWR 时后端返回空 latex；`referenceSteps` 不再被伪造为学生
-/// 手写内容（避免同伴误报「你写了写出已知」）。
-/// 推断的 `latex / plainText`，回写到 ink_snapshot / lecture submit 的 step。
-///
-/// 失败语义：所有异常都被吞掉 → 返回 null，调用方按「OCR 失败、白板坐标
-/// 仍能用」继续走（brief 第 9 节明确要求）。
+/// 调用后端 `/ocr/ink` 的辅助 service（整板 HWR）。
 class OcrService {
   OcrService({http.Client? client, Duration? timeout})
       : _client = client ?? http.Client(),
-        _timeout = timeout ?? const Duration(seconds: 18);
+        _timeout = timeout ?? const Duration(seconds: 22);
 
   final http.Client _client;
   final Duration _timeout;
 
   static final ValueNotifier<List<OcrStepGuess>> debugGuesses =
       ValueNotifier<List<OcrStepGuess>>(const <OcrStepGuess>[]);
+  static final ValueNotifier<OcrBoardGuess?> debugBoard =
+      ValueNotifier<OcrBoardGuess?>(null);
 
-  Future<List<OcrStepGuess>?> recognize({
+  /// 整板 PNG 一次 OCR；steps 仅传 strokeCount 等结构字段。
+  Future<OcrBoardGuess?> recognizeBoard({
     required String sectionId,
     required String questionId,
     required List<String> referenceSteps,
-    required List<OcrStepInput> steps,
+    required String boardImageBase64,
+    required int totalStrokeCount,
+    List<OcrStepInput> steps = const <OcrStepInput>[],
   }) async {
-    if (steps.isEmpty) return const <OcrStepGuess>[];
+    if (boardImageBase64.isEmpty) return null;
     try {
       final resp = await _client
           .post(
@@ -46,30 +42,41 @@ class OcrService {
               'sectionId': sectionId,
               'questionId': questionId,
               'mode': 'hwr',
+              'boardImageBase64': boardImageBase64,
               'referenceSteps': referenceSteps,
-              'steps': steps
-                  .map((s) => {
-                        'stepId': s.stepId,
-                        'strokeCount': s.strokeCount,
-                        if (s.boundingBox != null) 'boundingBox': s.boundingBox,
-                        if (s.imageBase64.isNotEmpty)
-                          'imageBase64': s.imageBase64,
-                      })
-                  .toList(growable: false),
+              'steps': steps.isEmpty
+                  ? [
+                      {
+                        'stepId': 'board',
+                        'strokeCount': totalStrokeCount,
+                      },
+                    ]
+                  : steps
+                      .map((s) => {
+                            'stepId': s.stepId,
+                            'strokeCount': s.strokeCount,
+                            if (s.boundingBox != null)
+                              'boundingBox': s.boundingBox,
+                          })
+                      .toList(growable: false),
             })),
           )
           .timeout(_timeout);
       if (resp.statusCode < 200 || resp.statusCode >= 300) return null;
       final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
       if (decoded is! Map<String, dynamic>) return null;
-      final raw = decoded['steps'];
-      if (raw is! List) return null;
-      final guesses = raw
-          .whereType<Map<String, dynamic>>()
-          .map(OcrStepGuess.fromJson)
-          .toList(growable: false);
-      debugGuesses.value = guesses;
-      return guesses;
+      final rawBoard = decoded['board'];
+      if (rawBoard is! Map<String, dynamic>) return null;
+      final board = OcrBoardGuess.fromJson(rawBoard);
+      debugBoard.value = board;
+      final rawSteps = decoded['steps'];
+      if (rawSteps is List) {
+        debugGuesses.value = rawSteps
+            .whereType<Map<String, dynamic>>()
+            .map(OcrStepGuess.fromJson)
+            .toList(growable: false);
+      }
+      return board;
     } on TimeoutException {
       return null;
     } on SocketException {
@@ -77,6 +84,53 @@ class OcrService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// 兼容旧调用：整板 OCR 的别名。
+  Future<List<OcrStepGuess>?> recognize({
+    required String sectionId,
+    required String questionId,
+    required List<String> referenceSteps,
+    required List<OcrStepInput> steps,
+    String boardImageBase64 = '',
+  }) async {
+    final totalStrokes = steps.fold<int>(
+      0,
+      (sum, s) => sum + s.strokeCount,
+    );
+    final board = await recognizeBoard(
+      sectionId: sectionId,
+      questionId: questionId,
+      referenceSteps: referenceSteps,
+      boardImageBase64: boardImageBase64,
+      totalStrokeCount: totalStrokes,
+      steps: steps,
+    );
+    if (board == null) return null;
+    if (board.latex.isEmpty && board.plainText.isEmpty) {
+      return steps
+          .map(
+            (s) => OcrStepGuess(
+              stepId: s.stepId,
+              latex: '',
+              plainText: '',
+              confidence: 0,
+              source: 'empty',
+              mode: 'hwr',
+            ),
+          )
+          .toList(growable: false);
+    }
+    return [
+      OcrStepGuess(
+        stepId: 'board',
+        latex: board.latex,
+        plainText: board.plainText,
+        confidence: board.confidence,
+        source: board.source,
+        mode: board.mode,
+      ),
+    ];
   }
 
   void close() => _client.close();
@@ -94,6 +148,32 @@ class OcrStepInput {
   final int strokeCount;
   final Map<String, dynamic>? boundingBox;
   final String imageBase64;
+}
+
+class OcrBoardGuess {
+  const OcrBoardGuess({
+    required this.latex,
+    required this.plainText,
+    required this.confidence,
+    required this.source,
+    required this.mode,
+  });
+
+  final String latex;
+  final String plainText;
+  final double confidence;
+  final String source;
+  final String mode;
+
+  factory OcrBoardGuess.fromJson(Map<String, dynamic> json) {
+    return OcrBoardGuess(
+      latex: json['latex'] as String? ?? '',
+      plainText: json['plainText'] as String? ?? '',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      source: json['source'] as String? ?? 'empty',
+      mode: json['mode'] as String? ?? 'hwr',
+    );
+  }
 }
 
 class OcrStepGuess {

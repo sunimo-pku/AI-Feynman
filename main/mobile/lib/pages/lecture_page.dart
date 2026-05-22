@@ -428,12 +428,11 @@ class _LecturePageState extends State<LecturePage> {
     if (!_liveService.isConnected) return;
     final stepInfos = _canvasController.collectStepInfos();
     if (stepInfos.isEmpty) return;
+    final boardPng = await _canvasController.exportBoardPng(
+      penStyle: UserCosmeticsPrefs.instance.penStyle,
+    );
     final steps = <Map<String, dynamic>>[];
     for (final info in stepInfos) {
-      final png = await _canvasController.exportStepPng(
-        info.stepId,
-        penStyle: UserCosmeticsPrefs.instance.penStyle,
-      );
       steps.add({
         'stepId': info.stepId,
         'strokeCount': info.strokeCount,
@@ -449,12 +448,14 @@ class _LecturePageState extends State<LecturePage> {
                   ? info.bounds.height
                   : 1,
         },
-        'imageBase64': png == null ? '' : base64Encode(png),
         'latex': '',
         'plainText': '',
       });
     }
-    _liveService.sendInkSnapshot(steps);
+    _liveService.sendInkSnapshot(
+      steps,
+      boardImageBase64: boardPng == null ? '' : base64Encode(boardPng),
+    );
     _replayService.appendInk(steps);
   }
 
@@ -732,11 +733,14 @@ class _LecturePageState extends State<LecturePage> {
     _scrollToBottomSoon();
 
     try {
-      // 第十轮：提交前先调一次 /ocr/ink 把空 latex/plainText 步骤补上,
-      // 让 LLM 看到更密集的语义证据。OCR 失败时返回原 request，不影响主路径。
+      final boardPng = await _canvasController.exportBoardPng(
+        penStyle: UserCosmeticsPrefs.instance.penStyle,
+      );
       final enriched = await _lectureService.enrichWithOcr(
         request,
         referenceSteps: _question.referenceSteps,
+        boardImageBase64:
+            boardPng == null ? '' : base64Encode(boardPng),
       );
       final response = await _lectureService.submit(enriched);
       if (!mounted) return;
@@ -2412,9 +2416,9 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   Widget _buildDebugOcrPanel() {
-    return ValueListenableBuilder<List<OcrStepGuess>>(
-      valueListenable: OcrService.debugGuesses,
-      builder: (context, guesses, _) {
+    return ValueListenableBuilder<OcrBoardGuess?>(
+      valueListenable: OcrService.debugBoard,
+      builder: (context, board, _) {
         return ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 12),
           shape: const RoundedRectangleBorder(borderRadius: AppRadius.buttonR),
@@ -2425,29 +2429,20 @@ class _LecturePageState extends State<LecturePage> {
           collapsedBackgroundColor: AppPalette.surface,
           title: const Text('DEBUG OCR / HWR'),
           subtitle: Text(
-            guesses.isEmpty ? '暂无识别结果' : '${guesses.length} 个 step',
+            board == null
+                ? '暂无整板识别结果'
+                : '${board.source} · ${board.confidence.toStringAsFixed(2)}',
           ),
-          children:
-              guesses.isEmpty
-                  ? const [
-                    Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Text(
-                        '写字后等待 480ms 或提交讲解即可看到 source/confidence/mode。',
-                      ),
-                    ),
-                  ]
-                  : guesses
-                      .map(
-                        (g) => ListTile(
-                          dense: true,
-                          title: Text('${g.stepId} · ${g.source} · ${g.mode}'),
-                          subtitle: Text(
-                            '${g.confidence.toStringAsFixed(2)} · ${g.latex.isEmpty ? g.plainText : g.latex}',
-                          ),
-                        ),
-                      )
-                      .toList(growable: false),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                board == null
+                    ? '写字后等待 480ms 或提交讲解即可看到整板 source/confidence。'
+                    : '${board.plainText.isEmpty ? board.latex : board.plainText}',
+              ),
+            ),
+          ],
         );
       },
     );

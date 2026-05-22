@@ -38,15 +38,19 @@ class LectureService {
   Future<LectureSubmitRequest> enrichWithOcr(
     LectureSubmitRequest request, {
     required List<String> referenceSteps,
+    String boardImageBase64 = '',
   }) async {
-    final needs = request.steps.any(
-      (s) => s.latex.trim().isEmpty && s.plainText.trim().isEmpty,
+    if (boardImageBase64.isEmpty) return request;
+    final totalStrokes = request.steps.fold<int>(
+      0,
+      (sum, s) => sum + s.strokeCount,
     );
-    if (!needs) return request;
-    final guesses = await _ocrService.recognize(
+    final board = await _ocrService.recognizeBoard(
       sectionId: request.sectionId,
       questionId: request.questionId,
       referenceSteps: referenceSteps,
+      boardImageBase64: boardImageBase64,
+      totalStrokeCount: totalStrokes,
       steps: request.steps
           .map((s) => OcrStepInput(
                 stepId: s.stepId,
@@ -57,31 +61,30 @@ class LectureService {
                   'width': s.boundingBox.width,
                   'height': s.boundingBox.height,
                 },
-                imageBase64: '',
               ))
           .toList(growable: false),
     );
-    if (guesses == null || guesses.isEmpty) return request;
-    final byStep = {for (final g in guesses) g.stepId: g};
-    final enrichedSteps = request.steps
-        .map((s) => LectureStepPayload(
-              stepId: s.stepId,
-              strokeCount: s.strokeCount,
-              boundingBox: s.boundingBox,
-              latex: s.latex.isNotEmpty
-                  ? s.latex
-                  : (byStep[s.stepId]?.latex ?? ''),
-              plainText: s.plainText.isNotEmpty
-                  ? s.plainText
-                  : (byStep[s.stepId]?.plainText ?? ''),
-            ))
-        .toList(growable: false);
+    if (board == null ||
+        (board.latex.trim().isEmpty && board.plainText.trim().isEmpty)) {
+      return request;
+    }
+    final bb = request.steps.isNotEmpty
+        ? request.steps.first.boundingBox
+        : const BoundingBoxPayload(x: 0, y: 0, width: 1, height: 1);
     return LectureSubmitRequest(
       sectionId: request.sectionId,
       questionId: request.questionId,
       questionPrompt: request.questionPrompt,
       studentSpeechText: request.studentSpeechText,
-      steps: enrichedSteps,
+      steps: [
+        LectureStepPayload(
+          stepId: 'board',
+          latex: board.latex,
+          plainText: board.plainText,
+          strokeCount: totalStrokes,
+          boundingBox: bb,
+        ),
+      ],
       roundIndex: request.roundIndex,
       history: request.history,
     );

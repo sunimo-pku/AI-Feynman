@@ -125,6 +125,8 @@ class LiveLectureSession:
     asr_buffer: LiveAsrBuffer = field(default_factory=LiveAsrBuffer)
     transcript_segments: list[str] = field(default_factory=list)
     latest_steps: list[_Stroke] = field(default_factory=list)
+    board_latex: str = ""
+    board_plain_text: str = ""
 
     # ---- 状态机 ----
     is_thinking: bool = False
@@ -265,6 +267,8 @@ class LiveLectureSession:
         self.transcript_segments.clear()
         self._transcript_round_start = 0
         self.latest_steps.clear()
+        self.board_latex = ""
+        self.board_plain_text = ""
         self.asr_buffer.reset()
         self.is_thinking = False
         self._interrupt_event.clear()
@@ -361,14 +365,47 @@ class LiveLectureSession:
                 )
             )
         self.latest_steps = cleaned
+        self.board_latex = str(
+            event.get("boardLatex") or event.get("board_latex") or ""
+        ).strip()
+        self.board_plain_text = str(
+            event.get("boardPlainText") or event.get("board_plain_text") or ""
+        ).strip()
         # 第十二轮：no_steps_yet 故障线索几乎都是「新 session 没收到 snapshot」。
         # 加一条 info 日志，下次出问题立刻能看到「snapshot 到了哪个 session
         # 几步」，与 pause_detected 的时间戳对齐就能定位。
         logger.info(
-            "[live-session] ink_snapshot session=%s steps=%d",
+            "[live-session] ink_snapshot session=%s steps=%d board=%s",
             self.session_id,
             len(cleaned),
+            "yes" if self.board_latex or self.board_plain_text else "no",
         )
+
+    def _llm_steps_payload(self) -> list[dict[str, Any]]:
+        total_strokes = sum(max(0, s.stroke_count) for s in self.latest_steps)
+        if self.board_latex or self.board_plain_text:
+            return [
+                {
+                    "stepId": "board",
+                    "latex": self.board_latex,
+                    "plainText": self.board_plain_text,
+                    "strokeCount": total_strokes or max(1, len(self.latest_steps)),
+                }
+            ]
+        return [
+            {
+                "stepId": s.step_id,
+                "latex": "",
+                "plainText": "",
+                "strokeCount": s.stroke_count,
+            }
+            for s in self.latest_steps
+        ]
+
+    def _allowed_step_ids(self) -> list[str]:
+        if self.board_latex or self.board_plain_text:
+            return ["board"]
+        return [s.step_id for s in self.latest_steps if s.step_id]
 
     async def _on_pause_detected(
         self,
@@ -581,17 +618,9 @@ class LiveLectureSession:
         del peer_assessment_fn  # live 主路径直连 assess_one_peer；submit 仍用 bulk API。
         from app.services.peer_assessment_agent import _PEER_ROLES, assess_one_peer
 
-        steps_payload = [
-            {
-                "stepId": s.step_id,
-                "latex": s.latex,
-                "plainText": s.plain_text,
-                "strokeCount": s.stroke_count,
-            }
-            for s in self.latest_steps
-        ]
+        steps_payload = self._llm_steps_payload()
         speech = self._current_round_speech()
-        allowed_step_ids = [s.step_id for s in self.latest_steps if s.step_id]
+        allowed_step_ids = self._allowed_step_ids()
         loop = asyncio.get_event_loop()
         round_index = max(1, self.round_index + 1)
         history = list(self.history)
@@ -647,15 +676,7 @@ class LiveLectureSession:
         self,
         peer_assessment_fn: Callable[..., dict[str, Any]],
     ) -> dict[str, Any]:
-        steps_payload = [
-            {
-                "stepId": s.step_id,
-                "latex": s.latex,
-                "plainText": s.plain_text,
-                "strokeCount": s.stroke_count,
-            }
-            for s in self.latest_steps
-        ]
+        steps_payload = self._llm_steps_payload()
         speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
@@ -677,15 +698,7 @@ class LiveLectureSession:
         *,
         peer_assessments: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        steps_payload = [
-            {
-                "stepId": s.step_id,
-                "latex": s.latex,
-                "plainText": s.plain_text,
-                "strokeCount": s.stroke_count,
-            }
-            for s in self.latest_steps
-        ]
+        steps_payload = self._llm_steps_payload()
         speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
@@ -745,15 +758,7 @@ class LiveLectureSession:
         self,
         lecture_agent_fn: Callable[..., dict[str, Any]],
     ) -> dict[str, Any]:
-        steps_payload = [
-            {
-                "stepId": s.step_id,
-                "latex": s.latex,
-                "plainText": s.plain_text,
-                "strokeCount": s.stroke_count,
-            }
-            for s in self.latest_steps
-        ]
+        steps_payload = self._llm_steps_payload()
         speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
@@ -816,15 +821,7 @@ class LiveLectureSession:
         *,
         send: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> dict[str, Any]:
-        steps_payload = [
-            {
-                "stepId": s.step_id,
-                "latex": s.latex,
-                "plainText": s.plain_text,
-                "strokeCount": s.stroke_count,
-            }
-            for s in self.latest_steps
-        ]
+        steps_payload = self._llm_steps_payload()
         speech = self._current_round_speech()
         turns_by_id: dict[str, dict[str, Any]] = {}
         order: list[str] = []
@@ -1032,15 +1029,7 @@ class LiveLectureSession:
         self,
         teacher_hint_fn: Callable[..., dict[str, Any]],
     ) -> dict[str, Any]:
-        steps_payload = [
-            {
-                "stepId": s.step_id,
-                "latex": s.latex,
-                "plainText": s.plain_text,
-                "strokeCount": s.stroke_count,
-            }
-            for s in self.latest_steps
-        ]
+        steps_payload = self._llm_steps_payload()
         speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
@@ -1217,15 +1206,23 @@ class LiveLectureSession:
     def _append_student_history_snapshot(self) -> None:
         speech = self._current_round_speech()
         steps_summary_bits: list[str] = []
-        for s in self.latest_steps:
-            descr_parts: list[str] = []
-            if s.plain_text:
-                descr_parts.append(s.plain_text)
-            if s.latex:
-                descr_parts.append(f"`{s.latex}`")
-            if not descr_parts:
-                descr_parts.append(f"{s.stroke_count} 笔")
-            steps_summary_bits.append(f"{s.step_id}: " + "; ".join(descr_parts))
+        if self.board_latex or self.board_plain_text:
+            board_bits: list[str] = []
+            if self.board_plain_text:
+                board_bits.append(self.board_plain_text)
+            if self.board_latex:
+                board_bits.append(f"`{self.board_latex}`")
+            steps_summary_bits.append("整板: " + "; ".join(board_bits))
+        else:
+            for s in self.latest_steps:
+                descr_parts: list[str] = []
+                if s.plain_text:
+                    descr_parts.append(s.plain_text)
+                if s.latex:
+                    descr_parts.append(f"`{s.latex}`")
+                if not descr_parts:
+                    descr_parts.append(f"{s.stroke_count} 笔")
+                steps_summary_bits.append(f"{s.step_id}: " + "; ".join(descr_parts))
         parts: list[str] = []
         if speech:
             parts.append(speech)

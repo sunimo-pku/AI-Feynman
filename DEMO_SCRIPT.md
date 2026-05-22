@@ -141,7 +141,7 @@
     - 系统设置里禁掉麦克风权限重开 → 左下角「再试一次」，副文本提示去系统设置打开麦克风。
     - `DEEPSEEK_API_KEY` 设成空字符串 → 后端 `pause_detected` 后发送 WebSocket `error`，前端进入失败态并显示原因，不出现假追问气泡。
   - **不展示完整 ASR 转写**：默认模式下白板 / 面板 / 对话区都**不**展示 ASR 转写文本（避免学生纠结识别错别字）。
-  - **白板手写 → 同伴可读**：每步 `ink_snapshot` 带真实 PNG；配置 `ALIYUN_API_KEY` 后 `/ocr/ink mode=hwr` 走 Qwen-VL，同伴 prompt 可见 `latex/plainText`（失败仍只报笔画数）。
+  - **白板手写 → 同伴可读**：`ink_snapshot` 带整板 PNG，一次 Qwen-VL OCR；同伴 prompt 见 `boardLatex/boardPlainText`（失败仍只报笔画数）。
   - **后端实时性指标可对账**：实时追问使用 DeepSeek-V4-Flash 流式非思考模式；首条 delta 超过 2 秒直接报错，不再等待慢模型整段返回。
 - **预估耗时**：180 秒
 
