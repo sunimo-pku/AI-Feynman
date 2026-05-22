@@ -68,7 +68,7 @@ EVT_AGENT_TURN_DELTA = "agent_turn_delta"
 EVT_AGENT_TURN_DONE = "agent_turn_done"
 EVT_ROUND_DONE = "round_done"
 EVT_PEER_ASSESSMENTS = "peer_assessments"
-# 单名同伴评估完成即推送（早于整包 peer_assessments），便于 UI 先更新头像环 + TTS。
+# 单名同伴评估完成即推送（早于整包 peer_assessments），便于 UI 先更新头像环。
 EVT_PEER_ASSESSMENT_ITEM = "peer_assessment_item"
 EVT_WARNING = "warning"
 EVT_ERROR = "error"
