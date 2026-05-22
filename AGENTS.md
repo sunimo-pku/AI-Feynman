@@ -860,6 +860,10 @@ git push origin main
 - **讲题页已移除「用文字提交」兜底 UI**：WS 断线 / 麦克风失败时左下角
   只保留「重新连接 / 再试一次」，不再展示 `Icons.send_outlined` 纸飞机，
   避免 NAT 抖动或故障态误触打断讲题闭环。
+- **白板 HWR 必须发真实 step PNG + Qwen-VL**：`HandCanvasController.exportStepPng`
+  离屏裁切笔迹；`/ocr/ink mode=hwr` 在 `ALIYUN_API_KEY` 存在时调
+  `qwen_vision.recognize_ink_step`，**禁止**把 `referenceSteps` 回填成
+  学生 latex。OCR 失败仍走「笔画数 + 语音」，不阻塞讲题。
 
 ---
 

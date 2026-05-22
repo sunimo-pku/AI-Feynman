@@ -368,7 +368,8 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
 - 每日挑战与晶石：`GET /bounty/today` 登录后返回今日 3 道找错题与完成状态；`POST /bounty/submit` 按真实圈选 IoU + 讲解评分幂等发放晶石/战力；`GET /bounty/history` 可回看挑战记录；商城接口为 `GET /shop/catalog`、`POST /shop/redeem`、`GET /shop/orders`。
 - 回放与家长端：`POST /replays`（学生）、`GET /parent/replays`、`GET /replays/{sessionId}`（家长或学生）、`GET /parent/children`（返回唯一绑定孩子）。
 - 识题与知识库：`POST /questions/upload-image`、`POST /knowledge/search`。
-- OCR/HWR：`POST /ocr/ink` 支持 `mode=rule|hwr`，响应和日志包含 `source/confidence`。
+- OCR/HWR：`POST /ocr/ink` 支持 `mode=rule|hwr`；`hwr` 在配置 `ALIYUN_API_KEY`
+  时对 step PNG 调 Qwen-VL，响应 `source=qwen_vl` + `confidence`；失败不编造。
 
 Flutter 侧同步完成：
 

@@ -443,7 +443,10 @@ class _LecturePageState extends State<LecturePage> {
     if (stepInfos.isEmpty) return;
     final steps = <Map<String, dynamic>>[];
     for (final info in stepInfos) {
-      final png = await _canvasController.exportStepPng(info.stepId);
+      final png = await _canvasController.exportStepPng(
+        info.stepId,
+        penStyle: UserCosmeticsPrefs.instance.penStyle,
+      );
       steps.add({
         'stepId': info.stepId,
         'strokeCount': info.strokeCount,

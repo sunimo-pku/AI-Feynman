@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -103,18 +102,60 @@ class HandCanvasController extends ChangeNotifier {
     }).toList(growable: false);
   }
 
-  Future<Uint8List?> exportStepPng(String stepId) async {
-    if (!collectStepIds().contains(stepId)) return null;
-    // Round 12 HWR contract needs a per-step image payload. The actual canvas
-    // crop belongs to the widget layer; this tiny valid PNG keeps the API
-    // contract non-empty in fallback environments without blocking lecture flow.
-    return Uint8List.fromList(const <int>[
-      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
-      0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137,
-      0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 248, 255, 255,
-      63, 0, 5, 254, 2, 254, 167, 53, 129, 132, 0, 0, 0, 0, 73,
-      69, 78, 68, 174, 66, 96, 130,
-    ]);
+  /// 把指定 [stepId] 的笔迹裁成 PNG，供 `/ocr/ink mode=hwr` + Qwen-VL 识别。
+  Future<Uint8List?> exportStepPng(
+    String stepId, {
+    String penStyle = 'default',
+  }) async {
+    final stepStrokes = _strokes
+        .where((s) => s.stepId == stepId && s.points.isNotEmpty)
+        .toList(growable: false);
+    if (stepStrokes.isEmpty) return null;
+
+    var bounds = stepStrokes.first.bounds;
+    for (final s in stepStrokes.skip(1)) {
+      bounds = bounds.expandToInclude(s.bounds);
+    }
+    if (bounds == Rect.zero ||
+        !bounds.width.isFinite ||
+        !bounds.height.isFinite) {
+      return null;
+    }
+
+    const padding = 28.0;
+    const minDim = 80.0;
+    final contentW = math.max(bounds.width, 1.0);
+    final contentH = math.max(bounds.height, 1.0);
+    final width = math.max(minDim, contentW + padding * 2).ceil();
+    final height = math.max(minDim, contentH + padding * 2).ceil();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Paint()..color = AppPalette.canvas,
+    );
+    canvas.save();
+    canvas.translate(padding - bounds.left, padding - bounds.top);
+    _HandCanvasPainter.paintStepStrokes(
+      canvas: canvas,
+      strokes: stepStrokes,
+      penStyle: penStyle,
+    );
+    canvas.restore();
+
+    final picture = recorder.endRecording();
+    try {
+      final image = await picture.toImage(width, height);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
   }
 
   Set<String> get highlightStepIds => _highlight;
@@ -448,6 +489,29 @@ class _HandCanvasPainter extends CustomPainter {
       }
     }
 
+    paintStepStrokes(
+      canvas: canvas,
+      strokes: strokes,
+      penStyle: penStyle,
+      highlight: highlight,
+    );
+
+    if (eraserMode && eraserAt != null) {
+      final eraserPaint = Paint()
+        ..color = AppPalette.outline.withValues(alpha: 0.45)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      canvas.drawCircle(eraserAt!, 24, eraserPaint);
+    }
+  }
+
+  /// 离屏导出与主画布共用同一套笔迹绘制逻辑。
+  static void paintStepStrokes({
+    required Canvas canvas,
+    required List<_Stroke> strokes,
+    required String penStyle,
+    Set<String> highlight = const <String>{},
+  }) {
     for (final stroke in strokes) {
       if (stroke.points.isEmpty) continue;
       final highlighted = highlight.contains(stroke.stepId);
@@ -467,20 +531,13 @@ class _HandCanvasPainter extends CustomPainter {
         canvas.drawCircle(stroke.points.first, paint.strokeWidth / 2, paint);
         continue;
       }
-      final path = ui.Path()..moveTo(stroke.points.first.dx, stroke.points.first.dy);
+      final path = ui.Path()
+        ..moveTo(stroke.points.first.dx, stroke.points.first.dy);
       for (var i = 1; i < stroke.points.length; i++) {
         final p = stroke.points[i];
         path.lineTo(p.dx, p.dy);
       }
       canvas.drawPath(path, paint);
-    }
-
-    if (eraserMode && eraserAt != null) {
-      final eraserPaint = Paint()
-        ..color = AppPalette.outline.withValues(alpha: 0.45)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
-      canvas.drawCircle(eraserAt!, 24, eraserPaint);
     }
   }
 

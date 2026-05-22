@@ -478,7 +478,8 @@ def test_ocr_hwr_without_reference_does_not_invent_radical(
     client: TestClient,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("app.routers.ocr.Config.OCR_HWR_API_KEY", "ci-key")
+    """无效/过小 imageBase64 时 Qwen-VL 不调用，也不编造 LaTeX。"""
+    monkeypatch.setattr("app.routers.ocr.Config.ALIYUN_API_KEY", "ci-key")
     resp = client.post(
         "/ocr/ink",
         json={
@@ -496,6 +497,51 @@ def test_ocr_hwr_without_reference_does_not_invent_radical(
     assert body["steps"][0]["latex"] == ""
     assert body["steps"][0]["plainText"] == ""
     assert body["steps"][0]["confidence"] == 0.0
+    assert body["steps"][0]["source"] == "empty"
+
+
+def test_ocr_hwr_qwen_vl_returns_recognized_latex(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    tiny_png_b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
+        "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+    monkeypatch.setattr("app.routers.ocr.Config.ALIYUN_API_KEY", "ci-key")
+
+    def _fake_recognize(**_kwargs):
+        return {
+            "latex": r"\sqrt{12}=2\sqrt{3}",
+            "plainText": "根号12等于2倍根号3",
+            "confidence": 0.82,
+            "source": "qwen_vl",
+        }
+
+    monkeypatch.setattr("app.routers.ocr.recognize_ink_step", _fake_recognize)
+    resp = client.post(
+        "/ocr/ink",
+        json={
+            "sectionId": "pep-g8-down-s16-1",
+            "questionId": "q-s16-1-001",
+            "mode": "hwr",
+            "referenceSteps": ["写出已知"],
+            "steps": [
+                {
+                    "stepId": "step_1",
+                    "strokeCount": 4,
+                    "imageBase64": tiny_png_b64,
+                },
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    step = resp.json()["steps"][0]
+    assert step["latex"] == r"\sqrt{12}=2\sqrt{3}"
+    assert "根号" in step["plainText"]
+    assert step["confidence"] >= 0.5
+    assert step["source"] == "qwen_vl"
+    assert step["mode"] == "hwr"
 
 
 def test_tts_error_returns_502(client: TestClient, monkeypatch) -> None:

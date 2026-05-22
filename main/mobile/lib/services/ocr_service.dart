@@ -20,7 +20,7 @@ import '../config/api_config.dart';
 class OcrService {
   OcrService({http.Client? client, Duration? timeout})
       : _client = client ?? http.Client(),
-        _timeout = timeout ?? const Duration(seconds: 6);
+        _timeout = timeout ?? const Duration(seconds: 18);
 
   final http.Client _client;
   final Duration _timeout;
