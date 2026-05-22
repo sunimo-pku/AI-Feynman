@@ -317,6 +317,14 @@ class LiveLectureSession:
                 )
             )
         self.latest_steps = cleaned
+        # 第十二轮：no_steps_yet 故障线索几乎都是「新 session 没收到 snapshot」。
+        # 加一条 info 日志，下次出问题立刻能看到「snapshot 到了哪个 session
+        # 几步」，与 pause_detected 的时间戳对齐就能定位。
+        logger.info(
+            "[live-session] ink_snapshot session=%s steps=%d",
+            self.session_id,
+            len(cleaned),
+        )
 
     async def _on_pause_detected(
         self,

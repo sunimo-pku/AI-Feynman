@@ -25,9 +25,13 @@ echo "[1/2] restarting backend on port $PORT ..."
 cd "$BACKEND_DIR"
 mkdir -p logs
 
-if pkill -f "uvicorn $APP_MODULE --host .* --port $PORT" 2>/dev/null; then
-  echo "       old uvicorn killed, waiting 1s ..."
-  sleep 1
+# 第十二轮踩坑：旧版 pkill 用的 SIGTERM + 1s sleep 在繁忙系统下经常杀不彻底，
+# ps aux 里仍能看到上一代的 uvicorn，前端连过去看到的是老版代码。
+# 现在 SIGKILL + 2s sleep 更稳；只杀监听本端口（$PORT）的进程，**避免误杀**
+# 同机器上的其它 FastAPI 服务（比如 systemd 拉起的 aiic.service 跑在 8000）。
+if pkill -9 -f "uvicorn $APP_MODULE --host .* --port $PORT" 2>/dev/null; then
+  echo "       killed stale uvicorn on $PORT, waiting 2s ..."
+  sleep 2
 else
   echo "       no running uvicorn on $PORT (first deploy?)"
 fi

@@ -367,39 +367,53 @@ class _LecturePageState extends State<LecturePage> {
     }
   }
 
-  void _scheduleInkSnapshot() {
+  /// 第十二轮：调用方传 [immediate=true] 可以**跳过 480ms debounce** 直接
+  /// 发 ink_snapshot。用在：
+  ///   * `_onStartLive` 连接成功后立即把白板状态同步给新 session，避免
+  ///     学生因为「换题 / 重新连接 → 新 ws + 新 session_start」导致后端
+  ///     latest_steps 重新清零，然后秒按「我讲到这里」时撞 no_steps_yet。
+  ///   * 任何其它「立刻让后端拿到当前白板」的场景。
+  void _scheduleInkSnapshot({bool immediate = false}) {
     _inkSnapshotDebounce?.cancel();
+    if (immediate) {
+      unawaited(_pushInkSnapshotNow());
+      return;
+    }
     _inkSnapshotDebounce = Timer(const Duration(milliseconds: 480), () async {
-      if (!mounted) return;
-      if (!_liveService.isConnected) return;
-      final stepInfos = _canvasController.collectStepInfos();
-      if (stepInfos.isEmpty) return;
-      final steps = <Map<String, dynamic>>[];
-      for (final info in stepInfos) {
-        final png = await _canvasController.exportStepPng(info.stepId);
-        steps.add({
-          'stepId': info.stepId,
-          'strokeCount': info.strokeCount,
-          'boundingBox': {
-            'x': info.bounds.left.isFinite ? info.bounds.left : 0,
-            'y': info.bounds.top.isFinite ? info.bounds.top : 0,
-            'width':
-                info.bounds.width.isFinite && info.bounds.width > 0
-                    ? info.bounds.width
-                    : 1,
-            'height':
-                info.bounds.height.isFinite && info.bounds.height > 0
-                    ? info.bounds.height
-                    : 1,
-          },
-          'imageBase64': png == null ? '' : base64Encode(png),
-          'latex': '',
-          'plainText': '',
-        });
-      }
-      _liveService.sendInkSnapshot(steps);
-      _replayService.appendInk(steps);
+      await _pushInkSnapshotNow();
     });
+  }
+
+  Future<void> _pushInkSnapshotNow() async {
+    if (!mounted) return;
+    if (!_liveService.isConnected) return;
+    final stepInfos = _canvasController.collectStepInfos();
+    if (stepInfos.isEmpty) return;
+    final steps = <Map<String, dynamic>>[];
+    for (final info in stepInfos) {
+      final png = await _canvasController.exportStepPng(info.stepId);
+      steps.add({
+        'stepId': info.stepId,
+        'strokeCount': info.strokeCount,
+        'boundingBox': {
+          'x': info.bounds.left.isFinite ? info.bounds.left : 0,
+          'y': info.bounds.top.isFinite ? info.bounds.top : 0,
+          'width':
+              info.bounds.width.isFinite && info.bounds.width > 0
+                  ? info.bounds.width
+                  : 1,
+          'height':
+              info.bounds.height.isFinite && info.bounds.height > 0
+                  ? info.bounds.height
+                  : 1,
+        },
+        'imageBase64': png == null ? '' : base64Encode(png),
+        'latex': '',
+        'plainText': '',
+      });
+    }
+    _liveService.sendInkSnapshot(steps);
+    _replayService.appendInk(steps);
   }
 
   /// 为当前画板上的 stepId 集合确保都有对应的输入控制器。
@@ -974,9 +988,10 @@ class _LecturePageState extends State<LecturePage> {
       });
       return;
     }
-    // 启动成功后立刻把当前白板 snapshot 发出去，让后端在第一时间知道
-    // 「学生目前有几步、笔画数」，不要等 debounce 触发。
-    _scheduleInkSnapshot();
+    // 启动成功后立刻把当前白板 snapshot 发出去（**跳过 debounce**），让后端
+    // 在第一时间知道「学生目前有几步、笔画数」，避免学生在 480ms 内立即
+    // 点「我讲到这里」时新 session 的 latest_steps 还是空、撞 no_steps_yet。
+    _scheduleInkSnapshot(immediate: true);
     setState(() {
       _liveStatus = _LiveStatus.listening;
     });
@@ -1406,6 +1421,12 @@ class _LecturePageState extends State<LecturePage> {
     switch (state) {
       case LiveConnectionState.connected:
         // _onStartLive 已经把状态切到 listening；这里幂等。
+        // 第十二轮：service 层自动重连成功后会再发 connected 事件。
+        // 此时新 ws 上对应的 LiveLectureSession 是全新实例、latest_steps
+        // 重新清零；如果学生白板上有内容，必须立刻同步过去，否则学生
+        // 点「我讲到这里」会撞 no_steps_yet。同步推 snapshot 是幂等的：
+        // 如果白板空，`_pushInkSnapshotNow` 会自然 early-return。
+        _scheduleInkSnapshot(immediate: true);
         break;
       case LiveConnectionState.disconnected:
         _cancelThinkingWatchdog();
