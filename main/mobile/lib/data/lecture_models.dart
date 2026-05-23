@@ -74,6 +74,7 @@ class AgentTurn {
     required this.displayName,
     required this.text,
     this.methodSummary = '',
+    this.approved = true,
     this.highlightStepIds = const [],
   });
 
@@ -84,6 +85,9 @@ class AgentTurn {
 
   /// 李老师收束时：此类题的通用解题方法（可选）。
   final String methodSummary;
+
+  /// 李老师核对：false 表示讲解数学上未通过。
+  final bool approved;
   final List<String> highlightStepIds;
 
   factory AgentTurn.fromJson(Map<String, dynamic> json) {
@@ -93,6 +97,7 @@ class AgentTurn {
       displayName: json['displayName'] as String? ?? '匿名',
       text: json['text'] as String? ?? '',
       methodSummary: json['methodSummary'] as String? ?? '',
+      approved: json['approved'] != false,
       highlightStepIds: (json['highlightStepIds'] as List<dynamic>? ?? const [])
           .map((e) => e.toString())
           .toList(growable: false),
@@ -242,6 +247,7 @@ class LectureSubmitRequest {
     required this.sectionId,
     required this.questionId,
     required this.questionPrompt,
+    this.standardAnswer = '',
     this.studentSpeechText = '',
     required this.steps,
     this.roundIndex = 1,
@@ -251,6 +257,7 @@ class LectureSubmitRequest {
   final String sectionId;
   final String questionId;
   final String questionPrompt;
+  final String standardAnswer;
   final String studentSpeechText;
   final List<LectureStepPayload> steps;
 
@@ -264,6 +271,8 @@ class LectureSubmitRequest {
         'sectionId': sectionId,
         'questionId': questionId,
         'questionPrompt': questionPrompt,
+        if (standardAnswer.trim().isNotEmpty)
+          'standardAnswer': standardAnswer.trim(),
         'studentSpeechText': studentSpeechText,
         'roundIndex': roundIndex,
         'history': history.map((h) => h.toJson()).toList(growable: false),

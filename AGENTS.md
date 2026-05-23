@@ -816,6 +816,13 @@ git push origin main
   `httpx.stream(...) + iter_lines()` 就能边收边 yield mp3 bytes，不用上
   WebSocket 协议。不要把 `synthesize` 改掉破坏现有 `/tts` 全量返回路径，
   新加 `synthesize_stream` 这个 generator 就够了。
+- **同伴 `understood:true` ≠ 数学正确**：旧 prompt 把「听懂了」当成「讲对了」，
+  学生故意讲错时三人全过、李老师还夸清晰。正解：`peer_personas` 要求
+  `understood` 同时满足跟上讲解**且**未发现数学错误；`standardAnswer` 经
+  `question_bank.resolve_standard_answer` 注入 prompt；李老师收束带
+  `approved` 字段，`apply_teacher_completion_gate` 在 `approved:false` 时
+  强制 `status=needs_explanation`、`mastery_delta=0`。Flutter 须在
+  `LectureSubmitRequest` / `session_start` 上送可用标准要点（跳过占位文案）。
 - **断连前未提交语音必须可恢复**：`LiveLectureService.ingestAudioBytes` 把当前
   讲解段 PCM 写入 `_segmentPcmChunks`；WS 断开后 buffer **不清**；重连
   `connected` 后 `replaySegmentAudio()` 按序补发 `audio_chunk` 到新 session。

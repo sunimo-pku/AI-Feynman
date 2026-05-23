@@ -17,6 +17,7 @@ from app.services.lecture_agent import (
     _sanitize_history,
     _strip_markdown_fence,
 )
+from app.services.question_bank import resolve_standard_answer
 
 logger = logging.getLogger(__name__)
 
@@ -158,22 +159,25 @@ def generate_teacher_hint(
 
 
 _TEACHER_SUMMARY_PROMPT = """你是初中数学讲题课的李老师。
-小明、大雄、班长**都已听懂**学生的讲解（他们本轮未当众发言）。请输出收束内容：
+同伴评估显示三名同学都听懂了，但**你必须独立核对**学生讲解数学是否正确。
 
-1. `text`：先肯定学生**本轮**讲清楚的关键点（规则 / 依据 / 检查点），不要直接报完整数值答案；
-2. `methodSummary`：用 2～3 句话归纳**此类题**的通用解题方法/套路（可略高于本题，但不要写完整演算）；
-3. 语气温和；数学用 LaTeX；`text` ≤120 字，`methodSummary` ≤160 字；
-4. `highlightStepIds` 只能引用白名单 stepId。
+【首要任务 · 核对】
+对照【标准解答要点】（若有）或题面自行推理：
+- 若学生**明显讲错**（法则用错、漏条件、结果错、与标准要点矛盾）：
+  `"approved": false`，`text` 温和指出**哪一类**问题（不要直接给完整正确答案），
+  `methodSummary` 留空 `""`。
+- 若数学上**站得住**：
+  `"approved": true`，`text` 肯定学生本轮讲清楚的关键点；
+  `methodSummary` 用 2～3 句话归纳此类题通用方法。
 
-【同伴规则】
-- 禁止写「大雄验证了…」「班长总结了…」等，仿佛同伴刚才发言。
-- 最多一句「同伴们都听懂了」，其余只谈学生和题型方法。
-
-【反幻觉】
-- 只基于【学生口述】与白板；禁止编造未出现的内容。
+【表达】
+- 语气温和；数学用 LaTeX；`text` ≤120 字，`methodSummary` ≤160 字；
+- `highlightStepIds` 只能引用白名单 stepId。
+- 禁止写「大雄验证了…」等仿佛同伴刚才发言；最多一句「同伴们都听懂了」。
 
 只输出一个 JSON 对象：
 {
+  "approved": true | false,
   "text": "……",
   "methodSummary": "……",
   "highlightStepIds": ["step_x"]
@@ -209,6 +213,20 @@ def _peer_understood_ack(peer_assessments: list[dict[str, Any]] | None) -> str:
     return "、".join(ordered) + "均表示听懂（本轮未当众发言）。"
 
 
+def apply_teacher_completion_gate(
+    result: dict[str, Any],
+    teacher_summary: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """李老师核对不通过时，禁止 completed。"""
+    if teacher_summary is None or bool(teacher_summary.get("approved", True)):
+        return result
+    patched = dict(result)
+    patched["status"] = "needs_explanation"
+    patched["all_understood"] = False
+    patched["mastery_delta"] = 0
+    return patched
+
+
 def generate_teacher_summary(
     *,
     section_id: str,
@@ -219,6 +237,7 @@ def generate_teacher_summary(
     round_index: int = 1,
     history: list[dict[str, Any]] | None = None,
     peer_assessments: list[dict[str, Any]] | None = None,
+    standard_answer: str = "",
 ) -> dict[str, Any]:
     """三名同伴都听懂时，李老师收束小结。"""
 
@@ -232,6 +251,10 @@ def generate_teacher_summary(
     if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
         raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
 
+    std = resolve_standard_answer(
+        question_id=question_id,
+        client_answer=standard_answer,
+    )
     context_prompt = _build_user_prompt(
         section_id=section_id,
         question_id=question_id,
@@ -241,17 +264,17 @@ def generate_teacher_summary(
         allowed_step_ids=allowed_step_ids,
         round_index=safe_round,
         history=cleaned_history,
-        purpose="teacher",
+        purpose="teacher_summary",
+        standard_answer=std,
     )
     peer_ack = _peer_understood_ack(peer_assessments)
 
     user_prompt = (
-        "【收束场景】三名同伴本轮都已听懂，且**未当众发言**。"
-        "下列只是一句听懂确认，不是他们说过的话；"
-        "你的小结**只总结学生的讲解**，不要叙述同伴做了什么。\n"
+        "【收束场景】同伴评估为全员听懂，但**你必须独立核对数学是否正确**。"
+        "下列听懂确认不是同伴当众说过的话。\n"
         f"【同伴听懂确认】{peer_ack}\n\n"
         f"{context_prompt}\n\n"
-        "请只输出一个 JSON 对象。"
+        "请只输出一个 JSON 对象（含 approved 字段）。"
     )
     messages = [
         {"role": "system", "content": _TEACHER_SUMMARY_PROMPT},
@@ -291,6 +314,10 @@ def generate_teacher_summary(
     if len(method_summary) > _MAX_METHOD_SUMMARY_LEN:
         method_summary = method_summary[:_MAX_METHOD_SUMMARY_LEN].rstrip() + "…"
 
+    approved = bool(payload.get("approved", True))
+    if not approved:
+        method_summary = ""
+
     allowed_set = set(allowed_step_ids)
     fallback_step = allowed_step_ids[0] if allowed_step_ids else None
     highlight_raw = payload.get("highlightStepIds") or payload.get("highlight_step_ids") or []
@@ -304,7 +331,12 @@ def generate_teacher_summary(
     if not highlight and fallback_step:
         highlight = [fallback_step]
 
-    logger.info("[teacher-agent] summary ok section=%s round=%d", section_id, safe_round)
+    logger.info(
+        "[teacher-agent] summary ok section=%s round=%d approved=%s",
+        section_id,
+        safe_round,
+        approved,
+    )
 
     return {
         "turn_id": "summary_1",
@@ -313,5 +345,6 @@ def generate_teacher_summary(
         "text": text,
         "method_summary": method_summary,
         "highlight_step_ids": highlight,
+        "approved": approved,
         "source": "llm",
     }

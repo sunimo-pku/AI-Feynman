@@ -29,6 +29,7 @@ from app.services.peer_harmonize import (
     normalize_question_kind,
     recompute_round_status,
 )
+from app.services.question_bank import resolve_standard_answer
 from app.services.peer_personas import (
     PEER_ASSESSMENT_USER_SUFFIX,
     build_monitor_misconception_correction_system_prompt,
@@ -160,6 +161,7 @@ def assess_one_peer(
     allowed_step_ids: list[str],
     round_index: int,
     history: list[dict[str, Any]],
+    standard_answer: str = "",
 ) -> dict[str, Any]:
     """单次 LLM 评估一名同伴（供 live session 并行 + 增量推送）。"""
     return _assess_one_peer(
@@ -172,6 +174,7 @@ def assess_one_peer(
         allowed_step_ids=allowed_step_ids,
         round_index=round_index,
         history=history,
+        standard_answer=standard_answer,
     )
 
 
@@ -186,10 +189,14 @@ def _assess_one_peer(
     allowed_step_ids: list[str],
     round_index: int,
     history: list[dict[str, Any]],
+    standard_answer: str = "",
 ) -> dict[str, Any]:
     cleaned_history = _sanitize_history(history)
     if len(cleaned_history) > _PEER_HISTORY_KEEP:
         cleaned_history = cleaned_history[-_PEER_HISTORY_KEEP:]
+    std = (standard_answer or "").strip() or resolve_standard_answer(
+        question_id=question_id,
+    )
     context = _build_user_prompt(
         section_id=section_id,
         question_id=question_id,
@@ -200,6 +207,7 @@ def _assess_one_peer(
         round_index=round_index,
         history=cleaned_history,
         purpose="peer_assessment",
+        standard_answer=std,
     )
     user_prompt = (
         f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
@@ -343,7 +351,6 @@ def finalize_peer_assessment_round(
     allowed_step_ids: list[str],
     round_index: int,
 ) -> dict[str, Any]:
-    """后处理：限流、去重，并在小明误解型提问后生成班长纠偏接话。"""
     harmonized = harmonize_peer_assessments(assessments)
     status_bits = recompute_round_status(harmonized)
 
@@ -388,6 +395,7 @@ def generate_peer_assessments(
     steps: list[dict[str, Any]],
     round_index: int = 1,
     history: list[dict[str, Any]] | None = None,
+    standard_answer: str = "",
 ) -> dict[str, Any]:
     """并行评估三名同伴，返回 assessments + all_understood。"""
 
@@ -400,6 +408,10 @@ def generate_peer_assessments(
     allowed_step_ids = [sid for sid in allowed_step_ids if sid]
     cleaned_history = _sanitize_history(history)
     safe_round = max(1, int(round_index or 1))
+    std = resolve_standard_answer(
+        question_id=question_id,
+        client_answer=standard_answer,
+    )
 
     common_kwargs = {
         "section_id": section_id,
@@ -410,6 +422,7 @@ def generate_peer_assessments(
         "allowed_step_ids": allowed_step_ids,
         "round_index": safe_round,
         "history": cleaned_history,
+        "standard_answer": std,
     }
 
     by_role: dict[str, dict[str, Any]] = {}

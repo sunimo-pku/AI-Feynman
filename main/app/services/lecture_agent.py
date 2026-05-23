@@ -198,7 +198,8 @@ def _build_user_prompt(
     allowed_step_ids: list[str],
     round_index: int,
     history: list[dict[str, Any]],
-    purpose: Literal["lecture", "peer_assessment", "teacher"] = "lecture",
+    purpose: Literal["lecture", "peer_assessment", "teacher", "teacher_summary"] = "lecture",
+    standard_answer: str = "",
 ) -> str:
     """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。
 
@@ -217,6 +218,20 @@ def _build_user_prompt(
     lines.append(f"【当前讲题轮次】{round_index}")
     lines.append(f"【题目 ID】{question_id}")
     lines.append(f"【题面】{question_prompt or '（题面未提供）'}")
+    std = (standard_answer or "").strip()
+    if std and purpose in ("peer_assessment", "teacher_summary"):
+        lines.append("")
+        lines.append(
+            "【标准解答要点 · 仅供核对，禁止念给学生听】"
+            "请用它判断学生是否讲错；不要要求与学生逐字相同："
+        )
+        lines.append(std)
+    elif purpose == "peer_assessment":
+        lines.append("")
+        lines.append(
+            "【标准解答要点】（本题暂无入库标准答案）请根据题面用初中数学自行验算，"
+            "发现法则用错、漏条件、结果矛盾时必须 `understood:false`。"
+        )
     knowledge_context = ""
     if purpose != "peer_assessment":
         knowledge_context = knowledge_index.prompt_context(
@@ -330,19 +345,24 @@ def _build_user_prompt(
     if purpose == "peer_assessment":
         lines.append(
             "【小组讨论 · 评估任务】你是围在旁边的**同班同学**，不是老师。"
-            "只判断**本轮**你个人听懂没；`reason` 用口语（附和或求助），"
-            "没听懂时只提 **1 个** 最卡的点。可以引用白板，但："
+            "判断：①跟没跟上 ②数学上有没有明显错误（见【标准解答要点】或题面验算）。"
+            "讲错也必须 `understood:false`；`reason` 用口语只提 **1 个** 最卡的点。"
+            "可以引用白板，但："
             "① 只有【学生口述】才能用「你说『…』」；"
             "② 步骤只能说「你写的」「白板上」；"
             "③ 【历史】里上一轮学生发言不要当成「本轮刚说的」；"
-            "④ 白板仅有笔画时禁止猜内容；"
-            "⑤ 禁止批作业腔、禁止导师式挑刺。"
+            "④ 白板仅有笔画时禁止猜内容。"
         )
     elif purpose == "teacher":
         lines.append(
             "【提示任务】学生主动请求提示。可引用白板步骤或口述中的真实内容，"
             "但只有【学生口述】里的词句才能用「你说」；步骤用「你写的」描述。"
             "禁止编造学生没说过的话。"
+        )
+    elif purpose == "teacher_summary":
+        lines.append(
+            "【收束核对】同伴评估为听懂，但你必须**独立核对**学生讲解数学是否正确。"
+            "若明显讲错，在 JSON 里设 `approved:false` 并温和指出问题，不要假装通过。"
         )
     elif speech or has_step_text:
         lines.append(
@@ -359,7 +379,11 @@ def _build_user_prompt(
     if purpose == "lecture":
         lines.append("请只输出一个 JSON 对象，符合上面的输出格式。")
     elif purpose == "peer_assessment":
-        lines.append("请只输出评估 JSON（understood / reason / highlightStepIds）。")
+        lines.append(
+            "请只输出评估 JSON（understood / questionKind / reason / highlightStepIds）。"
+        )
+    elif purpose == "teacher_summary":
+        lines.append("请只输出收束 JSON（approved / text / methodSummary / highlightStepIds）。")
     else:
         lines.append("请只输出提示 JSON（text / highlightStepIds）。")
 

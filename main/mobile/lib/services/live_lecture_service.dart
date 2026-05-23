@@ -83,6 +83,7 @@ class LiveLectureService {
   String _lastSectionId = '';
   String _lastQuestionId = '';
   String _lastQuestionPrompt = '';
+  String _lastStandardAnswer = '';
 
   /// 第十轮：TTS 淡出相关。
   ///
@@ -134,6 +135,7 @@ class LiveLectureService {
     required String sectionId,
     required String questionId,
     required String questionPrompt,
+    String standardAnswer = '',
     List<String> referenceSteps = const <String>[],
     bool isAutoRetry = false,
   }) async {
@@ -151,6 +153,7 @@ class LiveLectureService {
     _lastSectionId = sectionId;
     _lastQuestionId = questionId;
     _lastQuestionPrompt = questionPrompt;
+    _lastStandardAnswer = standardAnswer;
     if (_isConnected) {
       // 已连接：发送 session_start 切换到新会话。
       _sessionId = sessionId;
@@ -161,6 +164,7 @@ class LiveLectureService {
           sectionId: sectionId,
           questionId: questionId,
           questionPrompt: questionPrompt,
+          standardAnswer: standardAnswer,
         ),
       );
       return true;
@@ -203,6 +207,7 @@ class LiveLectureService {
           sectionId: sectionId,
           questionId: questionId,
           questionPrompt: questionPrompt,
+          standardAnswer: standardAnswer,
         ),
       );
       _startAppPing();
@@ -287,6 +292,7 @@ class LiveLectureService {
         sectionId: _lastSectionId,
         questionId: _lastQuestionId,
         questionPrompt: _lastQuestionPrompt,
+        standardAnswer: _lastStandardAnswer,
         referenceSteps: _currentReferenceSteps,
         isAutoRetry: true,
       );

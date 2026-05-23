@@ -31,6 +31,8 @@ from typing import Any, Awaitable, Callable
 
 from app.services.live_asr_buffer import LiveAsrBuffer
 from app.services.peer_assessment_agent import finalize_peer_assessment_round
+from app.services.question_bank import resolve_standard_answer
+from app.services.teacher_agent import apply_teacher_completion_gate
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +123,7 @@ class LiveLectureSession:
     section_id: str = ""
     question_id: str = ""
     question_prompt: str = ""
+    standard_answer: str = ""
 
     # ---- 实时缓冲 ----
     asr_buffer: LiveAsrBuffer = field(default_factory=LiveAsrBuffer)
@@ -274,6 +277,11 @@ class LiveLectureSession:
         self.section_id = next_section_id
         self.question_id = next_question_id
         self.question_prompt = next_question_prompt
+        client_std = str(event.get("standardAnswer") or "").strip()
+        self.standard_answer = resolve_standard_answer(
+            question_id=next_question_id,
+            client_answer=client_std,
+        )
         self._started = True
         self.last_status = "needs_explanation"
         self.last_mastery_delta = 0
@@ -506,6 +514,17 @@ class LiveLectureSession:
                 self.is_thinking = False
                 return
             teacher_ms = (time.monotonic() - teacher_t0) * 1000
+            gated = apply_teacher_completion_gate(
+                {
+                    "status": status,
+                    "all_understood": all_understood,
+                    "mastery_delta": mastery_delta,
+                },
+                teacher_summary,
+            )
+            status = str(gated.get("status") or status)
+            all_understood = bool(gated.get("all_understood"))
+            mastery_delta = int(gated.get("mastery_delta") or 0)
 
         elapsed_ms = time.monotonic() * 1000 - thinking_start_ms
         if elapsed_ms < _MIN_THINKING_VISIBLE_MS:
@@ -656,6 +675,7 @@ class LiveLectureSession:
                     allowed_step_ids=allowed_step_ids,
                     round_index=round_index,
                     history=history,
+                    standard_answer=self.standard_answer,
                 ),
             )
 
@@ -734,6 +754,7 @@ class LiveLectureSession:
                 round_index=max(1, self.round_index + 1),
                 history=list(self.history),
                 peer_assessments=peer_assessments,
+                standard_answer=self.standard_answer,
             ),
         )
 
@@ -1333,6 +1354,7 @@ def _teacher_summary_to_wire(item: dict[str, Any]) -> dict[str, Any]:
         "displayName": str(item.get("display_name") or "李老师"),
         "text": str(item.get("text") or ""),
         "methodSummary": str(item.get("method_summary") or ""),
+        "approved": bool(item.get("approved", True)),
         "highlightStepIds": list(item.get("highlight_step_ids") or []),
     }
 

@@ -321,6 +321,7 @@ class LiveClientEvent {
     required String sectionId,
     required String questionId,
     required String questionPrompt,
+    String standardAnswer = '',
   }) {
     return {
       'type': LiveClientEventType.sessionStart.wire,
@@ -328,6 +329,8 @@ class LiveClientEvent {
       'sectionId': sectionId,
       'questionId': questionId,
       'questionPrompt': questionPrompt,
+      if (standardAnswer.trim().isNotEmpty)
+        'standardAnswer': standardAnswer.trim(),
     };
   }
 

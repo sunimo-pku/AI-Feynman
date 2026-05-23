@@ -44,7 +44,11 @@ from app.db import (
 from app.middleware.auth import get_current_user
 from app.services.lecture_agent import LectureAgentError
 from app.services.peer_assessment_agent import generate_peer_assessments
-from app.services.teacher_agent import generate_teacher_hint, generate_teacher_summary
+from app.services.teacher_agent import (
+    apply_teacher_completion_gate,
+    generate_teacher_hint,
+    generate_teacher_summary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +111,7 @@ class LectureSubmitRequest(BaseModel):
     section_id: str = Field(..., alias="sectionId", min_length=1, max_length=64)
     question_id: str = Field(..., alias="questionId", min_length=1, max_length=64)
     question_prompt: str = Field("", alias="questionPrompt", max_length=2000)
+    standard_answer: str = Field("", alias="standardAnswer", max_length=4000)
     student_speech_text: str = Field("", alias="studentSpeechText", max_length=4000)
     steps: list[LectureStep] = Field(default_factory=list)
 
@@ -136,6 +141,7 @@ class AgentTurnOut(BaseModel):
     display_name: str = Field(..., serialization_alias="displayName")
     text: str
     method_summary: str = Field("", serialization_alias="methodSummary")
+    approved: bool = True
     highlight_step_ids: list[str] = Field(
         default_factory=list,
         serialization_alias="highlightStepIds",
@@ -263,6 +269,7 @@ def _build_submit_response(
             display_name=teacher_summary["display_name"],
             text=teacher_summary["text"],
             method_summary=str(teacher_summary.get("method_summary") or ""),
+            approved=bool(teacher_summary.get("approved", True)),
             highlight_step_ids=list(teacher_summary.get("highlight_step_ids") or []),
         )
     turns_payload = _assessments_to_turns_payload(
@@ -347,6 +354,7 @@ async def submit_lecture(
             steps=steps_payload,
             round_index=req.round_index,
             history=history_payload,
+            standard_answer=req.standard_answer,
         )
         teacher_summary: dict[str, Any] | None = None
         if result.get("all_understood"):
@@ -359,7 +367,9 @@ async def submit_lecture(
                 round_index=req.round_index,
                 history=history_payload,
                 peer_assessments=result.get("assessments"),
+                standard_answer=req.standard_answer,
             )
+            result = apply_teacher_completion_gate(result, teacher_summary)
     except LectureAgentError as e:
         logger.exception(
             "[lecture] /submit peer assessment failed section=%s question=%s round=%d",

@@ -676,6 +676,7 @@ class _LecturePageState extends State<LecturePage> {
       sectionId: widget.section.id,
       questionId: _question.questionId,
       questionPrompt: _question.prompt,
+      standardAnswer: _usableStandardAnswer(_question.standardAnswer),
       studentSpeechText: speech,
       steps: steps,
       // 提交时是第 (_round + 1) 轮：_round 在请求成功前先不递增，
@@ -722,6 +723,12 @@ class _LecturePageState extends State<LecturePage> {
     return '${understood.join('、')}听懂了，${confused.join('、')}还想再聊聊。';
   }
 
+  String _usableStandardAnswer(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty || t.contains('将于后续版本填入')) return '';
+    return t;
+  }
+
   /// P1/P3：文字提交与实时语音共用 —— 把三人评估结果落到 UI / history / 播放队列。
   void _applyPeerAssessmentRound({
     required List<PeerAssessment> assessments,
@@ -737,16 +744,25 @@ class _LecturePageState extends State<LecturePage> {
     _peerAssessments = assessments;
     _lastResponseStatus = status;
 
+    final teacherRejected =
+        teacherSummary != null && !teacherSummary.approved;
+    final completed = allUnderstood && !teacherRejected;
+
+    final systemText =
+        teacherRejected
+            ? '同伴表面听懂了，但李老师核对后发现讲解还需要修正。'
+            : _assessmentRoundSummary(assessments);
+
     _turns.add(
       AgentTurn(
         role: AgentRole.system,
         displayName: '系统',
-        text: _assessmentRoundSummary(assessments),
+        text: systemText,
         highlightStepIds: const [],
       ),
     );
 
-    if (allUnderstood) {
+    if (completed) {
       if (teacherSummary != null && !omitTeacherTurn) {
         _turns.add(teacherSummary);
         _lastSummary = teacherSummary.text.trim();
@@ -785,6 +801,19 @@ class _LecturePageState extends State<LecturePage> {
           ),
         );
       }
+      if (teacherSummary != null && !omitTeacherTurn) {
+        _turns.add(teacherSummary);
+      }
+      if (teacherRejected) {
+        _turns.add(
+          const AgentTurn(
+            role: AgentRole.system,
+            displayName: '系统',
+            text: '请根据李老师的提示修正讲解，再点「开始讲题」重讲。',
+            highlightStepIds: [],
+          ),
+        );
+      }
       _status = _LectureStatus.awaiting;
       _reasonPlayback.setQueue(assessments);
     }
@@ -817,7 +846,7 @@ class _LecturePageState extends State<LecturePage> {
       _canvasController.setHighlight(teacherSummary.highlightStepIds);
     }
 
-    if (allUnderstood) {
+    if (completed) {
       unawaited(
         _persistCompletion(
           LectureSubmitResponse(
@@ -1505,6 +1534,7 @@ class _LecturePageState extends State<LecturePage> {
         sectionId: widget.section.id,
         questionId: _question.questionId,
         questionPrompt: _question.prompt,
+        standardAnswer: _usableStandardAnswer(_question.standardAnswer),
         referenceSteps: _question.referenceSteps,
       );
       if (!mounted) return;
@@ -1563,6 +1593,7 @@ class _LecturePageState extends State<LecturePage> {
       sectionId: widget.section.id,
       questionId: _question.questionId,
       questionPrompt: _question.prompt,
+      standardAnswer: _usableStandardAnswer(_question.standardAnswer),
       referenceSteps: _question.referenceSteps,
     );
     if (!mounted) return;
@@ -1958,8 +1989,7 @@ class _LecturePageState extends State<LecturePage> {
             teacherSummary: peerPayload.teacherSummary,
             committedStudent: _buildLiveStudentHistoryItem(),
             peerReplies: peerPayload.peerReplies,
-            omitTeacherTurn:
-                peerPayload.allUnderstood && peerPayload.teacherSummary != null,
+            omitTeacherTurn: peerPayload.teacherSummary != null,
           );
           _liveStatus = _LiveStatus.idle;
         });
