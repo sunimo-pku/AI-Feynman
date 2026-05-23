@@ -50,30 +50,70 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _CURRICULUM_FILE = _PROJECT_ROOT / "data" / "curriculum" / "pep-junior-math.json"
 
 
-def _load_section_labels() -> dict[str, str]:
+def _load_section_labels() -> tuple[dict[str, str], dict[str, str]]:
     try:
         payload = json.loads(_CURRICULUM_FILE.read_text(encoding="utf-8"))
     except Exception as exc:  # pragma: no cover - startup diagnostic only
         logger.warning("Failed to load curriculum labels: %s", exc)
-        return {}
+        return {}, {}
 
     labels: dict[str, str] = {}
+    section_chapter: dict[str, str] = {}
     for book in payload.get("books", []):
         for chapter in book.get("chapters", []):
+            chapter_title = str(chapter.get("title") or "").strip()
             for section in chapter.get("sections", []):
                 section_id = str(section.get("id") or "")
                 label = str(section.get("label") or section.get("title") or "")
                 if section_id and label:
                     labels[section_id] = label
-    return labels
+                if section_id and chapter_title:
+                    section_chapter[section_id] = chapter_title
+    return labels, section_chapter
 
 
-_SECTION_LABEL: dict[str, str] = _load_section_labels()
+_SECTION_LABEL, _SECTION_CHAPTER = _load_section_labels()
 
 _SECTION_WEAK_REASON: dict[str, str] = {
     "pep-g8-down-s16-1": "取值范围条件容易写漏",
     "pep-g8-down-s16-2": "公式法则前提条件不稳定",
     "pep-g8-down-s16-3": "合并运算时系数符号易错",
+}
+
+_CHAPTER_WEAK_REASON: dict[str, str] = {
+    "有理数": "符号规则与绝对值几何意义容易混淆",
+    "整式的加减": "去括号法则与合并同类项时系数符号易错",
+    "一元一次方程": "去分母/移项时符号变化和漏乘项",
+    "几何图形初步": "几何语言转换与图形性质对应关系不稳定",
+    "相交线与平行线": "平行线判定定理与性质定理的题设结论容易颠倒",
+    "实数": "平方根与算术平方根的概念边界不清晰",
+    "平面直角坐标系": "坐标符号与象限特征、平移规律易混",
+    "二元一次方程组": "消元时系数配平和代入回代容易算错",
+    "不等式与不等式组": "不等号方向与边界值取舍容易混淆",
+    "数据的收集、整理与描述": "统计图读取与总体样本概念对应不稳定",
+    "三角形": "三角形内角和与外角定理的应用条件容易遗漏",
+    "全等三角形": "全等判定条件选择不当或对应边顶点写错",
+    "轴对称": "对称性质与最短路径模型的转化思路不稳定",
+    "整式的乘法与因式分解": "公式套用和因式分解彻底性容易出问题",
+    "分式": "分式有意义条件与运算中约分通分易错",
+    "二次根式": "公式法则前提条件不稳定",
+    "勾股定理": "直角三角形判定与勾股数适用条件容易遗漏",
+    "平行四边形": "判定定理选择不当或辅助线添加思路不清晰",
+    "一次函数": "k、b 符号与图像位置、增减性对应关系不稳定",
+    "数据的分析": "方差/标准差的意义理解与计算步骤易错",
+    "一元二次方程": "判别式应用与韦达定理前提条件容易忽略",
+    "二次函数": "开口方向、对称轴与最值综合讨论不全面",
+    "旋转": "旋转中心与旋转角度的对应关系容易搞混",
+    "圆": "切线判定与圆周角定理的应用条件不稳定",
+    "概率初步": "等可能事件判断与树状图列举容易遗漏",
+    "相似": "相似判定条件选择与对应边比例书写易错",
+    "锐角三角函数": "三角函数值记忆与直角三角形边角关系转化不稳定",
+    "投影与视图": "三视图还原与投影类型判断容易混淆",
+    "代数综合": "多个代数知识模块综合时思路切换不顺畅",
+    "几何综合": "辅助线思路与多定理联用条件容易遗漏",
+    "函数与应用": "实际问题中自变量取值范围与图像解释不稳定",
+    "统计与概率": "复杂情境下统计量选择与概率模型建立易错",
+    "全真模拟": "时间分配与综合题审题步骤容易出问题",
 }
 
 
@@ -172,7 +212,12 @@ def _label_for(section_id: str) -> str:
 
 
 def _reason_for(section_id: str) -> str:
-    return _SECTION_WEAK_REASON.get(section_id, "近期练习覆盖不足")
+    if section_id in _SECTION_WEAK_REASON:
+        return _SECTION_WEAK_REASON[section_id]
+    chapter = _SECTION_CHAPTER.get(section_id, "")
+    if chapter in _CHAPTER_WEAK_REASON:
+        return _CHAPTER_WEAK_REASON[chapter]
+    return "近期练习覆盖不足"
 
 
 def _review_to_card(row: LectureReview) -> ReviewCardOut:
