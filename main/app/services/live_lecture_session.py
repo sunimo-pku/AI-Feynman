@@ -535,16 +535,16 @@ class LiveLectureSession:
         self._append_student_history_snapshot()
         for item in assessments:
             self.history.append(_assessment_to_history_item(item))
-    if teacher_summary:
-        self.history.append({
-            "role": str(teacher_summary.get("role") or "teacher"),
-            "displayName": str(teacher_summary.get("display_name") or "李老师"),
-            "text": str(teacher_summary.get("text") or ""),
-            "methodSummary": str(teacher_summary.get("method_summary") or ""),
-            "highlightStepIds": list(
-                teacher_summary.get("highlight_step_ids") or []
-            ),
-        })
+        if teacher_summary:
+            self.history.append({
+                "role": str(teacher_summary.get("role") or "teacher"),
+                "displayName": str(teacher_summary.get("display_name") or "李老师"),
+                "text": str(teacher_summary.get("text") or ""),
+                "methodSummary": str(teacher_summary.get("method_summary") or ""),
+                "highlightStepIds": list(
+                    teacher_summary.get("highlight_step_ids") or []
+                ),
+            })
         if len(self.history) > _HISTORY_KEEP_LAST:
             del self.history[: len(self.history) - _HISTORY_KEEP_LAST]
 
