@@ -185,6 +185,7 @@ class LectureSessionRecord(Base):
     steps_json = Column(Text, default="[]")
     turns_json = Column(Text, default="[]")
     mastery_delta = Column(Integer, default=0)
+    mastery_after = Column(Integer, nullable=True)
     round_count = Column(Integer, default=0)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
@@ -405,6 +406,17 @@ def _run_lightweight_migrations() -> None:
                     logger.info("[db-migrate] added lecture_replay_records.difficulty")
                 except Exception as e:  # noqa: BLE001
                     logger.warning("[db-migrate] add difficulty failed: %s", e)
+            if "mastery_after" not in cols:
+                try:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE lecture_session_records "
+                            "ADD COLUMN mastery_after INTEGER"
+                        )
+                    )
+                    logger.info("[db-migrate] added lecture_session_records.mastery_after")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[db-migrate] add mastery_after failed: %s", e)
             if "mastery_delta" not in cols:
                 try:
                     conn.execute(

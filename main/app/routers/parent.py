@@ -132,6 +132,7 @@ class WeakSectionOut(BaseModel):
     last_practiced_at: datetime | None = Field(
         None, serialization_alias="lastPracticedAt"
     )
+    recent_scores: list[int] = Field(default_factory=list, serialization_alias="recentScores")
 
     model_config = {"populate_by_name": True}
 
@@ -256,7 +257,26 @@ def _require_linked_child(db: Session, user: User) -> StudentProfile:
     return profile
 
 
-def _progress_to_weak(row: LearningProgress) -> WeakSectionOut:
+def _recent_scores_for_section(
+    db: Session, student_id: int, section_id: str
+) -> list[int]:
+    rows = (
+        db.query(LectureSessionRecord)
+        .filter(
+            LectureSessionRecord.student_id == student_id,
+            LectureSessionRecord.section_id == section_id,
+            LectureSessionRecord.mastery_after.isnot(None),
+        )
+        .order_by(LectureSessionRecord.completed_at.desc())
+        .limit(5)
+        .all()
+    )
+    return [int(r.mastery_after or 0) for r in reversed(rows)]
+
+
+def _progress_to_weak(
+    row: LearningProgress, db: Session, student_id: int
+) -> WeakSectionOut:
     return WeakSectionOut(
         section_id=row.section_id,
         label=_label_for(row.section_id),
@@ -264,6 +284,7 @@ def _progress_to_weak(row: LearningProgress) -> WeakSectionOut:
         completed_rounds=int(row.completed_rounds or 0),
         reason=_reason_for(row.section_id),
         last_practiced_at=row.last_practiced_at,
+        recent_scores=_recent_scores_for_section(db, student_id, row.section_id),
     )
 
 
@@ -413,8 +434,8 @@ async def parent_dashboard(
         key=lambda r: -int(r.mastery_score or 0),
     )[:3]
 
-    weak_out = [_progress_to_weak(r) for r in weak]
-    strong_out = [_progress_to_weak(r) for r in strong]
+    weak_out = [_progress_to_weak(r, db, profile.id) for r in weak]
+    strong_out = [_progress_to_weak(r, db, profile.id) for r in strong]
     review_out = [_review_to_card(r) for r in review_rows]
 
     suggestion = _build_suggested_action(

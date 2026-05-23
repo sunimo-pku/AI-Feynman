@@ -607,6 +607,65 @@ class _SectionGroupCard extends StatelessWidget {
   }
 }
 
+class _MiniTrendLine extends StatelessWidget {
+  const _MiniTrendLine({required this.scores, required this.color});
+  final List<int> scores;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (scores.length < 2) {
+      return const SizedBox(height: 20);
+    }
+    return SizedBox(
+      height: 20,
+      child: CustomPaint(
+        painter: _MiniTrendPainter(scores: scores, color: color),
+        size: const Size(double.infinity, 20),
+      ),
+    );
+  }
+}
+
+class _MiniTrendPainter extends CustomPainter {
+  const _MiniTrendPainter({required this.scores, required this.color});
+  final List<int> scores;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    final dotPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final count = scores.length;
+    final stepX = size.width / (count - 1);
+
+    final path = Path();
+    for (int i = 0; i < count; i++) {
+      final x = i * stepX;
+      final y = size.height - (scores[i] / 100.0 * size.height);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+      canvas.drawCircle(Offset(x, y), 2, dotPaint);
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniTrendPainter old) {
+    return old.scores != scores || old.color != color;
+  }
+}
+
 class _SectionRow extends StatelessWidget {
   const _SectionRow({required this.info, required this.accent});
   final WeakSectionInfo info;
@@ -648,6 +707,10 @@ class _SectionRow extends StatelessWidget {
               valueColor: AlwaysStoppedAnimation<Color>(accent),
             ),
           ),
+          if (info.recentScores.length >= 2) ...[
+            const SizedBox(height: 6),
+            _MiniTrendLine(scores: info.recentScores, color: accent),
+          ],
         ],
       ),
     );

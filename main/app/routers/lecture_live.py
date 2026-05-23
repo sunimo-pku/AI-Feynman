@@ -275,6 +275,8 @@ def _persist_live_session_if_needed(
                 if transcript:
                     progress.last_summary = transcript[:200]
 
+            row.mastery_after = progress.mastery_score
+
         if should_update_progress and session.question_id:
             from app.services.assignment_service import mark_assignments_completed
 

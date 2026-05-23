@@ -12,6 +12,7 @@ class WeakSectionInfo {
     required this.completedRounds,
     required this.reason,
     this.lastPracticedAt,
+    this.recentScores = const <int>[],
   });
 
   final String sectionId;
@@ -20,6 +21,7 @@ class WeakSectionInfo {
   final int completedRounds;
   final String reason;
   final DateTime? lastPracticedAt;
+  final List<int> recentScores;
 
   factory WeakSectionInfo.fromJson(Map<String, dynamic> json) {
     DateTime? parseAt() {
@@ -30,6 +32,15 @@ class WeakSectionInfo {
       return null;
     }
 
+    List<int> readScores() {
+      final raw = json['recentScores'];
+      if (raw is! List) return const <int>[];
+      return raw
+          .whereType<num>()
+          .map((e) => e.toInt())
+          .toList(growable: false);
+    }
+
     return WeakSectionInfo(
       sectionId: json['sectionId'] as String? ?? '',
       label: json['label'] as String? ?? '',
@@ -37,6 +48,7 @@ class WeakSectionInfo {
       completedRounds: (json['completedRounds'] as num?)?.toInt() ?? 0,
       reason: json['reason'] as String? ?? '',
       lastPracticedAt: parseAt(),
+      recentScores: readScores(),
     );
   }
 }

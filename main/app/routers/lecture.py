@@ -554,6 +554,8 @@ def _persist_lecture_submission(
                     progress.last_summary or ""
                 )
 
+        existing.mastery_after = progress.mastery_score
+
         from app.services.assignment_service import mark_assignments_completed
 
         summary_text = turns_payload[-1].get("text", "") if turns_payload else ""
