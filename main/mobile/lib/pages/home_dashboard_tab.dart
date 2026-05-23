@@ -219,14 +219,14 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
                       ),
                 ),
                 StudyToolCell(
-                  label: '学习榜单',
-                  subtitle: '看看排名',
-                  icon: Icons.emoji_events_outlined,
+                  label: '拍照识题',
+                  subtitle: '拍照或相册',
+                  icon: Icons.document_scanner_outlined,
                   color: AppPalette.primaryAccent,
                   onTap:
                       () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => const LeaderboardPage(),
+                          builder: (_) => const PhotoQuestionPage(),
                         ),
                       ),
                 ),

@@ -17,7 +17,6 @@ import '../widgets/study_layout.dart';
 import 'curriculum_tab_page.dart';
 import 'home_dashboard_tab.dart';
 import 'lecture_page.dart';
-import 'more_tab_page.dart';
 // import 'privacy_notice_page.dart';
 import 'review_page.dart';
 import 'student_assignments_page.dart';
@@ -43,7 +42,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
   int _tabIndex = 0;
   int _pendingAssignments = 0;
 
-  static const _tabTitles = ['今日', '课程', '工具', '我的'];
+  static const _tabTitles = ['今日', '课程', '排行榜', '我的'];
 
   @override
   void initState() {
@@ -209,7 +208,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
                     onSectionTap: _onSectionTap,
                     onSectionReview: _onSectionReview,
                   ),
-                  const MoreTabPage(),
+                  const LeaderboardPage(embeddedInTab: true),
                   PowerProfilePage(
                     embeddedInTab: true,
                     onProfileSaved: _syncStudentGrade,
@@ -246,12 +245,12 @@ class _StudentMainShellState extends State<StudentMainShell> {
             label: '课程',
           ),
           NavigationDestination(
-            icon: StudyTabIcon(asset: 'assets/icons/tab_more.svg'),
+            icon: StudyTabIcon(asset: 'assets/icons/tab_leaderboard.svg'),
             selectedIcon: StudyTabIcon(
-              asset: 'assets/icons/tab_more.svg',
+              asset: 'assets/icons/tab_leaderboard.svg',
               selected: true,
             ),
-            label: '工具',
+            label: '排行榜',
           ),
           NavigationDestination(
             icon: StudyTabIcon(asset: 'assets/icons/tab_profile.svg'),

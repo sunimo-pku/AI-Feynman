@@ -350,7 +350,10 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
 }
 
 class LeaderboardPage extends StatefulWidget {
-  const LeaderboardPage({super.key});
+  const LeaderboardPage({super.key, this.embeddedInTab = false});
+
+  /// 嵌入学生端底部「排行榜」Tab 时不重复套 AppBar。
+  final bool embeddedInTab;
 
   @override
   State<LeaderboardPage> createState() => _LeaderboardPageState();
@@ -458,9 +461,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       'province': '省榜',
     };
     final theme = Theme.of(context);
-    return _ScaffoldShell(
-      title: '排行榜',
-      child: ListView(
+    final body = ListView(
         padding: const EdgeInsets.all(AppSpacing.pageEdge),
         children: [
           Wrap(
@@ -573,8 +574,11 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
               },
             ),
         ],
-      ),
-    );
+      );
+    if (widget.embeddedInTab) {
+      return body;
+    }
+    return _ScaffoldShell(title: '排行榜', child: body);
   }
 }
 
