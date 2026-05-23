@@ -435,7 +435,7 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   /// 白板更新 debounce 后只同步 step 结构（笔画数 / 包围盒），**不**导出 PNG、
-  /// **不**调 OCR；整板识别仅在「讲题结束」时跑。
+  /// **不**调 OCR。整板识别仅在「讲题结束」「需要提示」等显式提交时跑。
   void _scheduleInkSnapshot({bool immediate = false}) {
     _inkSnapshotDebounce?.cancel();
     final generation = _questionGeneration;
@@ -1029,8 +1029,8 @@ class _LecturePageState extends State<LecturePage> {
         return;
       }
       setState(() => _hintLoading = true);
-      // 必须先同步 ink_snapshot，否则后端 latest_steps 为空会直接 no_steps_yet。
-      await _pushInkSnapshotNow();
+      // 整板 OCR + 结构同步，再请李老师提示（与「讲题结束」同口径，不在落笔时 OCR）。
+      await _pushInkSnapshotNow(runOcr: true);
       if (!mounted) return;
       await _liveService.clearPendingTts();
       await _reasonPlayback.stop();
