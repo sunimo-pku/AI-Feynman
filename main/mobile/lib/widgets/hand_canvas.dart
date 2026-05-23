@@ -6,6 +6,37 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
+/// OCR 导出缩放：让 Qwen-VL 收到的 PNG 长边落在 [targetLongEdge, maxLongEdge]。
+@visibleForTesting
+double ocrExportUniformScale({
+  required double contentWidth,
+  required double contentHeight,
+  double targetLongEdge = 1024,
+  double maxLongEdge = 2048,
+}) {
+  final longEdge = math.max(
+    math.max(contentWidth, 1.0),
+    math.max(contentHeight, 1.0),
+  );
+  var scale = targetLongEdge / longEdge;
+  if (longEdge * scale > maxLongEdge) {
+    scale = maxLongEdge / longEdge;
+  }
+  return scale;
+}
+
+/// 导出位图里笔迹线宽乘数，保证缩放后仍 ≥ [minStrokePx] 像素。
+@visibleForTesting
+double ocrExportStrokeMultiplier({
+  required double baseStrokeWidth,
+  required double layoutScale,
+  double minStrokePx = 6,
+}) {
+  final scaled = baseStrokeWidth * layoutScale;
+  if (scaled >= minStrokePx) return 1.0;
+  return minStrokePx / scaled;
+}
+
 /// 手写板工具：画笔 / 橡皮擦。
 enum CanvasDrawMode { pen, eraser }
 
@@ -110,62 +141,37 @@ class HandCanvasController extends ChangeNotifier {
     final stepStrokes = _strokes
         .where((s) => s.stepId == stepId && s.points.isNotEmpty)
         .toList(growable: false);
-    if (stepStrokes.isEmpty) return null;
-
-    var bounds = stepStrokes.first.bounds;
-    for (final s in stepStrokes.skip(1)) {
-      bounds = bounds.expandToInclude(s.bounds);
-    }
-    if (bounds == Rect.zero ||
-        !bounds.width.isFinite ||
-        !bounds.height.isFinite) {
-      return null;
-    }
-
-    const padding = 28.0;
-    const minDim = 80.0;
-    final contentW = math.max(bounds.width, 1.0);
-    final contentH = math.max(bounds.height, 1.0);
-    final width = math.max(minDim, contentW + padding * 2).ceil();
-    final height = math.max(minDim, contentH + padding * 2).ceil();
-
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(
-      recorder,
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-      Paint()..color = AppPalette.canvas,
-    );
-    canvas.save();
-    canvas.translate(padding - bounds.left, padding - bounds.top);
-    _HandCanvasPainter.paintStepStrokes(
-      canvas: canvas,
+    return _exportStrokesPng(
       strokes: stepStrokes,
       penStyle: penStyle,
+      padding: 28,
+      minDim: 80,
     );
-    canvas.restore();
-
-    final picture = recorder.endRecording();
-    try {
-      final image = await picture.toImage(width, height);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      return byteData?.buffer.asUint8List();
-    } catch (_) {
-      return null;
-    }
   }
 
   /// 导出整板 PNG（所有笔迹一次裁切），供整板 Qwen-VL OCR。
   Future<Uint8List?> exportBoardPng({String penStyle = 'default'}) async {
     final allStrokes =
         _strokes.where((s) => s.points.isNotEmpty).toList(growable: false);
-    if (allStrokes.isEmpty) return null;
+    return _exportStrokesPng(
+      strokes: allStrokes,
+      penStyle: penStyle,
+      padding: 36,
+      minDim: 160,
+    );
+  }
 
-    var bounds = allStrokes.first.bounds;
-    for (final s in allStrokes.skip(1)) {
+  /// 离屏渲染笔迹为 OCR 友好 PNG：白底黑字 + 统一缩放，避免大屏 3dp 笔迹过细。
+  Future<Uint8List?> _exportStrokesPng({
+    required List<_Stroke> strokes,
+    required String penStyle,
+    required double padding,
+    required double minDim,
+  }) async {
+    if (strokes.isEmpty) return null;
+
+    var bounds = strokes.first.bounds;
+    for (final s in strokes.skip(1)) {
       bounds = bounds.expandToInclude(s.bounds);
     }
     if (bounds == Rect.zero ||
@@ -174,12 +180,19 @@ class HandCanvasController extends ChangeNotifier {
       return null;
     }
 
-    const padding = 36.0;
-    const minDim = 160.0;
     final contentW = math.max(bounds.width, 1.0);
     final contentH = math.max(bounds.height, 1.0);
-    final width = math.max(minDim, contentW + padding * 2).ceil();
-    final height = math.max(minDim, contentH + padding * 2).ceil();
+    final baseStroke = _HandCanvasPainter.strokeWidthForPenStyle(penStyle);
+    final scale = ocrExportUniformScale(
+      contentWidth: contentW,
+      contentHeight: contentH,
+    );
+    final strokeMul = ocrExportStrokeMultiplier(
+      baseStrokeWidth: baseStroke,
+      layoutScale: scale,
+    );
+    final width = math.max(minDim, (contentW + padding * 2) * scale).ceil();
+    final height = math.max(minDim, (contentH + padding * 2) * scale).ceil();
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(
@@ -188,14 +201,17 @@ class HandCanvasController extends ChangeNotifier {
     );
     canvas.drawRect(
       Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-      Paint()..color = AppPalette.canvas,
+      Paint()..color = const Color(0xFFFFFFFF),
     );
     canvas.save();
-    canvas.translate(padding - bounds.left, padding - bounds.top);
+    canvas.scale(scale);
+    canvas.translate(padding / scale - bounds.left, padding / scale - bounds.top);
     _HandCanvasPainter.paintStepStrokes(
       canvas: canvas,
-      strokes: allStrokes,
+      strokes: strokes,
       penStyle: penStyle,
+      inkColor: const Color(0xFF111111),
+      strokeWidthMultiplier: strokeMul,
     );
     canvas.restore();
 
@@ -563,14 +579,19 @@ class _HandCanvasPainter extends CustomPainter {
     required List<_Stroke> strokes,
     required String penStyle,
     Set<String> highlight = const <String>{},
+    Color? inkColor,
+    double strokeWidthMultiplier = 1.0,
   }) {
     for (final stroke in strokes) {
       if (stroke.points.isEmpty) continue;
       final highlighted = highlight.contains(stroke.stepId);
+      final baseWidth =
+          highlighted ? _highlightStrokeWidth : strokeWidthForPenStyle(penStyle);
       final paint = Paint()
-        ..color = highlighted ? _highlightColor : _colorForPenStyle(penStyle)
-        ..strokeWidth =
-            highlighted ? _highlightStrokeWidth : _widthForPenStyle(penStyle)
+        ..color =
+            inkColor ??
+            (highlighted ? _highlightColor : _colorForPenStyle(penStyle))
+        ..strokeWidth = baseWidth * strokeWidthMultiplier
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..isAntiAlias = true
@@ -622,7 +643,7 @@ class _HandCanvasPainter extends CustomPainter {
     };
   }
 
-  static double _widthForPenStyle(String style) {
+  static double strokeWidthForPenStyle(String style) {
     return switch (style) {
       'gold' => 4.0,
       _ => _baseStrokeWidth,

@@ -512,8 +512,10 @@ def test_ocr_hwr_qwen_vl_returns_recognized_latex(
         "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
     )
     monkeypatch.setattr("app.routers.ocr.Config.ALIYUN_API_KEY", "ci-key")
+    captured: dict = {}
 
-    def _fake_recognize(**_kwargs):
+    def _fake_recognize(**kwargs):
+        captured.update(kwargs)
         return {
             "latex": r"\sqrt{12}=2\sqrt{3}",
             "plainText": "根号12等于2倍根号3",
@@ -528,7 +530,7 @@ def test_ocr_hwr_qwen_vl_returns_recognized_latex(
             "sectionId": "pep-g8-down-s16-1",
             "questionId": "q-s16-1-001",
             "mode": "hwr",
-            "referenceSteps": ["写出已知"],
+            "referenceSteps": [r"$\sqrt{12}=2\sqrt{3}$", "标准答案不应进 prompt"],
             "boardImageBase64": tiny_png_b64,
             "steps": [
                 {"stepId": "step_1", "strokeCount": 4},
@@ -536,6 +538,7 @@ def test_ocr_hwr_qwen_vl_returns_recognized_latex(
         },
     )
     assert resp.status_code == 200
+    assert "reference_hints" not in captured
     board = resp.json()["board"]
     assert board["latex"] == r"\sqrt{12}=2\sqrt{3}"
     assert "根号" in board["plainText"]

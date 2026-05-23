@@ -918,6 +918,12 @@ git push origin main
   导出全板笔迹；`/ocr/ink mode=hwr` + `boardImageBase64` 只调一次
   `recognize_ink_board`；`ink_snapshot` 带 `boardLatex/boardPlainText`。
   勿再按 step 裁切多次 OCR。OCR 失败仍走「笔画数 + 语音」，不阻塞讲题。
+- **Qwen-VL 白板 OCR 禁止喂 referenceSteps**：题库 `referenceSteps` 常含
+  `$5-x\\ge0$`、`\\sqrt{12}=2\\sqrt{3}` 等标准答案；写进 VL prompt 会诱发
+  「抄答案」式误识别。HWR 只看 PNG，不传解题框架 hint。
+- **exportBoardPng 必须 OCR 友好**：大屏 1:1 导出时 3dp 笔迹只有几个像素宽，
+  VL 几乎读不出。离屏导出需白底黑字 + 长边缩放至 ~1024px，且线宽乘数保证
+  输出 bitmap 里笔迹 ≥6px。
 - **同伴 TTS 只在展开「有话要说」后播放**：`agent_tts_chunk` 与
   `agent_turn_done` 不再自动出声；`PeerReasonPlaybackService.playPeer`
   只播当前点击的一位，禁止连带播队列里后面的人。

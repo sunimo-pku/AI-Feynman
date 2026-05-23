@@ -113,12 +113,14 @@ def recognize_ink_step(
     image_base64: str,
     section_id: str = "",
     question_id: str = "",
-    reference_hints: list[str] | None = None,
 ) -> dict[str, Any]:
     """Recognize one whiteboard step handwriting via Qwen-VL.
 
     Returns normalized ``latex`` / ``plainText`` / ``confidence`` / ``source``.
     Failures surface as ``error`` so callers can keep the lecture flow alive.
+
+    注意：不要把题库 referenceSteps 传进 prompt —— 其中常含标准答案 LaTeX，
+    会诱发 VL 模型「抄答案」而非读笔迹。
     """
 
     if not Config.ALIYUN_API_KEY:
@@ -133,14 +135,6 @@ def recognize_ink_step(
     if len(raw) < _MIN_INK_IMAGE_BYTES:
         return {"error": "image too small"}
 
-    hints = [h.strip() for h in (reference_hints or []) if isinstance(h, str) and h.strip()]
-    hint_block = ""
-    if hints:
-        joined = "；".join(hints[:5])
-        hint_block = (
-            f"\n题目解题框架标签（仅供你对照题型，**不是**学生已写内容）：{joined}"
-        )
-
     prompt = f"""
 你是初中数学手写识别助手。图片是学生白板上的**一步**手写内容（算式、等式或简短中文说明）。
 请识别学生**实际写了什么**，只输出 JSON 对象，不要 Markdown：
@@ -152,7 +146,7 @@ def recognize_ink_step(
 规则：
 - 只认图片里的真实笔迹，禁止编造。
 - 看不清、空白或无法辨认时 latex/plainText 留空，confidence <= 0.2。
-- 不要把解题框架标签当成识别结果。{hint_block}
+- 不要根据题面或解题套路猜测学生写了什么。
 sectionId={section_id or "unknown"} questionId={question_id or "unknown"}
 """.strip()
 
@@ -209,9 +203,12 @@ def recognize_ink_board(
     image_base64: str,
     section_id: str = "",
     question_id: str = "",
-    reference_hints: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Recognize the full whiteboard handwriting in one Qwen-VL call."""
+    """Recognize the full whiteboard handwriting in one Qwen-VL call.
+
+    不传题库 referenceSteps：其中常含 $\\\\sqrt{{12}}=2\\\\sqrt{{3}}$ 等标准答案，
+    VL 模型极易误当成 OCR 结果输出。
+    """
 
     if not Config.ALIYUN_API_KEY:
         return {"error": "ALIYUN_API_KEY not configured"}
@@ -225,14 +222,6 @@ def recognize_ink_board(
     if len(raw) < _MIN_INK_IMAGE_BYTES:
         return {"error": "image too small"}
 
-    hints = [h.strip() for h in (reference_hints or []) if isinstance(h, str) and h.strip()]
-    hint_block = ""
-    if hints:
-        joined = "；".join(hints[:5])
-        hint_block = (
-            f"\n题目解题框架标签（仅供你对照题型，**不是**学生已写内容）：{joined}"
-        )
-
     prompt = f"""
 你是初中数学手写识别助手。图片是学生讲题白板的**完整内容**（可能含多行算式与简短中文说明）。
 请识别学生**实际写了什么**，只输出 JSON 对象，不要 Markdown：
@@ -244,7 +233,7 @@ def recognize_ink_board(
 规则：
 - 只认图片里的真实笔迹，禁止编造。
 - 看不清、空白或无法辨认时 latex/plainText 留空，confidence <= 0.2。
-- 不要把解题框架标签当成识别结果。{hint_block}
+- 不要根据题面、章节或解题套路猜测学生写了什么。
 sectionId={section_id or "unknown"} questionId={question_id or "unknown"}
 """.strip()
 

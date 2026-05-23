@@ -104,13 +104,11 @@ def _recognize_board_with_qwen(
     board_image_base64: str,
     section_id: str,
     question_id: str,
-    reference_hints: list[str],
 ) -> InkBoardOut:
     vision = recognize_ink_board(
         image_base64=board_image_base64,
         section_id=section_id,
         question_id=question_id,
-        reference_hints=reference_hints,
     )
     if vision.get("error"):
         logger.info(
@@ -145,20 +143,17 @@ def _recognize_board_with_qwen(
 def recognize_steps(req: InkRequest) -> tuple[list[InkStepOut], InkBoardOut | None]:
     """V1 OCR 主入口：整板识别一次；steps 只回传结构字段。"""
 
-    refs = [r.strip() for r in req.reference_steps if isinstance(r, str)]
-    refs = [r for r in refs if r]
-
     board: InkBoardOut | None = None
     if (
         req.mode == "hwr"
         and req.board_image_base64.strip()
         and Config.ALIYUN_API_KEY
     ):
+        # referenceSteps 留在请求体供兼容；HWR 不传 Qwen-VL，避免抄标准答案。
         board = _recognize_board_with_qwen(
             board_image_base64=req.board_image_base64.strip(),
             section_id=req.section_id,
             question_id=req.question_id,
-            reference_hints=refs,
         )
         logger.info(
             "[ocr-ink] board section=%s source=%s conf=%.2f mode=hwr",
