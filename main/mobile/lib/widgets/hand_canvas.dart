@@ -89,6 +89,35 @@ class HandCanvasController extends ChangeNotifier {
   int _nextStepIndex = 1;
   int _version = 0;
   DateTime? _lastPointerAt;
+  Size _layoutSize = Size.zero;
+
+  void setLayoutSize(Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+    _layoutSize = size;
+  }
+
+  /// 供讲题回放录制：当前画布全量笔迹 + 布局尺寸。
+  Map<String, dynamic>? buildReplayInkFrame() {
+    if (_strokes.isEmpty) return null;
+    final lw = _layoutSize.width > 0 ? _layoutSize.width : 1.0;
+    final lh = _layoutSize.height > 0 ? _layoutSize.height : 1.0;
+    final strokePayload = <Map<String, dynamic>>[];
+    for (final s in _strokes) {
+      if (s.points.isEmpty) continue;
+      strokePayload.add({
+        'stepId': s.stepId,
+        'points': [
+          for (final p in s.points) [p.dx, p.dy],
+        ],
+      });
+    }
+    if (strokePayload.isEmpty) return null;
+    return {
+      'layoutWidth': lw,
+      'layoutHeight': lh,
+      'strokes': strokePayload,
+    };
+  }
 
   void _bump() {
     _version += 1;
@@ -372,7 +401,10 @@ class _HandCanvasState extends State<HandCanvas> {
                   : Border.all(color: AppPalette.outline),
         ),
         clipBehavior: widget.edgeToEdge ? Clip.hardEdge : Clip.antiAlias,
-        child: Listener(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            widget.controller.setLayoutSize(constraints.biggest);
+            return Listener(
           onPointerDown: _onPointerDown,
           onPointerMove: _onPointerMove,
           onPointerUp: _onPointerUp,
@@ -399,6 +431,8 @@ class _HandCanvasState extends State<HandCanvas> {
               },
             ),
           ),
+        );
+          },
         ),
       ),
     );

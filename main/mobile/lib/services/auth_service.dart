@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
 import 'progress_repository.dart';
+import 'knowledge_point_progress_repository.dart';
 import 'review_repository.dart';
 import 'student_grade_store.dart';
 
@@ -96,6 +97,7 @@ class AuthService extends ChangeNotifier {
       if (isLoggedIn) {
         await ProgressRepository.instance.switchUser(storageNamespace);
         await ReviewRepository.instance.switchUser(storageNamespace);
+        await KnowledgePointProgressRepository.instance.switchUser(storageNamespace);
         await StudentGradeStore.instance.load();
       }
       notifyListeners();
@@ -218,6 +220,7 @@ class AuthService extends ChangeNotifier {
     }
     await ProgressRepository.instance.switchUser(storageNamespace);
     await ReviewRepository.instance.switchUser(storageNamespace);
+    await KnowledgePointProgressRepository.instance.switchUser(storageNamespace);
     await StudentGradeStore.instance.load();
     notifyListeners();
     return AuthResult.success(_username, role: _role);
@@ -290,6 +293,7 @@ class AuthService extends ChangeNotifier {
     if (_role == 'student') {
       await ProgressRepository.instance.switchUser(storageNamespace);
       await ReviewRepository.instance.switchUser(storageNamespace);
+      await KnowledgePointProgressRepository.instance.switchUser(storageNamespace);
       await StudentGradeStore.instance.load();
     }
     if (notify) notifyListeners();

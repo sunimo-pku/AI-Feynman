@@ -168,6 +168,38 @@ void main() {
     });
   });
 
+  group('MockLectureRepository · 知识点', () {
+    test('每节 3 道题对应 3 个 knowledgePointId', () {
+      for (final s in sections) {
+        final qs = repo.questionsForSection(s);
+        final kpIds = qs.map((q) => q.knowledgePointId).toSet();
+        expect(kpIds.length, 3, reason: '$s 应有 3 个知识点题目');
+        for (final q in qs) {
+          expect(q.knowledgePointId, isNotEmpty);
+          expect(q.knowledgePointLabel, isNotEmpty);
+        }
+      }
+    });
+
+    test('questionsForKnowledgePoint 只返回该知识点下的题', () {
+      final qs = repo.questionsForSection('pep-g8-down-s16-1');
+      final kpId = qs.first.knowledgePointId;
+      final scoped = repo.questionsForKnowledgePoint(kpId);
+      expect(scoped.length, greaterThanOrEqualTo(2));
+      expect(scoped.first.knowledgePointId, kpId);
+      expect(repo.questionCountForKnowledgePoint(kpId), scoped.length);
+    });
+
+    test('initialIndexForKnowledgePoint 随星级升高选题难度', () {
+      final kpId = repo.questionsForSection('pep-g8-down-s16-1').first.knowledgePointId;
+      final list = repo.questionsForKnowledgePoint(kpId);
+      expect(repo.initialIndexForKnowledgePoint(list, 0), 0);
+      expect(list[repo.initialIndexForKnowledgePoint(list, 0)].difficulty, 1);
+      final highIdx = repo.initialIndexForKnowledgePoint(list, 5);
+      expect(list[highIdx].difficulty, 3);
+    });
+  });
+
   group('LectureQuestion 模型', () {
     test('默认 difficulty=1, tags 为空', () {
       // 没有传 difficulty / tags 时仍可构造（第六轮以前的兼容路径）。

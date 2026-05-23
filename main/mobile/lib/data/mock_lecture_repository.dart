@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import 'knowledge_point_progress_models.dart';
 import 'lecture_models.dart';
 
 /// 本地题库 Mock：第七轮起每个 V1 可练习章节内置 3 道题。
@@ -27,6 +28,8 @@ class MockLectureRepository {
 
   final Map<String, List<LectureQuestion>> _assetBank =
       <String, List<LectureQuestion>>{};
+  final Map<String, List<LectureQuestion>> _kpBank =
+      <String, List<LectureQuestion>>{};
   bool _assetLoaded = false;
 
   Future<void> loadAssetBank() async {
@@ -39,14 +42,35 @@ class MockLectureRepository {
       return;
     }
     final next = <String, List<LectureQuestion>>{};
+    final kpNext = <String, List<LectureQuestion>>{};
     for (final item in list.whereType<Map<String, dynamic>>()) {
       final q = LectureQuestion.fromJson(item);
       if (q.questionId.isEmpty || q.sectionId.isEmpty) continue;
-      next.putIfAbsent(q.sectionId, () => <LectureQuestion>[]).add(q);
+      final isTierClone =
+          q.questionId.endsWith('-d2') || q.questionId.endsWith('-d3');
+      if (!isTierClone) {
+        next.putIfAbsent(q.sectionId, () => <LectureQuestion>[]).add(q);
+      }
+      if (q.knowledgePointId.isNotEmpty) {
+        kpNext.putIfAbsent(q.knowledgePointId, () => <LectureQuestion>[]).add(q);
+      }
+    }
+    for (final entry in kpNext.entries) {
+      entry.value.sort((a, b) => a.difficulty.compareTo(b.difficulty));
+    }
+    for (final entry in next.entries) {
+      entry.value.sort((a, b) => a.difficulty.compareTo(b.difficulty));
     }
     _assetBank
       ..clear()
-      ..addAll(next.map((key, value) => MapEntry(key, List.unmodifiable(value))));
+      ..addAll(
+        next.map((key, value) => MapEntry(key, List.unmodifiable(value))),
+      );
+    _kpBank
+      ..clear()
+      ..addAll(
+        kpNext.map((key, value) => MapEntry(key, List.unmodifiable(value))),
+      );
     _assetLoaded = true;
   }
 
@@ -91,6 +115,53 @@ class MockLectureRepository {
     return list?.length ?? 1;
   }
 
+  /// 某知识点下的题目（通常 1 道 seed 题）。
+  List<LectureQuestion> questionsForKnowledgePoint(String knowledgePointId) {
+    final list = _kpBank[knowledgePointId];
+    if (list == null || list.isEmpty) {
+      return const <LectureQuestion>[];
+    }
+    return List.unmodifiable(list);
+  }
+
+  int questionCountForKnowledgePoint(String knowledgePointId) {
+    return _kpBank[knowledgePointId]?.length ?? 0;
+  }
+
+  /// 星级越高，优先出同知识点下更高 `difficulty` 的题。
+  int initialIndexForKnowledgePoint(
+    List<LectureQuestion> questions,
+    int stars,
+  ) {
+    if (questions.isEmpty) return 0;
+    final target = difficultyForKnowledgePointStars(stars);
+    for (var i = 0; i < questions.length; i++) {
+      if (questions[i].difficulty >= target) return i;
+    }
+    return questions.length - 1;
+  }
+
+  /// 变式题：优先同知识点下的下一题，否则同节下一题。
+  LectureQuestion variantFor(LectureQuestion current) {
+    if (current.knowledgePointId.isNotEmpty) {
+      final kpList = questionsForKnowledgePoint(current.knowledgePointId);
+      if (kpList.length > 1) {
+        final idx = kpList.indexWhere((q) => q.questionId == current.questionId);
+        return kpList[(idx + 1) % kpList.length];
+      }
+    }
+    final list = questionsForSection(current.sectionId);
+    if (list.isEmpty) return current;
+    if (current.variantQuestionId.isNotEmpty) {
+      for (final q in list) {
+        if (q.questionId == current.variantQuestionId) return q;
+      }
+    }
+    final idx = list.indexWhere((q) => q.questionId == current.questionId);
+    final next = idx >= 0 ? (idx + 1) % list.length : 0;
+    return list[next];
+  }
+
   /// 把开发字段 `difficulty` 翻译成 UI 用的中文标签：
   ///   * `1` → `基础`
   ///   * `2` → `巩固`
@@ -105,20 +176,6 @@ class MockLectureRepository {
       default:
         return '基础';
     }
-  }
-
-  /// 本题配置的相关变式题；缺省时回退到同节下一题（循环）。
-  LectureQuestion variantFor(LectureQuestion current) {
-    final list = questionsForSection(current.sectionId);
-    if (list.isEmpty) return current;
-    if (current.variantQuestionId.isNotEmpty) {
-      for (final q in list) {
-        if (q.questionId == current.variantQuestionId) return q;
-      }
-    }
-    final idx = list.indexWhere((q) => q.questionId == current.questionId);
-    final next = idx >= 0 ? (idx + 1) % list.length : 0;
-    return list[next];
   }
 
   LectureQuestion _stubQuestionForSection(String sectionId) {

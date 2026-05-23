@@ -19,6 +19,7 @@ import 'home_dashboard_tab.dart';
 import 'lecture_page.dart';
 // import 'privacy_notice_page.dart';
 import 'review_page.dart';
+import 'section_knowledge_page.dart';
 import 'student_assignments_page.dart';
 import 'v2_pages.dart';
 
@@ -48,6 +49,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
   void initState() {
     super.initState();
     ProgressRepository.instance.load();
+    KnowledgePointProgressRepository.instance.load();
     MockLectureRepository.instance.loadAssetBank().then((_) {
       if (mounted) setState(() {});
     });
@@ -100,16 +102,43 @@ class _StudentMainShellState extends State<StudentMainShell> {
   Future<void> _onSectionTap(CurriculumSection section) async {
     final hasQuestion =
         MockLectureRepository.instance.questionCountForSection(section.id) > 0;
-    if (section.isAvailable || hasQuestion) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => LecturePage(section: section)));
+    if (!section.isAvailable && !hasQuestion) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('这一节正在整理练习内容，先选一个可练习小节开始吧。')),
+      );
+      return;
+    }
+    if (section.knowledgePoints.isEmpty) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => LecturePage(section: section)),
+      );
       if (mounted) setState(() {});
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('这一节正在整理练习内容，先选一个可练习小节开始吧。')),
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => SectionKnowledgePage(
+              section: section,
+              onKnowledgePointTap: (kp) => _onKnowledgePointTap(section, kp),
+              onSectionReview: () => _onSectionReview(section),
+            ),
+      ),
     );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _onKnowledgePointTap(
+    CurriculumSection section,
+    CurriculumKnowledgePoint kp,
+  ) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => LecturePage(section: section, knowledgePoint: kp),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _onSectionReview(CurriculumSection section) async {

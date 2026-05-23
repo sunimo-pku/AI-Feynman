@@ -422,6 +422,14 @@ class _ReplayListCard extends StatelessWidget {
   const _ReplayListCard({required this.replays});
   final List<ReplaySummary> replays;
 
+  static String _replaySubtitle(ReplaySummary r) {
+    final sec = r.durationMs <= 0 ? 0 : (r.durationMs / 1000).ceil();
+    final m = sec ~/ 60;
+    final s = sec % 60;
+    final time = m > 0 ? '$m 分 $s 秒' : '$s 秒';
+    return '时长 $time · 点按播放';
+  }
+
   @override
   Widget build(BuildContext context) {
     return StudyPanel(
@@ -440,8 +448,8 @@ class _ReplayListCard extends StatelessWidget {
           else
             ...replays.map(
               (r) => StudyListRow(
-                title: r.sectionId,
-                subtitle: '${r.durationMs ~/ 1000} 秒',
+                title: r.questionPrompt.isNotEmpty ? r.questionPrompt : r.sectionId,
+                subtitle: _replaySubtitle(r),
                 onTap:
                     () => Navigator.of(context).push(
                       MaterialPageRoute(

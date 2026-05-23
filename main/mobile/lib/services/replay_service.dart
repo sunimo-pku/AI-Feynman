@@ -48,8 +48,37 @@ class ReplayService {
   }
 
   void appendInk(List<Map<String, dynamic>> steps) {
-    if (_sessionId.isEmpty || steps.isEmpty) return;
-    _inkTimeline.add({'tMs': _tMs, 'steps': steps});
+    appendInkFrame({'steps': steps});
+  }
+
+  void appendInkFrame(Map<String, dynamic> frame) {
+    if (_sessionId.isEmpty) return;
+    if (frame.isEmpty) return;
+    _inkTimeline.add({...frame, 'tMs': _tMs});
+  }
+
+  int _lastTimelineEventMs() {
+    var maxMs = 0;
+    for (final frame in _inkTimeline) {
+      final t = (frame['tMs'] as num?)?.toInt() ?? 0;
+      if (t > maxMs) maxMs = t;
+    }
+    for (final turn in _turnsTimeline) {
+      final t = (turn['tMs'] as num?)?.toInt() ?? 0;
+      if (t > maxMs) maxMs = t;
+    }
+    return maxMs;
+  }
+
+  int _estimateAudioDurationMs() {
+    var bytes = 0;
+    for (final chunk in _audioChunks) {
+      try {
+        bytes += base64Decode(chunk).length;
+      } catch (_) {}
+    }
+    if (bytes <= 0) return 0;
+    return (bytes / 2 / 16000 * 1000).round();
   }
 
   void appendTurn({
@@ -73,7 +102,13 @@ class ReplayService {
 
   Future<void> finishAndUpload() async {
     if (_sessionId.isEmpty) return;
-    final durationMs = _tMs;
+    final audioDurationMs = _estimateAudioDurationMs();
+    final lastEventMs = _lastTimelineEventMs();
+    final durationMs = [
+      _tMs,
+      lastEventMs,
+      audioDurationMs,
+    ].reduce((a, b) => a > b ? a : b);
     final sessionId = _sessionId;
     final sectionId = _sectionId;
     final questionId = _questionId;

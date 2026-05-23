@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/curriculum_models.dart';
+import '../data/knowledge_point_progress_models.dart';
 import '../data/lecture_models.dart';
 import '../data/live_lecture_events.dart';
 import '../data/mock_lecture_repository.dart';
@@ -18,11 +19,13 @@ import '../services/lecture_service.dart';
 import '../services/live_lecture_service.dart';
 import '../services/ocr_service.dart';
 import '../services/peer_reason_playback_service.dart';
+import '../services/knowledge_point_progress_repository.dart';
 import '../services/progress_repository.dart';
 import '../services/replay_service.dart';
 import '../services/review_repository.dart';
 import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
+import '../widgets/knowledge_point_stars.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
 import '../widgets/lecture_orb_button.dart';
@@ -49,6 +52,7 @@ class LecturePage extends StatefulWidget {
   const LecturePage({
     super.key,
     required this.section,
+    this.knowledgePoint,
     this.initialQuestionId,
     this.initialQuestionIndex,
     this.questionOverride,
@@ -56,6 +60,9 @@ class LecturePage extends StatefulWidget {
   });
 
   final CurriculumSection section;
+
+  /// 从知识点入口进入时，只练该知识点下的题目。
+  final CurriculumKnowledgePoint? knowledgePoint;
 
   /// 第八轮：可选的初始 `questionId`，用于「再讲这题」回到指定题目。
   ///
@@ -168,6 +175,7 @@ class _LecturePageState extends State<LecturePage> {
 
   /// 本次 completed 实际加了多少掌握度（已考虑 100 上限）。
   int _lastMasteryGain = 0;
+  int _lastKpStarGain = 0;
 
   /// 本次 completed 的小结文案（前端拼装：最后一条 teacher / AI turn）。
   String _lastSummary = '';
@@ -257,7 +265,7 @@ class _LecturePageState extends State<LecturePage> {
       _question = widget.questionOverride!;
     } else {
       // 先用占位题撑住 UI；[_bootstrapQuestions] await 全册 JSON 后再刷新。
-      _questions = repo.questionsForSection(widget.section.id);
+      _questions = _questionListForScope(repo);
       _questionIndex = 0;
       _question = _questions.first;
       _questionsLoading = true;
@@ -283,7 +291,7 @@ class _LecturePageState extends State<LecturePage> {
       return;
     }
     if (!mounted) return;
-    final fresh = repo.questionsForSection(widget.section.id);
+    final fresh = _questionListForScope(repo);
     if (fresh.isEmpty) {
       setState(() {
         _questionsLoading = false;
@@ -301,6 +309,15 @@ class _LecturePageState extends State<LecturePage> {
       _questionsReady = true;
     });
     await _precacheQuestionImage(next);
+  }
+
+  List<LectureQuestion> _questionListForScope(MockLectureRepository repo) {
+    final kp = widget.knowledgePoint;
+    if (kp != null && kp.id.isNotEmpty) {
+      final scoped = repo.questionsForKnowledgePoint(kp.id);
+      if (scoped.isNotEmpty) return scoped;
+    }
+    return repo.questionsForSection(widget.section.id);
   }
 
   Future<bool> _ensureQuestionsReadyForLive() async {
@@ -362,6 +379,24 @@ class _LecturePageState extends State<LecturePage> {
   int _recommendedInitialQuestionIndex([List<LectureQuestion>? source]) {
     final questions = source ?? _questions;
     if (questions.isEmpty) return 0;
+    final kp = widget.knowledgePoint;
+    if (kp != null && kp.id.isNotEmpty) {
+      final stars =
+          KnowledgePointProgressRepository.instance.progressFor(kp.id).stars;
+      return MockLectureRepository.instance.initialIndexForKnowledgePoint(
+        questions,
+        stars,
+      );
+    }
+    if (_question.knowledgePointId.isNotEmpty) {
+      final stars = KnowledgePointProgressRepository.instance
+          .progressFor(_question.knowledgePointId)
+          .stars;
+      return MockLectureRepository.instance.initialIndexForKnowledgePoint(
+        questions,
+        stars,
+      );
+    }
     final mastery =
         ProgressRepository.instance.progressFor(widget.section.id).masteryScore;
     final preferred = mastery >= 60 ? 3 : (mastery >= 30 ? 2 : 1);
@@ -507,7 +542,11 @@ class _LecturePageState extends State<LecturePage> {
           runOcr && boardPng != null ? base64Encode(boardPng) : '',
       runOcr: runOcr,
     );
-    _replayService.appendInk(steps);
+    final inkFrame = _canvasController.buildReplayInkFrame();
+    if (inkFrame != null) {
+      inkFrame['steps'] = steps;
+      _replayService.appendInkFrame(inkFrame);
+    }
   }
 
   /// intro 文案随当前题目刷新：第七轮起每节有 3 道题，老师开场白也要点出
@@ -518,11 +557,28 @@ class _LecturePageState extends State<LecturePage> {
     final levelLabel = MockLectureRepository.instance.difficultyLabel(
       _question.difficulty,
     );
+    final kp = widget.knowledgePoint;
+    final scopeLabel =
+        kp != null && kp.label.isNotEmpty
+            ? '「${kp.label}」'
+            : '「${_question.sectionLabel}」';
+    final kpStars =
+        kp != null
+            ? KnowledgePointProgressRepository.instance.progressFor(kp.id).stars
+            : (_question.knowledgePointId.isNotEmpty
+                ? KnowledgePointProgressRepository.instance
+                    .progressFor(_question.knowledgePointId)
+                    .stars
+                : 0);
+    final orderHint =
+        total <= 1 && kp != null
+            ? '本知识点 1 道题（$levelLabel）· 当前 ${knowledgePointStarLabel(kpStars)}'
+            : '这是 $scopeLabel 的第 $order / $total 题（$levelLabel）· 当前 ${knowledgePointStarLabel(kpStars)}';
     return AgentTurn(
       role: AgentRole.system,
       displayName: '系统',
       text:
-          '欢迎来到「${_question.sectionLabel}」讲题课，这是本节的第 $order / $total 题（$levelLabel）。'
+          '欢迎来到讲题课，$orderHint。'
           '请你在右侧手写板上写出解题步骤，边写边想；'
           '写完后点「开始讲题」或「提交讲解」，小明、大雄和班长会各自判断有没有听懂。'
           '卡住时可点「需要提示」，李老师才会发言。',
@@ -749,6 +805,13 @@ class _LecturePageState extends State<LecturePage> {
         ),
       );
     }
+    unawaited(
+      _persistKnowledgePointRound(
+        status: status,
+        masteryDelta: masteryDelta,
+        assessments: assessments,
+      ),
+    );
   }
 
   LectureHistoryItem? _buildLiveStudentHistoryItem() {
@@ -893,6 +956,33 @@ class _LecturePageState extends State<LecturePage> {
     if (AuthService.instance.isLoggedIn) {
       unawaited(LearningSyncService.instance.syncNow());
     }
+  }
+
+  Future<void> _persistKnowledgePointRound({
+    required String status,
+    required int masteryDelta,
+    required List<PeerAssessment> assessments,
+  }) async {
+    final kpId =
+        widget.knowledgePoint?.id ?? _question.knowledgePointId;
+    if (kpId.isEmpty) return;
+    final understood = assessments.where((a) => a.understood).length;
+    final result = await KnowledgePointProgressRepository.instance.applyRound(
+      knowledgePointId: kpId,
+      status: status,
+      masteryDelta: masteryDelta,
+      peersUnderstood: understood,
+    );
+    if (!mounted) return;
+    if (result.starGain > 0) {
+      setState(() => _lastKpStarGain = result.starGain);
+    }
+  }
+
+  int _currentKnowledgePointStars() {
+    final kpId = widget.knowledgePoint?.id ?? _question.knowledgePointId;
+    if (kpId.isEmpty) return 0;
+    return KnowledgePointProgressRepository.instance.progressFor(kpId).stars;
   }
 
   /// 第八轮：保存本题的回顾记录。
@@ -1156,6 +1246,7 @@ class _LecturePageState extends State<LecturePage> {
     _lastResponseStatus = 'needs_explanation';
     _sectionProgressAfterCompletion = null;
     _lastMasteryGain = 0;
+    _lastKpStarGain = 0;
     _lastSummary = '';
     _lastMethodSummary = '';
     // 第八轮：进入新一轮后允许再次保存 review 记录（再讲一遍同题 / 下一题
@@ -1210,6 +1301,18 @@ class _LecturePageState extends State<LecturePage> {
       return;
     }
     if (_questions.isEmpty) return;
+    final kp = widget.knowledgePoint;
+    if (kp != null && kp.id.isNotEmpty) {
+      final repo = MockLectureRepository.instance;
+      final list = repo.questionsForKnowledgePoint(kp.id);
+      if (list.isNotEmpty) {
+        final stars =
+            KnowledgePointProgressRepository.instance.progressFor(kp.id).stars;
+        final idx = repo.initialIndexForKnowledgePoint(list, stars);
+        await _jumpToQuestion(list[idx]);
+        return;
+      }
+    }
     final nextIndex = (_questionIndex + 1) % _questions.length;
     await _jumpToQuestion(_questions[nextIndex]);
   }
@@ -2229,6 +2332,8 @@ class _LecturePageState extends State<LecturePage> {
                   methodSummary: _lastMethodSummary,
                   progress: _sectionProgressAfterCompletion,
                   gained: _lastMasteryGain,
+                  knowledgePointStars: _currentKnowledgePointStars(),
+                  starGain: _lastKpStarGain,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -2473,6 +2578,15 @@ class _LecturePageState extends State<LecturePage> {
     final screenH = MediaQuery.sizeOf(context).height;
     final hasImage = _question.image != null;
     final maxDockHeight = screenH * (hasImage ? 0.46 : 0.32);
+    final kpLabel =
+        widget.knowledgePoint?.label ??
+        (_question.knowledgePointLabel.isNotEmpty
+            ? _question.knowledgePointLabel
+            : null);
+    final titlePrefix =
+        kpLabel != null && kpLabel.isNotEmpty
+            ? kpLabel
+            : _question.sectionLabel;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -2488,7 +2602,7 @@ class _LecturePageState extends State<LecturePage> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '${_question.sectionLabel} · 第 $order / $total 题',
+                '$titlePrefix · 第 $order / $total 题',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -2785,12 +2899,16 @@ class _LectureSummaryCard extends StatelessWidget {
     required this.methodSummary,
     required this.progress,
     required this.gained,
+    this.knowledgePointStars = 0,
+    this.starGain = 0,
   });
 
   final String summary;
   final String methodSummary;
   final SectionProgress? progress;
   final int gained;
+  final int knowledgePointStars;
+  final int starGain;
 
   @override
   Widget build(BuildContext context) {
@@ -2871,6 +2989,32 @@ class _LectureSummaryCard extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 height: 1.5,
               ),
+            ),
+          ],
+          if (knowledgePointStars > 0 || starGain > 0) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  '知识点掌握',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: AppPalette.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                KnowledgePointStars(stars: knowledgePointStars, size: 18),
+                if (starGain > 0) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '+$starGain 星',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: AppPalette.primaryAccent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
           if (progress != null) ...[

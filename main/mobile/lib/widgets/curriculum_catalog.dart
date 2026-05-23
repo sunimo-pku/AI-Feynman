@@ -171,6 +171,7 @@ class CurriculumSectionPill extends StatelessWidget {
                   available: available,
                   progress: progress,
                   sectionId: section.id,
+                  knowledgePointCount: section.knowledgePointCount,
                 ),
               ],
             ),
@@ -253,11 +254,13 @@ class CurriculumSectionStatusBadge extends StatelessWidget {
     required this.available,
     required this.progress,
     required this.sectionId,
+    this.knowledgePointCount = 0,
   });
 
   final bool available;
   final SectionProgress? progress;
   final String sectionId;
+  final int knowledgePointCount;
 
   @override
   Widget build(BuildContext context) {
@@ -266,6 +269,13 @@ class CurriculumSectionStatusBadge extends StatelessWidget {
     }
     final p = progress;
     if (p == null || !p.hasAnyCompletion) {
+      if (knowledgePointCount > 0) {
+        return _badge(
+          color: AppPalette.primaryAccent,
+          bgAlpha: 0.12,
+          text: '$knowledgePointCount 知识点 · 可练',
+        );
+      }
       final count = MockLectureRepository.instance.questionCountForSection(
         sectionId,
       );

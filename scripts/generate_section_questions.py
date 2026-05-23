@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -436,6 +438,8 @@ def main() -> None:
     print(
         f"wrote questions={len(questions)} sections={section_count} diagrams={diagram_count}"
     )
+    enrich_script = ROOT / "scripts" / "enrich_knowledge_points.py"
+    subprocess.run([sys.executable, str(enrich_script)], check=True)
 
 
 if __name__ == "__main__":

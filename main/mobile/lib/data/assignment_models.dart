@@ -147,6 +147,50 @@ class AssignmentReport {
   }
 }
 
+class AssignmentRecommendation {
+  const AssignmentRecommendation({
+    required this.reason,
+    required this.reasonType,
+    required this.sectionId,
+    required this.sectionLabel,
+    required this.questionId,
+    required this.questionPrompt,
+    required this.difficulty,
+    required this.difficultyLabel,
+    this.knowledgePointId = '',
+    this.knowledgePointLabel = '',
+    this.masteryScore,
+  });
+
+  final String reason;
+  final String reasonType;
+  final String sectionId;
+  final String sectionLabel;
+  final String questionId;
+  final String questionPrompt;
+  final int difficulty;
+  final String difficultyLabel;
+  final String knowledgePointId;
+  final String knowledgePointLabel;
+  final int? masteryScore;
+
+  factory AssignmentRecommendation.fromJson(Map<String, dynamic> json) {
+    return AssignmentRecommendation(
+      reason: json['reason'] as String? ?? '',
+      reasonType: json['reasonType'] as String? ?? '',
+      sectionId: json['sectionId'] as String? ?? '',
+      sectionLabel: json['sectionLabel'] as String? ?? '',
+      questionId: json['questionId'] as String? ?? '',
+      questionPrompt: json['questionPrompt'] as String? ?? '',
+      difficulty: (json['difficulty'] as num?)?.toInt() ?? 1,
+      difficultyLabel: json['difficultyLabel'] as String? ?? '基础',
+      knowledgePointId: json['knowledgePointId'] as String? ?? '',
+      knowledgePointLabel: json['knowledgePointLabel'] as String? ?? '',
+      masteryScore: (json['masteryScore'] as num?)?.toInt(),
+    );
+  }
+}
+
 class RecognizedQuestion {
   const RecognizedQuestion({
     required this.sectionId,

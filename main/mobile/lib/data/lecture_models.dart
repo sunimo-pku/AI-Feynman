@@ -100,6 +100,8 @@ class LectureQuestion {
     this.image,
     this.standardAnswer = '',
     this.variantQuestionId = '',
+    this.knowledgePointId = '',
+    this.knowledgePointLabel = '',
   });
 
   final String questionId;
@@ -136,6 +138,12 @@ class LectureQuestion {
   /// 相关变式题 questionId；默认同节下一题。
   final String variantQuestionId;
 
+  /// 所属知识点 id（与目录 JSON 中 knowledgePoints 对齐）。
+  final String knowledgePointId;
+
+  /// 知识点展示名（冗余字段，便于讲题页 AppBar）。
+  final String knowledgePointLabel;
+
   factory LectureQuestion.fromJson(Map<String, dynamic> json) {
     List<String> readStringList(String key) {
       final raw = json[key];
@@ -159,6 +167,8 @@ class LectureQuestion {
       image: QuestionImage.fromJson(json['image']),
       standardAnswer: json['standardAnswer'] as String? ?? '',
       variantQuestionId: json['variantQuestionId'] as String? ?? '',
+      knowledgePointId: json['knowledgePointId'] as String? ?? '',
+      knowledgePointLabel: json['knowledgePointLabel'] as String? ?? '',
     );
   }
 }

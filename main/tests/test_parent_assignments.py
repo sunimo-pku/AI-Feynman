@@ -168,3 +168,73 @@ def test_parent_custom_assignment(client: TestClient) -> None:
     )
     assert student_list.status_code == 200
     assert any(item["sourceType"] == "custom" for item in student_list.json()["active"])
+
+
+def test_parent_assignment_recommendations(client: TestClient) -> None:
+    child_user, child_pass = _register_student(client)
+    parent_token, _ = _register_parent(client, child_user)
+    student_token = _login(client, child_user, child_pass)
+
+    # 无学习记录时应有 starter 推荐
+    empty = client.get(
+        "/parent/assignments/recommendations",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert empty.status_code == 200, empty.text
+    body = empty.json()
+    assert body["count"] >= 1
+    assert body["recommendations"][0]["questionId"]
+
+    # 同步弱项 + 易错回顾
+    sync = client.post(
+        "/learning/progress/sync",
+        headers={"Authorization": f"Bearer {student_token}"},
+        json={
+            "progress": [
+                {
+                    "sectionId": "pep-g8-down-s16-1",
+                    "masteryScore": 20,
+                    "completedRounds": 2,
+                    "lastPracticedAt": datetime.utcnow().isoformat() + "Z",
+                }
+            ],
+            "reviews": [
+                {
+                    "id": f"q-s16-1-002-{int(datetime.utcnow().timestamp() * 1000)}",
+                    "sectionId": "pep-g8-down-s16-1",
+                    "questionId": "q-s16-1-002",
+                    "questionPrompt": r"判断 $\sqrt{5-x}$ 有意义时 x 的范围",
+                    "difficulty": 2,
+                    "completedAt": datetime.utcnow().isoformat() + "Z",
+                    "summary": "基本讲清楚",
+                    "agentHighlights": [],
+                    "cautionPoints": ["移项时别漏变号"],
+                }
+            ],
+        },
+    )
+    assert sync.status_code == 200, sync.text
+
+    rec = client.get(
+        "/parent/assignments/recommendations",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert rec.status_code == 200, rec.text
+    items = rec.json()["recommendations"]
+    assert any(i.get("reasonType") == "mistake_review" for i in items)
+
+    due_at = (datetime.utcnow() + timedelta(days=1)).replace(microsecond=0).isoformat() + "Z"
+    picked = next(i for i in items if i.get("questionId"))
+    create = client.post(
+        "/parent/assignments",
+        headers={"Authorization": f"Bearer {parent_token}"},
+        json={
+            "sourceType": "catalog",
+            "sectionId": picked["sectionId"],
+            "questionId": picked["questionId"],
+            "difficulty": picked["difficulty"],
+            "dueAt": due_at,
+        },
+    )
+    assert create.status_code == 200, create.text
+    assert create.json()["questionId"] == picked["questionId"]

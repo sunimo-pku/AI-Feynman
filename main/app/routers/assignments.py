@@ -16,10 +16,12 @@ from app.db import ParentAssignment, User, get_db, linked_child_profile
 from app.middleware.auth import require_parent_user, require_student_user
 from app.services.assignment_service import (
     assignment_to_public,
+    build_assignment_recommendations,
     build_assignment_report,
     new_custom_question_id,
     refresh_assignment_status,
     resolve_catalog_question,
+    resolve_question_by_id,
     section_label,
 )
 from app.services.qwen_vision import recognize_question_image
@@ -59,6 +61,7 @@ class AssignmentCreateRequest(BaseModel):
     source_type: Literal["catalog", "custom"] = Field(..., alias="sourceType")
     section_id: str = Field(..., alias="sectionId", min_length=1, max_length=64)
     difficulty: int = Field(1, ge=1, le=3)
+    question_id: str = Field("", alias="questionId", max_length=96)
     question_prompt: str = Field("", alias="questionPrompt", max_length=2000)
     title: str = Field("", max_length=128)
     note: str = Field("", max_length=1000)
@@ -104,10 +107,22 @@ def _create_assignment_row(
     label = section_label(sid)
 
     if req.source_type == "catalog":
-        try:
-            question = resolve_catalog_question(sid, req.difficulty)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        qid = (req.question_id or "").strip()
+        if qid:
+            try:
+                question = resolve_question_by_id(qid)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if str(question.get("sectionId") or "") != sid:
+                raise HTTPException(
+                    status_code=400,
+                    detail="questionId does not belong to the selected section.",
+                )
+        else:
+            try:
+                question = resolve_catalog_question(sid, req.difficulty)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         question_id = str(question.get("questionId") or "")
         question_prompt = str(question.get("prompt") or "")
         difficulty = int(question.get("difficulty") or req.difficulty)
@@ -183,6 +198,27 @@ async def parent_recognize_assignment_image(
             detail=f"Question vision failed: {vision.get('error')}",
         )
     return vision
+
+
+@router.get(
+    "/parent/assignments/recommendations",
+    summary="根据弱项与易错回顾推荐可布置题目",
+)
+async def parent_assignment_recommendations(
+    user: User = Depends(require_parent_user),
+    db: Session = Depends(get_db),
+    limit: int = Query(6, ge=1, le=12),
+):
+    profile = _require_child(db, user)
+    items = build_assignment_recommendations(
+        db,
+        student_id=profile.id,
+        limit=limit,
+    )
+    return {
+        "recommendations": items,
+        "count": len(items),
+    }
 
 
 @router.post(

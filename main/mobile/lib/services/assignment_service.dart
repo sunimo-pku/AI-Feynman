@@ -96,11 +96,26 @@ class AssignmentService {
     );
   }
 
+  Future<List<AssignmentRecommendation>> fetchRecommendations({int limit = 6}) async {
+    final body = await _request(
+      method: 'GET',
+      path: '/parent/assignments/recommendations',
+      query: {'limit': '$limit'},
+    );
+    final raw = body['recommendations'];
+    if (raw is! List) return const <AssignmentRecommendation>[];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(AssignmentRecommendation.fromJson)
+        .toList(growable: false);
+  }
+
   Future<AssignmentItem> createAssignment({
     required String sourceType,
     required String sectionId,
     required DateTime dueAt,
     int difficulty = 1,
+    String questionId = '',
     String questionPrompt = '',
     String title = '',
     String note = '',
@@ -113,6 +128,7 @@ class AssignmentService {
         'sourceType': sourceType,
         'sectionId': sectionId,
         'difficulty': difficulty,
+        if (questionId.isNotEmpty) 'questionId': questionId,
         if (questionPrompt.isNotEmpty) 'questionPrompt': questionPrompt,
         if (title.isNotEmpty) 'title': title,
         if (note.isNotEmpty) 'note': note,

@@ -1,3 +1,26 @@
+class CurriculumKnowledgePoint {
+  const CurriculumKnowledgePoint({
+    required this.id,
+    required this.title,
+    required this.label,
+    this.order = 0,
+  });
+
+  final String id;
+  final String title;
+  final String label;
+  final int order;
+
+  factory CurriculumKnowledgePoint.fromJson(Map<String, dynamic> json) {
+    return CurriculumKnowledgePoint(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      label: json['label'] as String? ?? json['title'] as String? ?? '',
+      order: (json['order'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class CurriculumSection {
   const CurriculumSection({
     required this.id,
@@ -7,6 +30,7 @@ class CurriculumSection {
     required this.type,
     required this.contentStatus,
     this.v1Launch = false,
+    this.knowledgePoints = const [],
   });
 
   final String id;
@@ -16,10 +40,22 @@ class CurriculumSection {
   final String type;
   final String contentStatus;
   final bool v1Launch;
+  final List<CurriculumKnowledgePoint> knowledgePoints;
 
   bool get isAvailable => contentStatus == 'available';
 
+  int get knowledgePointCount => knowledgePoints.length;
+
   factory CurriculumSection.fromJson(Map<String, dynamic> json) {
+    final rawKps = json['knowledgePoints'];
+    final kps =
+        rawKps is List
+            ? rawKps
+                .whereType<Map<String, dynamic>>()
+                .map(CurriculumKnowledgePoint.fromJson)
+                .where((kp) => kp.id.isNotEmpty)
+                .toList(growable: false)
+            : const <CurriculumKnowledgePoint>[];
     return CurriculumSection(
       id: json['id'] as String,
       number: json['number'] as String,
@@ -28,6 +64,7 @@ class CurriculumSection {
       type: json['type'] as String,
       contentStatus: json['contentStatus'] as String? ?? 'coming_soon',
       v1Launch: json['v1Launch'] as bool? ?? false,
+      knowledgePoints: kps,
     );
   }
 }

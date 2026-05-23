@@ -29,10 +29,61 @@ class _ParentAssignCreatePageState extends State<ParentAssignCreatePage> {
   String _mode = 'catalog';
   String? _sectionId;
   int _difficulty = 1;
+  String? _selectedQuestionId;
   DateTime _dueAt = DateTime.now().add(const Duration(hours: 24));
   bool _submitting = false;
   String? _error;
   RecognizedQuestion? _recognized;
+  List<AssignmentRecommendation> _recommendations = const [];
+  bool _loadingRecommendations = true;
+  String? _recommendationsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecommendations();
+  }
+
+  Future<void> _loadRecommendations() async {
+    setState(() {
+      _loadingRecommendations = true;
+      _recommendationsError = null;
+    });
+    try {
+      final items = await _service.fetchRecommendations();
+      if (!mounted) return;
+      setState(() {
+        _recommendations = items;
+        _loadingRecommendations = false;
+      });
+    } on AssignmentApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _recommendationsError = e.userMessage;
+        _loadingRecommendations = false;
+      });
+    }
+  }
+
+  void _applyRecommendation(AssignmentRecommendation item) {
+    setState(() {
+      _mode = 'catalog';
+      _sectionId = item.sectionId;
+      _difficulty = item.difficulty;
+      _selectedQuestionId = item.questionId;
+      _recognized = null;
+      _error = null;
+      if (_titleController.text.trim().isEmpty) {
+        _titleController.text = '${item.sectionLabel} · ${item.difficultyLabel}巩固';
+      }
+      if (_noteController.text.trim().isEmpty) {
+        _noteController.text = item.reason;
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已选用推荐题：${item.sectionLabel}')),
+    );
+  }
 
   @override
   void dispose() {
@@ -106,6 +157,7 @@ class _ParentAssignCreatePageState extends State<ParentAssignCreatePage> {
         sectionId: _sectionId!,
         dueAt: _dueAt.toUtc(),
         difficulty: _difficulty,
+        questionId: _mode == 'catalog' ? (_selectedQuestionId ?? '') : '',
         questionPrompt: _promptController.text.trim(),
         title: _titleController.text.trim(),
         note: _noteController.text.trim(),
@@ -142,6 +194,15 @@ class _ParentAssignCreatePageState extends State<ParentAssignCreatePage> {
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.pageEdge),
             children: [
+              _RecommendationsPanel(
+                loading: _loadingRecommendations,
+                error: _recommendationsError,
+                items: _recommendations,
+                selectedQuestionId: _selectedQuestionId,
+                onRetry: _loadRecommendations,
+                onSelect: _applyRecommendation,
+              ),
+              const SizedBox(height: AppSpacing.moduleGap),
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(value: 'catalog', label: Text('小节+难度'), icon: Icon(Icons.menu_book_outlined)),
@@ -159,6 +220,15 @@ class _ParentAssignCreatePageState extends State<ParentAssignCreatePage> {
                     .toList(growable: false),
                 onChanged: (v) => setState(() => _sectionId = v),
               ),
+              if (_selectedQuestionId != null && _mode == 'catalog') ...[
+                const SizedBox(height: 8),
+                Text(
+                  '已选用推荐题（${ _selectedQuestionId! }），将布置指定题目而非随机难度题。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppPalette.primary,
+                  ),
+                ),
+              ],
               if (_mode == 'catalog') ...[
                 const SizedBox(height: AppSpacing.itemGap),
                 InputDecorator(
@@ -170,7 +240,10 @@ class _ParentAssignCreatePageState extends State<ParentAssignCreatePage> {
                       ButtonSegment(value: 3, label: Text('挑战')),
                     ],
                     selected: {_difficulty},
-                    onSelectionChanged: (s) => setState(() => _difficulty = s.first),
+                    onSelectionChanged: (s) => setState(() {
+                      _difficulty = s.first;
+                      _selectedQuestionId = null;
+                    }),
                   ),
                 ),
               ] else ...[
@@ -240,5 +313,163 @@ class _ParentAssignCreatePageState extends State<ParentAssignCreatePage> {
   String _fmtDue(DateTime d) {
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
         '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _RecommendationsPanel extends StatelessWidget {
+  const _RecommendationsPanel({
+    required this.loading,
+    required this.error,
+    required this.items,
+    required this.selectedQuestionId,
+    required this.onRetry,
+    required this.onSelect,
+  });
+
+  final bool loading;
+  final String? error;
+  final List<AssignmentRecommendation> items;
+  final String? selectedQuestionId;
+  final VoidCallback onRetry;
+  final void Function(AssignmentRecommendation item) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return StudyPanel(
+      tone: StudyPanelTone.primary,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome_outlined, size: 18, color: AppPalette.primary),
+              const SizedBox(width: 6),
+              Text('智能推荐', style: theme.textTheme.titleMedium),
+              const Spacer(),
+              if (!loading)
+                TextButton(onPressed: onRetry, child: const Text('刷新')),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '根据孩子的易错回顾、掌握薄弱小节与未完成讲题推荐题目',
+            style: theme.textTheme.bodySmall?.copyWith(color: AppPalette.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+            )
+          else if (error != null)
+            Text(error!, style: const TextStyle(color: AppPalette.error))
+          else if (items.isEmpty)
+            Text(
+              '暂无推荐，可先手动选小节布置；孩子讲题后会根据弱项自动推荐。',
+              style: theme.textTheme.bodyMedium?.copyWith(color: AppPalette.textSecondary),
+            )
+          else
+            ...items.map((item) {
+              final selected = selectedQuestionId == item.questionId;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Material(
+                  color: selected
+                      ? AppPalette.primary.withValues(alpha: 0.08)
+                      : AppPalette.surfaceElevated,
+                  borderRadius: AppRadius.cardR,
+                  child: InkWell(
+                    borderRadius: AppRadius.cardR,
+                    onTap: () => onSelect(item),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item.sectionLabel,
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppPalette.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  item.difficultyLabel,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: AppPalette.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (item.knowledgePointLabel.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              item.knowledgePointLabel,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: AppPalette.textSecondary,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 6),
+                          Text(
+                            item.reason,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppPalette.secondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (item.masteryScore != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '当前掌握度 ${item.masteryScore}/100',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: AppPalette.textSecondary,
+                              ),
+                            ),
+                          ],
+                          if (item.questionPrompt.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            FormulaText(
+                              item.questionPrompt,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              selected ? '已选用' : '选用此题',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: AppPalette.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
   }
 }
