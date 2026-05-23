@@ -1470,6 +1470,7 @@ class _LecturePageState extends State<LecturePage> {
         sectionId: widget.section.id,
         questionId: _question.questionId,
         questionPrompt: _question.prompt,
+        difficulty: _question.difficulty,
       );
       final sessionStarted = await _liveService.connectAndStart(
         sessionId: sessionId,
@@ -1527,6 +1528,7 @@ class _LecturePageState extends State<LecturePage> {
       sectionId: widget.section.id,
       questionId: _question.questionId,
       questionPrompt: _question.prompt,
+      difficulty: _question.difficulty,
     );
     final connected = await _liveService.connectAndStart(
       sessionId: sessionId,

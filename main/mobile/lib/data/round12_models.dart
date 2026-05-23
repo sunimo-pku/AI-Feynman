@@ -397,26 +397,32 @@ class ReplaySummary {
   const ReplaySummary({
     required this.sessionId,
     required this.sectionId,
+    required this.sectionLabel,
     required this.questionId,
     required this.questionPrompt,
     required this.durationMs,
+    required this.difficulty,
     required this.createdAt,
   });
 
   final String sessionId;
   final String sectionId;
+  final String sectionLabel;
   final String questionId;
   final String questionPrompt;
   final int durationMs;
+  final int difficulty;
   final DateTime createdAt;
 
   factory ReplaySummary.fromJson(Map<String, dynamic> json) {
     return ReplaySummary(
       sessionId: json['sessionId'] as String? ?? '',
       sectionId: json['sectionId'] as String? ?? '',
+      sectionLabel: json['sectionLabel'] as String? ?? '',
       questionId: json['questionId'] as String? ?? '',
       questionPrompt: json['questionPrompt'] as String? ?? '',
       durationMs: (json['durationMs'] as num?)?.toInt() ?? 0,
+      difficulty: (json['difficulty'] as num?)?.toInt() ?? 1,
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
     );

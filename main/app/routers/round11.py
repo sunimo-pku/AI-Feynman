@@ -60,6 +60,30 @@ _QUESTIONS_FILE = _PROJECT_ROOT / "data" / "questions" / "pep-junior-math-questi
 _BOUNTY_FILE = _PROJECT_ROOT / "data" / "bounty" / "challenges.json"
 
 _SECTION_LABELS: dict[str, str] = {}
+
+
+def _load_section_labels() -> dict[str, str]:
+    labels: dict[str, str] = {}
+    curriculum_file = _PROJECT_ROOT / "data" / "curriculum" / "pep-junior-math.json"
+    try:
+        payload = json.loads(curriculum_file.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return labels
+    for book in payload.get("books", []):
+        for chapter in book.get("chapters", []):
+            for section in chapter.get("sections", []):
+                sid = str(section.get("id") or "")
+                label = str(section.get("label") or section.get("title") or "")
+                if sid and label:
+                    labels[sid] = label
+    return labels
+
+
+_SECTION_LABELS = _load_section_labels()
+
+
+def _section_label(section_id: str) -> str:
+    return _SECTION_LABELS.get(section_id, section_id)
 _TIERS = ((900, "王者"), (600, "黄金"), (300, "白银"), (0, "青铜"))
 
 _STATIONERY_SKUS_FILE = _PROJECT_ROOT / "data" / "shop" / "stationery_skus.json"
@@ -129,6 +153,7 @@ class ReplayRequest(BaseModel):
     ink_timeline: list[dict[str, Any]] = Field(default_factory=list, alias="inkTimeline")
     turns_timeline: list[dict[str, Any]] = Field(default_factory=list, alias="turnsTimeline")
     duration_ms: int = Field(0, alias="durationMs", ge=0)
+    difficulty: int = Field(1, alias="difficulty", ge=1, le=3)
 
     model_config = {"populate_by_name": True}
 
@@ -880,6 +905,7 @@ async def create_replay(req: ReplayRequest, user: User = Depends(require_student
     row.ink_timeline_json = dump_json(req.ink_timeline)
     row.turns_timeline_json = dump_json(req.turns_timeline)
     row.duration_ms = req.duration_ms
+    row.difficulty = req.difficulty
     db.commit()
     return {"sessionId": row.session_id, "ok": True}
 
@@ -959,9 +985,11 @@ def _replay_payload(row: LectureReplayRecord, *, include_timeline: bool) -> dict
     payload = {
         "sessionId": row.session_id,
         "sectionId": row.section_id,
+        "sectionLabel": _section_label(row.section_id),
         "questionId": row.question_id,
         "questionPrompt": row.question_prompt,
         "durationMs": row.duration_ms,
+        "difficulty": int(row.difficulty or 1),
         "createdAt": row.created_at,
     }
     if include_timeline:

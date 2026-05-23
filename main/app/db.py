@@ -206,6 +206,7 @@ class LectureReplayRecord(Base):
     ink_timeline_json = Column(Text, default="[]")
     turns_timeline_json = Column(Text, default="[]")
     duration_ms = Column(Integer, default=0)
+    difficulty = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -391,6 +392,17 @@ def _run_lightweight_migrations() -> None:
         cols = _columns("lecture_session_records")
 
         if cols:  # 表已存在
+            if "difficulty" not in cols:
+                try:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE lecture_replay_records "
+                            "ADD COLUMN difficulty INTEGER DEFAULT 1"
+                        )
+                    )
+                    logger.info("[db-migrate] added lecture_replay_records.difficulty")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[db-migrate] add difficulty failed: %s", e)
             if "mastery_delta" not in cols:
                 try:
                     conn.execute(

@@ -427,7 +427,14 @@ class _ReplayListCard extends StatelessWidget {
     final m = sec ~/ 60;
     final s = sec % 60;
     final time = m > 0 ? '$m 分 $s 秒' : '$s 秒';
-    return '时长 $time · 点按播放';
+    final when = _formatTime(r.createdAt);
+    return '时长 $time · $when';
+  }
+
+  static String _difficultyLabel(int d) {
+    if (d >= 3) return '挑战';
+    if (d >= 2) return '巩固';
+    return '基础';
   }
 
   @override
@@ -448,8 +455,16 @@ class _ReplayListCard extends StatelessWidget {
           else
             ...replays.map(
               (r) => StudyListRow(
-                title: r.questionPrompt.isNotEmpty ? r.questionPrompt : r.sectionId,
+                title: r.sectionLabel.isNotEmpty ? r.sectionLabel : r.sectionId,
                 subtitle: _replaySubtitle(r),
+                trailing: StudySoftTag(
+                  text: _difficultyLabel(r.difficulty),
+                  accent: r.difficulty >= 3
+                      ? AppPalette.error
+                      : (r.difficulty >= 2
+                          ? AppPalette.primaryAccent
+                          : AppPalette.primary),
+                ),
                 onTap:
                     () => Navigator.of(context).push(
                       MaterialPageRoute(

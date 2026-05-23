@@ -20,6 +20,7 @@ class ReplayService {
   String _sectionId = '';
   String _questionId = '';
   String _questionPrompt = '';
+  int _difficulty = 1;
   DateTime? _startedAt;
   final List<Map<String, dynamic>> _inkTimeline = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> _turnsTimeline = <Map<String, dynamic>>[];
@@ -30,11 +31,13 @@ class ReplayService {
     required String sectionId,
     required String questionId,
     required String questionPrompt,
+    int difficulty = 1,
   }) {
     _sessionId = sessionId;
     _sectionId = sectionId;
     _questionId = questionId;
     _questionPrompt = questionPrompt;
+    _difficulty = difficulty;
     _startedAt = DateTime.now();
     _inkTimeline.clear();
     _turnsTimeline.clear();
@@ -136,6 +139,7 @@ class ReplayService {
                 'inkTimeline': inkTimeline,
                 'turnsTimeline': turnsTimeline,
                 'durationMs': durationMs,
+                'difficulty': _difficulty,
               }),
             ),
           )
@@ -163,6 +167,7 @@ class ReplayService {
     _sectionId = '';
     _questionId = '';
     _questionPrompt = '';
+    _difficulty = 1;
     _startedAt = null;
     _inkTimeline.clear();
     _turnsTimeline.clear();
