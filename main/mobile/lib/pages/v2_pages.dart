@@ -836,8 +836,10 @@ class PhotoQuestionPage extends StatefulWidget {
 
 class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
   final _service = Round12Service();
+  final _picker = ImagePicker();
   Map<String, dynamic>? _result;
   String? _error;
+  bool _uploading = false;
 
   @override
   void dispose() {
@@ -845,9 +847,18 @@ class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
     super.dispose();
   }
 
-  Future<void> _pick() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
+  Future<void> _pickFrom(ImageSource source) async {
+    if (_uploading) return;
+    final picked = await _picker.pickImage(
+      source: source,
+      imageQuality: 88,
+      maxWidth: 2048,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _uploading = true;
+      _error = null;
+    });
     try {
       final result = await _service.uploadQuestionImage(File(picked.path));
       if (!mounted) return;
@@ -856,7 +867,10 @@ class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
         _error = null;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _uploading = false);
     }
   }
 
@@ -884,11 +898,53 @@ class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.pageEdge),
         children: [
-          FilledButton.icon(
-            onPressed: _pick,
-            icon: const Icon(Icons.photo_library_outlined),
-            label: const Text('从相册选择题目图片'),
+          Text(
+            '拍一张题目或从相册选图，识别后可直接进入讲题。',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppPalette.textSecondary,
+            ),
           ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed:
+                      _uploading ? null : () => _pickFrom(ImageSource.camera),
+                  icon: const Icon(Icons.photo_camera_outlined),
+                  label: const Text('拍照'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed:
+                      _uploading ? null : () => _pickFrom(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('相册'),
+                ),
+              ),
+            ],
+          ),
+          if (_uploading) ...[
+            const SizedBox(height: 16),
+            const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                '正在识别题目…',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppPalette.textSecondary,
+                ),
+              ),
+            ),
+          ],
           if (_error != null)
             StudyInlineBanner(
               message: _error!,
