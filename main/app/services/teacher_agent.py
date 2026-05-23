@@ -158,10 +158,19 @@ def generate_teacher_hint(
 _TEACHER_SUMMARY_PROMPT = """你是初中数学讲题课的李老师。
 小明、大雄、班长**都已听懂**学生的讲解。请给出收束小结：
 
-1. 复述学生自己讲清楚的关键规则 / 依据 / 检查点（不要直接报完整答案）；
+1. **只总结学生自己的讲解**：关键规则 / 依据 / 检查点（不要直接报完整答案）；
 2. 语气温和、肯定学生的费曼讲解；
 3. 数学用 LaTeX；不超过 180 字；
 4. `highlightStepIds` 只能引用白名单 stepId。
+
+【同伴发言规则 · 必须遵守】
+- 本轮三名同伴**没有当众开口**（屏幕上不会出现他们的气泡），只在旁听并表示听懂。
+- **禁止**写「大雄验证了…」「班长总结了…」「小明说…」等，仿佛同伴刚才发言或做了某步操作。
+- **禁止**把内部评估备注改写成第三人称叙事。
+- 如需提及同伴，最多一句：「小明、大雄、班长都表示听懂了。」然后立刻回到**学生**讲了什么。
+
+【反幻觉】
+- 只基于【学生口述】与白板步骤；禁止编造学生或同伴未出现的内容。
 
 只输出一个 JSON 对象：
 {
@@ -169,6 +178,34 @@ _TEACHER_SUMMARY_PROMPT = """你是初中数学讲题课的李老师。
   "highlightStepIds": ["step_x"]
 }
 """
+
+
+def _peer_understood_ack(peer_assessments: list[dict[str, Any]] | None) -> str:
+    """收束小结用：只传「谁听懂了」，不传 assessment reason（避免李老师转述未开口的同伴）。"""
+    order = ("小明", "大雄", "班长")
+    name_by_role = {
+        "xiaoming": "小明",
+        "daxiong": "大雄",
+        "monitor": "班长",
+        "classleader": "班长",
+    }
+    understood: set[str] = set()
+    for item in peer_assessments or []:
+        if not isinstance(item, dict) or not bool(item.get("understood")):
+            continue
+        display = str(item.get("display_name") or item.get("displayName") or "").strip()
+        role = str(item.get("role") or "").strip().lower()
+        if display:
+            understood.add(display)
+        elif role in name_by_role:
+            understood.add(name_by_role[role])
+    if not understood:
+        return "三名同伴均表示听懂（本轮未当众发言）。"
+    ordered = [n for n in order if n in understood]
+    for n in sorted(understood):
+        if n not in ordered:
+            ordered.append(n)
+    return "、".join(ordered) + "均表示听懂（本轮未当众发言）。"
 
 
 def generate_teacher_summary(
@@ -205,19 +242,13 @@ def generate_teacher_summary(
         history=cleaned_history,
         purpose="teacher",
     )
-    peer_lines = []
-    for item in peer_assessments or []:
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("display_name") or item.get("displayName") or "")
-        reason = str(item.get("reason") or "").strip()
-        if reason:
-            peer_lines.append(f"- {name}：{reason}")
-    peer_block = "\n".join(peer_lines) if peer_lines else "（同伴均表示听懂）"
+    peer_ack = _peer_understood_ack(peer_assessments)
 
     user_prompt = (
-        "【收束场景】三名同伴本轮都已听懂。\n"
-        f"【同伴听懂反馈】\n{peer_block}\n\n"
+        "【收束场景】三名同伴本轮都已听懂，且**未当众发言**。"
+        "下列只是一句听懂确认，不是他们说过的话；"
+        "你的小结**只总结学生的讲解**，不要叙述同伴做了什么。\n"
+        f"【同伴听懂确认】{peer_ack}\n\n"
         f"{context_prompt}\n\n"
         "请只输出一个 JSON 对象。"
     )

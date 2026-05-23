@@ -755,8 +755,11 @@ git push origin main
   live 路径 `peer_assessment_item` 仅增量更新头像环；**TTS 只在学生展开该同伴气泡时播**（单人）。
   日志关键字 `pause asr_flush_ms` / `pause pipeline peer_ms` / `peer-assessment {role} ms`。
   **禁止**在 LLM system/user prompt 里写 API 路径、流式接口等工程注释。
-
-### 第十二轮 · V2 产品闭环与 App 接线
+- **李老师收束勿转述未开口的同伴**：P1 全员听懂时小明/大雄/班长**只有评估
+  结果、没有当众气泡**；若把 assessment 的 `reason`（如「我代了个数对上了」）
+  喂给 `generate_teacher_summary`，DeepSeek 常会改写成「大雄验证了…班长总结了…」
+  让学生以为同伴说过。收束只传「谁听懂了 + 未当众发言」，System Prompt 禁止
+  第三人称叙述同伴行为；小结只总结**学生**讲解。
 
 - **讲题主链路禁止 Mock / fallback 伪装成功**：`/lecture/submit` 的 LLM 调用、
   实时讲题的流式 Agent、流式 ASR、TTS 都必须在失败时显式返回 HTTP 502 或
