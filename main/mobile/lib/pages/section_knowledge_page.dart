@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_branding.dart';
 import '../data/curriculum_models.dart';
 import '../data/knowledge_point_progress_models.dart';
 import '../data/mock_lecture_repository.dart';
@@ -77,7 +78,7 @@ class SectionKnowledgePage extends StatelessWidget {
                           title: kp.label,
                           subtitle:
                               count > 0
-                                  ? '$count 道题 · 推荐 $diffLabel · 费曼讲题'
+                                  ? '$count 道题 · 推荐 $diffLabel · ${AppBranding.lectureEntryLabel}'
                                   : '题目整理中',
                           trailing: KnowledgePointStars(
                             stars: stars,

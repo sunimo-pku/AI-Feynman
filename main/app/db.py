@@ -23,6 +23,8 @@ import json
 import logging
 import os
 from datetime import datetime
+
+from app.branding import DEFAULT_SCHOOL_NAME
 from typing import Any
 
 from sqlalchemy import (
@@ -103,7 +105,7 @@ class StudentProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, unique=True)
     display_name = Column(String(64), default="同学")
     grade = Column(String(32), default="八年级")
-    school_name = Column(String(96), default="AI 费曼实验校")
+    school_name = Column(String(96), default=DEFAULT_SCHOOL_NAME)
     province = Column(String(32), default="山东省")
     city = Column(String(32), default="济南市")
     district = Column(String(32), default="历下区")
@@ -428,7 +430,7 @@ def _run_lightweight_migrations() -> None:
 
         profile_cols = _columns("student_profiles")
         profile_additions = {
-            "school_name": "ALTER TABLE student_profiles ADD COLUMN school_name VARCHAR(96) DEFAULT 'AI 费曼实验校'",
+            "school_name": f"ALTER TABLE student_profiles ADD COLUMN school_name VARCHAR(96) DEFAULT '{DEFAULT_SCHOOL_NAME}'",
             "province": "ALTER TABLE student_profiles ADD COLUMN province VARCHAR(32) DEFAULT '山东省'",
             "city": "ALTER TABLE student_profiles ADD COLUMN city VARCHAR(32) DEFAULT '济南市'",
             "district": "ALTER TABLE student_profiles ADD COLUMN district VARCHAR(32) DEFAULT '历下区'",
@@ -597,7 +599,7 @@ def ensure_student_profile(db: Session, user: User) -> StudentProfile:
         user_id=user.id,
         display_name=user.username,
         grade="八年级",
-        school_name="AI 费曼实验校",
+        school_name=DEFAULT_SCHOOL_NAME,
         province="山东省",
         city="济南市",
         district="历下区",

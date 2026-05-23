@@ -99,7 +99,7 @@ def _load_stationery_skus() -> list[dict]:
     return [
         {
             "skuId": "stat-notebook-a5",
-            "name": "A5 费曼错题本",
+            "name": "A5 讲题错题本",
             "type": "physical",
             "crystalCost": 88,
             "description": "占位文具",

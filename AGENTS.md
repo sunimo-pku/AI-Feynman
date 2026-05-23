@@ -71,7 +71,7 @@
 
 ## 项目背景
 
-- **项目名称**：AI 费曼（AI-Feynman）
+- **项目名称**：我讲你听（工程仓库：AI-Feynman）
 - **仓库**：[sunimo-pku/AI-Feynman](https://github.com/sunimo-pku/AI-Feynman)
 - **目标用户**：初中数学（初一～初三）
 - **运行形态**：Android App（Flutter / Dart，平板优先）

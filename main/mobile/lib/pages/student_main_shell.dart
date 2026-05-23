@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../config/app_branding.dart';
 import '../data/curriculum_models.dart';
 import '../data/curriculum_repository.dart';
 import '../data/mock_lecture_repository.dart';
@@ -193,7 +194,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
     return Scaffold(
       backgroundColor: AppPalette.background,
       appBar: AppBar(
-        title: Text('AI 费曼 · ${_tabTitles[_tabIndex]}'),
+        title: Text(AppBranding.appBarTitle(_tabTitles[_tabIndex])),
       ),
       body: AnimatedBuilder(
         animation: StudentGradeStore.instance,

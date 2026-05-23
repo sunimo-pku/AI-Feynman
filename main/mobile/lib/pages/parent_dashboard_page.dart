@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../config/app_branding.dart';
 import '../data/parent_models.dart';
 import '../data/round12_models.dart';
 import '../services/auth_service.dart';
@@ -801,8 +802,8 @@ class _PosterCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'AI 费曼 · 本周学习海报',
+              Text(
+                '${AppBranding.displayName} · 本周学习海报',
                 style: TextStyle(
                   color: AppPalette.primary,
                   fontSize: 13,

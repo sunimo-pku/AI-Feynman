@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_branding.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
@@ -130,7 +131,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       backgroundColor: AppPalette.background,
       appBar: AppBar(
         automaticallyImplyLeading: widget.showBackButton,
-        title: const Text('AI 费曼'),
+        title: const Text(AppBranding.displayName),
       ),
       body: SafeArea(
         child: Center(
@@ -358,8 +359,15 @@ class _AuthHeader extends StatelessWidget {
             child: const Icon(Icons.school_outlined, color: AppPalette.primary),
           ),
           const SizedBox(height: 16),
-          Text('登录后开始学习', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
+          Text(AppBranding.displayName, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(
+            AppBranding.tagline,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppPalette.primary),
+          ),
+          const SizedBox(height: 12),
           Text(
             '一个家庭一个账号。注册时设置账号密码与家长密码；登录时再选学生端或家长端。',
             style: Theme.of(

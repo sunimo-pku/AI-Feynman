@@ -1,6 +1,6 @@
 # Flutter Android 客户端
 
-AI 费曼学习法 · Android App（Flutter / Dart）。
+我讲你听 · Android App（Flutter / Dart）。
 
 ## 前置条件
 

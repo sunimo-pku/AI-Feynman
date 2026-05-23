@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'config/app_branding.dart';
 import 'pages/auth_page.dart';
 import 'pages/student_main_shell.dart';
 import 'pages/parent_home_page.dart';
@@ -18,7 +19,7 @@ class AiFeynmanApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AI 费曼',
+      title: AppBranding.displayName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       home: const _AuthGate(),

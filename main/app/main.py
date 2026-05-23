@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.branding import API_TITLE, DISPLAY_NAME
 from app.routers import (
     asr,
     assignments,
@@ -33,8 +34,8 @@ logging.basicConfig(
 )
 
 app = FastAPI(
-    title="AI Feynman API",
-    description="Flutter Android 客户端后端（FastAPI + DeepSeek / 豆包语音）",
+    title=API_TITLE,
+    description=f"{DISPLAY_NAME} · Flutter Android 客户端后端（FastAPI + DeepSeek / 豆包语音）",
     version="0.2.0",
 )
 
@@ -72,7 +73,8 @@ app.include_router(round11.router)
 @app.get("/")
 async def root():
     return {
-        "name": "AI Feynman API",
+        "name": API_TITLE,
+        "displayName": DISPLAY_NAME,
         "docs": "/docs",
         "health": "/health",
     }

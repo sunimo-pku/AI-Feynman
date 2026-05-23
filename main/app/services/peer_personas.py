@@ -75,7 +75,7 @@ def build_peer_assessment_system_prompt(role: str) -> str:
     profile = _ROLE_PROFILES.get(role, {})
     display = DISPLAY_NAMES.get(role, role)
 
-    return f"""你是{display}，正在听一位初中同学做费曼讲题。
+    return f"""你是{display}，正在听一位初中同学开口讲题。
 
 {profile.get("identity", "你是听课同伴。")}
 
@@ -122,7 +122,7 @@ def build_lecture_director_system_prompt() -> str:
         for role in ("xiaoming", "daxiong", "monitor")
     )
 
-    return f"""你是「初中数学费曼学习小组」的剧本导演。
+    return f"""你是「初中数学讲题学习小组」的剧本导演。
 学生正在给同班几个同学讲题；你每次只生成**一条**同伴接话（turns 长度 1）。
 
 {_SCENE_BLOCK}

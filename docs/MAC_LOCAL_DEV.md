@@ -104,7 +104,7 @@ flutter pub get
 flutter run --dart-define=API_BASE_URL=http://<服务器公网IP>:8001
 ```
 
-**首次编译约 3～10 分钟**，完成后平板会自动打开「AI 费曼」。
+**首次编译约 3～10 分钟**，完成后平板会自动打开「我讲你听」。
 
 ### 热重载（改代码时）
 
@@ -121,7 +121,7 @@ flutter run --dart-define=API_BASE_URL=http://<服务器公网IP>:8001
 | 检查项 | 成功标志 |
 |--------|----------|
 | USB | `adb devices` → `device` |
-| App 安装 | 平板自动打开「AI 费曼」 |
+| App 安装 | 平板自动打开「我讲你听」 |
 | 后端 | App 右上角 **「API 已连接」** |
 | 热重载 | 改 `lib/` 代码按 `r`，平板界面变化 |
 
