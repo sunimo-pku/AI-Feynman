@@ -18,6 +18,14 @@ def test_peer_assessment_prompts_sound_like_classmates_not_tutors() -> None:
     assert "API" not in xiaoming
 
 
+def test_monitor_prompt_requires_hard_math_check_before_approval() -> None:
+    monitor = build_peer_assessment_system_prompt("monitor")
+    assert "最后检查" in monitor
+    assert "独立解一遍题" in monitor
+    assert "答案完全正确才放行" in monitor
+    assert "听起来合理" in monitor
+
+
 def test_lecture_director_prompt_has_group_discussion_scene() -> None:
     prompt = build_lecture_director_system_prompt()
     assert "小组" in prompt
