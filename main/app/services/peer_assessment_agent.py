@@ -23,10 +23,17 @@ from app.services.lecture_agent import (
     _sanitize_history,
     _strip_markdown_fence,
 )
+from app.services.peer_harmonize import (
+    find_misconception_speaker,
+    harmonize_peer_assessments,
+    normalize_question_kind,
+    recompute_round_status,
+)
 from app.services.peer_personas import (
-    default_assessment_reason,
-    build_peer_assessment_system_prompt,
     PEER_ASSESSMENT_USER_SUFFIX,
+    build_monitor_misconception_correction_system_prompt,
+    build_peer_assessment_system_prompt,
+    default_assessment_reason,
 )
 
 logger = logging.getLogger(__name__)
@@ -126,12 +133,19 @@ def _parse_assessment(
     if not highlight and fallback:
         highlight = [fallback]
 
+    question_kind = normalize_question_kind(
+        role=role,
+        understood=understood,
+        raw_kind=payload.get("questionKind") or payload.get("question_kind"),
+    )
+
     return {
         "role": role,
         "display_name": _DEFAULT_DISPLAY_NAME[role],
         "understood": understood,
         "reason": reason,
         "highlight_step_ids": highlight,
+        "question_kind": question_kind,
     }
 
 
@@ -221,12 +235,148 @@ def _assess_one_peer(
         steps=steps,
     )
     logger.info(
-        "[peer-assessment] %s ms=%.0f understood=%s",
+        "[peer-assessment] %s ms=%.0f understood=%s kind=%s",
         role,
         (time.monotonic() - t0) * 1000,
         parsed.get("understood"),
+        parsed.get("question_kind"),
     )
     return parsed
+
+
+def _generate_monitor_misconception_correction(
+    *,
+    xiaoming_item: dict[str, Any],
+    section_id: str,
+    question_id: str,
+    question_prompt: str,
+    student_speech_text: str,
+    steps: list[dict[str, Any]],
+    allowed_step_ids: list[str],
+    round_index: int,
+) -> dict[str, Any] | None:
+    """小明误解型提问后，班长接一句帮腔纠偏（可选 LLM）。"""
+    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+        return None
+
+    context = _build_user_prompt(
+        section_id=section_id,
+        question_id=question_id,
+        question_prompt=question_prompt,
+        student_speech_text=student_speech_text,
+        steps=steps,
+        allowed_step_ids=allowed_step_ids,
+        round_index=round_index,
+        history=[],
+        purpose="peer_assessment",
+    )
+    user_prompt = (
+        f"【小明刚才的误解型提问】\n{xiaoming_item.get('reason', '')}\n\n"
+        f"{context}\n\n"
+        "请输出班长纠偏 JSON。"
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": build_monitor_misconception_correction_system_prompt(),
+        },
+        {"role": "user", "content": user_prompt},
+    ]
+    try:
+        resp = deepseek_client.with_options(max_retries=0).chat.completions.create(
+            model=_ASSESSMENT_MODEL,
+            messages=messages,
+            temperature=0.35,
+            max_tokens=200,
+            response_format={"type": "json_object"},
+            timeout=_LLM_TIMEOUT_SECONDS,
+            extra_body=_ASSESSMENT_EXTRA_BODY,
+        )
+        raw = (resp.choices[0].message.content or "") if resp.choices else ""
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[peer-assessment] monitor correction LLM failed: %s", e)
+        return None
+
+    cleaned = _strip_markdown_fence(raw or "")
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        return None
+    if len(text) > _MAX_REASON_LEN:
+        text = text[:_MAX_REASON_LEN].rstrip() + "…"
+
+    allowed_set = set(allowed_step_ids)
+    fallback = allowed_step_ids[0] if allowed_step_ids else None
+    highlight_raw = payload.get("highlightStepIds") or payload.get("highlight_step_ids") or []
+    if not isinstance(highlight_raw, list):
+        highlight_raw = []
+    highlight: list[str] = []
+    for sid in highlight_raw:
+        sid_str = str(sid).strip()
+        if sid_str and sid_str in allowed_set and sid_str not in highlight:
+            highlight.append(sid_str)
+    if not highlight and fallback:
+        highlight = [fallback]
+
+    return {
+        "turn_id": "reply_monitor_misconception",
+        "role": "monitor",
+        "display_name": _DEFAULT_DISPLAY_NAME["monitor"],
+        "text": text,
+        "highlight_step_ids": highlight,
+    }
+
+
+def finalize_peer_assessment_round(
+    *,
+    assessments: list[dict[str, Any]],
+    section_id: str,
+    question_id: str,
+    question_prompt: str,
+    student_speech_text: str,
+    steps: list[dict[str, Any]],
+    allowed_step_ids: list[str],
+    round_index: int,
+) -> dict[str, Any]:
+    """后处理：限流、去重，并在小明误解型提问后生成班长纠偏接话。"""
+    harmonized = harmonize_peer_assessments(assessments)
+    status_bits = recompute_round_status(harmonized)
+
+    peer_replies: list[dict[str, Any]] = []
+    misc = find_misconception_speaker(harmonized)
+    if misc is not None:
+        correction = _generate_monitor_misconception_correction(
+            xiaoming_item=misc,
+            section_id=section_id,
+            question_id=question_id,
+            question_prompt=question_prompt,
+            student_speech_text=student_speech_text,
+            steps=steps,
+            allowed_step_ids=allowed_step_ids,
+            round_index=round_index,
+        )
+        if correction is not None:
+            peer_replies.append(correction)
+
+    logger.info(
+        "[peer-assessment] finalize round=%d speakers=%d replies=%d status=%s",
+        round_index,
+        sum(1 for a in harmonized if not a.get("understood")),
+        len(peer_replies),
+        status_bits["status"],
+    )
+
+    return {
+        **status_bits,
+        "assessments": harmonized,
+        "peer_replies": peer_replies,
+        "source": "llm",
+    }
 
 
 def generate_peer_assessments(
@@ -276,22 +426,23 @@ def generate_peer_assessments(
     if len(assessments) != len(_PEER_ROLES):
         raise LectureAgentError("peer assessments incomplete")
 
-    all_understood = all(a["understood"] for a in assessments)
-    status = "completed" if all_understood else "needs_explanation"
-    mastery_delta = 1 if all_understood else 0
+    finalized = finalize_peer_assessment_round(
+        assessments=assessments,
+        section_id=section_id,
+        question_id=question_id,
+        question_prompt=question_prompt,
+        student_speech_text=student_speech_text,
+        steps=steps,
+        allowed_step_ids=allowed_step_ids,
+        round_index=safe_round,
+    )
 
     logger.info(
         "[peer-assessment] section=%s round=%d understood=%d/3 status=%s",
         section_id,
         safe_round,
-        sum(1 for a in assessments if a["understood"]),
-        status,
+        sum(1 for a in finalized["assessments"] if a["understood"]),
+        finalized["status"],
     )
 
-    return {
-        "status": status,
-        "mastery_delta": mastery_delta,
-        "all_understood": all_understood,
-        "assessments": assessments,
-        "source": "llm",
-    }
+    return finalized

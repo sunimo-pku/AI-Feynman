@@ -30,6 +30,7 @@ def test_generate_peer_assessments_parallel(monkeypatch) -> None:
             "understood": understood,
             "reason": "ok" if understood else "符号还没讲清",
             "highlight_step_ids": ["step_1"],
+            "question_kind": "none" if understood else "gap",
         }
 
     monkeypatch.setattr(

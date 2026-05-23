@@ -750,6 +750,10 @@ git push origin main
 - **同伴 Prompt 忌「导师腔」**：小明/大雄/班长若写「前提未说明」「等价变形」
   会像批作业不像小组讨论。人设与 System Prompt 统一在
   `app/services/peer_personas.py`；评估温度约 0.45，要求口语、一次只问 1 点。
+- **同伴三人勿当三个评委**：并行评估后必须走 `peer_harmonize.harmonize_peer_assessments`
+  限流（每轮最多 2 人当众发问、同 step/语义重复只保留优先者）。分工：小明概念/可选
+  `questionKind:misconception`（仅小明）；大雄验算符号；班长整体收束。小明误解型提问后
+  `finalize_peer_assessment_round` 可生成班长 `peerReplies` 纠偏接话。
 - **同伴慢的典型瓶颈**：`pause_detected` 后顺序为 ASR flush → 三人 LLM
   （并行，等最慢的一个，原 UI 也等整包才显示）→ 可选李老师收束（串行 +6s）。
   live 路径 `peer_assessment_item` 仅增量更新头像环；**TTS 只在学生展开该同伴气泡时播**（单人）。

@@ -174,11 +174,13 @@ class LivePeerAssessmentsPayload extends LiveServerPayload {
     required this.allUnderstood,
     required this.status,
     required this.masteryDelta,
+    this.peerReplies = const [],
     this.teacherSummary,
     this.reasonsStreamed = false,
   });
 
   final List<PeerAssessment> assessments;
+  final List<AgentTurn> peerReplies;
   final bool allUnderstood;
   final String status;
   final int masteryDelta;
@@ -277,6 +279,10 @@ class LiveServerEvent {
           assessments: (json['assessments'] as List<dynamic>? ?? const [])
               .whereType<Map<String, dynamic>>()
               .map(PeerAssessment.fromJson)
+              .toList(growable: false),
+          peerReplies: (json['peerReplies'] as List<dynamic>? ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .map(AgentTurn.fromJson)
               .toList(growable: false),
           allUnderstood: json['allUnderstood'] == true,
           status: (json['status'] as String?) ?? 'needs_explanation',

@@ -32,6 +32,19 @@ AgentRole parseAgentRole(String raw) {
   }
 }
 
+enum PeerQuestionKind { none, gap, misconception }
+
+PeerQuestionKind parsePeerQuestionKind(String? raw) {
+  switch (raw?.trim().toLowerCase()) {
+    case 'gap':
+      return PeerQuestionKind.gap;
+    case 'misconception':
+      return PeerQuestionKind.misconception;
+    default:
+      return PeerQuestionKind.none;
+  }
+}
+
 /// 把前端 [AgentRole] 翻译成后端约定的 wire role 字符串。
 ///
 /// 第五轮 `LectureHistoryItem.role` 必须用后端能识别的字符串
@@ -330,6 +343,7 @@ class PeerAssessment {
     required this.displayName,
     required this.understood,
     required this.reason,
+    this.questionKind = PeerQuestionKind.none,
     this.highlightStepIds = const [],
   });
 
@@ -337,7 +351,11 @@ class PeerAssessment {
   final String displayName;
   final bool understood;
   final String reason;
+  final PeerQuestionKind questionKind;
   final List<String> highlightStepIds;
+
+  bool get isMisconception =>
+      !understood && questionKind == PeerQuestionKind.misconception;
 
   factory PeerAssessment.fromJson(Map<String, dynamic> json) {
     return PeerAssessment(
@@ -345,6 +363,7 @@ class PeerAssessment {
       displayName: json['displayName'] as String? ?? '',
       understood: json['understood'] == true,
       reason: json['reason'] as String? ?? '',
+      questionKind: parsePeerQuestionKind(json['questionKind'] as String?),
       highlightStepIds:
           (json['highlightStepIds'] as List<dynamic>? ?? const [])
               .map((e) => e.toString())
@@ -380,6 +399,7 @@ class LectureSubmitResponse {
     required this.masteryDelta,
     this.allUnderstood = false,
     this.assessments = const [],
+    this.peerReplies = const [],
     this.teacherSummary,
     this.turns = const [],
   });
@@ -390,6 +410,7 @@ class LectureSubmitResponse {
   final int masteryDelta;
   final bool allUnderstood;
   final List<PeerAssessment> assessments;
+  final List<AgentTurn> peerReplies;
   final AgentTurn? teacherSummary;
   final List<AgentTurn> turns;
 
@@ -408,6 +429,10 @@ class LectureSubmitResponse {
       assessments: (json['assessments'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(PeerAssessment.fromJson)
+          .toList(growable: false),
+      peerReplies: (json['peerReplies'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(AgentTurn.fromJson)
           .toList(growable: false),
       teacherSummary: summary,
       turns: (json['turns'] as List<dynamic>? ?? const [])

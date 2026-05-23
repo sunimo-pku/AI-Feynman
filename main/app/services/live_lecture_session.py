@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from app.services.live_asr_buffer import LiveAsrBuffer
+from app.services.peer_assessment_agent import finalize_peer_assessment_round
 
 logger = logging.getLogger(__name__)
 
@@ -485,6 +486,7 @@ class LiveLectureSession:
         )
 
         assessments = list(result.get("assessments") or [])
+        peer_replies = list(result.get("peer_replies") or [])
         all_understood = bool(result.get("all_understood"))
         status = str(result.get("status") or "needs_explanation")
         mastery_delta = int(result.get("mastery_delta") or 0)
@@ -513,6 +515,7 @@ class LiveLectureSession:
             "type": EVT_PEER_ASSESSMENTS,
             "sessionId": self.session_id,
             "assessments": [_assessment_to_wire(a) for a in assessments],
+            "peerReplies": [_peer_reply_to_wire(r) for r in peer_replies],
             "allUnderstood": all_understood,
             "status": status,
             "masteryDelta": mastery_delta,
@@ -535,6 +538,13 @@ class LiveLectureSession:
         self._append_student_history_snapshot()
         for item in assessments:
             self.history.append(_assessment_to_history_item(item))
+        for reply in peer_replies:
+            self.history.append({
+                "role": str(reply.get("role") or "monitor"),
+                "displayName": str(reply.get("display_name") or "班长"),
+                "text": str(reply.get("text") or ""),
+                "highlightStepIds": list(reply.get("highlight_step_ids") or []),
+            })
         if teacher_summary:
             self.history.append({
                 "role": str(teacher_summary.get("role") or "teacher"),
@@ -669,16 +679,20 @@ class LiveLectureSession:
         if len(assessments) != len(_PEER_ROLES):
             raise RuntimeError("peer assessments incomplete")
 
-        all_understood = all(a.get("understood") for a in assessments)
-        status = "completed" if all_understood else "needs_explanation"
-        mastery_delta = 1 if all_understood else 0
-        return {
-            "status": status,
-            "mastery_delta": mastery_delta,
-            "all_understood": all_understood,
-            "assessments": assessments,
-            "source": "llm",
-        }
+        finalized = await loop.run_in_executor(
+            None,
+            lambda: finalize_peer_assessment_round(
+                assessments=assessments,
+                section_id=self.section_id,
+                question_id=self.question_id,
+                question_prompt=self.question_prompt,
+                student_speech_text=speech,
+                steps=steps_payload,
+                allowed_step_ids=allowed_step_ids,
+                round_index=round_index,
+            ),
+        )
+        return finalized
 
     async def _invoke_peer_assessments(
         self,
@@ -1289,11 +1303,25 @@ class LiveLectureSession:
 
 
 def _assessment_to_wire(item: dict[str, Any]) -> dict[str, Any]:
-    return {
+    kind = str(item.get("question_kind") or "none")
+    wire: dict[str, Any] = {
         "role": str(item.get("role") or "xiaoming"),
         "displayName": str(item.get("display_name") or ""),
         "understood": bool(item.get("understood")),
         "reason": str(item.get("reason") or ""),
+        "highlightStepIds": list(item.get("highlight_step_ids") or []),
+    }
+    if kind and kind != "none":
+        wire["questionKind"] = kind
+    return wire
+
+
+def _peer_reply_to_wire(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "turnId": str(item.get("turn_id") or "reply_1"),
+        "role": str(item.get("role") or "monitor"),
+        "displayName": str(item.get("display_name") or "班长"),
+        "text": str(item.get("text") or ""),
         "highlightStepIds": list(item.get("highlight_step_ids") or []),
     }
 

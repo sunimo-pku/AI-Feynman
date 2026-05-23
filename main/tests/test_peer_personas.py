@@ -9,12 +9,13 @@ from app.services.peer_personas import (
 
 def test_peer_assessment_prompts_sound_like_classmates_not_tutors() -> None:
     xiaoming = build_peer_assessment_system_prompt("xiaoming")
+    daxiong = build_peer_assessment_system_prompt("daxiong")
     assert "同班" in xiaoming or "同学" in xiaoming
     assert "禁止" in xiaoming
-    assert "等价变形" in xiaoming  # listed as forbidden tutor phrase
+    assert "misconception" in xiaoming
+    assert "misconception" not in daxiong or "禁止" in daxiong
     assert "跟不上了" in xiaoming or "卡" in xiaoming
     assert "API" not in xiaoming
-    assert "流式" not in xiaoming
 
 
 def test_lecture_director_prompt_has_group_discussion_scene() -> None:

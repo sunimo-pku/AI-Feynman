@@ -151,6 +151,7 @@ class PeerAssessmentOut(BaseModel):
     display_name: str = Field(..., serialization_alias="displayName")
     understood: bool
     reason: str
+    question_kind: str = Field("none", serialization_alias="questionKind")
     highlight_step_ids: list[str] = Field(
         default_factory=list,
         serialization_alias="highlightStepIds",
@@ -168,6 +169,10 @@ class LectureSubmitResponse(BaseModel):
     mastery_delta: int = Field(0, serialization_alias="masteryDelta")
     all_understood: bool = Field(False, serialization_alias="allUnderstood")
     assessments: list[PeerAssessmentOut] = Field(default_factory=list)
+    peer_replies: list[AgentTurnOut] = Field(
+        default_factory=list,
+        serialization_alias="peerReplies",
+    )
     teacher_summary: AgentTurnOut | None = Field(None, serialization_alias="teacherSummary")
     turns: list[AgentTurnOut] = Field(default_factory=list)
 
@@ -192,6 +197,7 @@ class LectureHintResponse(BaseModel):
 def _assessments_to_turns_payload(
     assessments: list[dict[str, Any]],
     teacher_summary: dict[str, Any] | None,
+    peer_replies: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """把评估结果转成 turns 快照，供落库与旧字段兼容。"""
     turns: list[dict[str, Any]] = []
@@ -205,6 +211,16 @@ def _assessments_to_turns_payload(
                 "display_name": item.get("display_name", ""),
                 "text": item.get("reason", ""),
                 "highlight_step_ids": list(item.get("highlight_step_ids") or []),
+            }
+        )
+    for reply in peer_replies or []:
+        turns.append(
+            {
+                "turn_id": str(reply.get("turn_id") or "reply_1"),
+                "role": reply.get("role", "monitor"),
+                "display_name": reply.get("display_name", ""),
+                "text": reply.get("text", ""),
+                "highlight_step_ids": list(reply.get("highlight_step_ids") or []),
             }
         )
     if teacher_summary:
@@ -224,9 +240,20 @@ def _build_submit_response(
             display_name=a["display_name"],
             understood=bool(a["understood"]),
             reason=str(a.get("reason") or ""),
+            question_kind=str(a.get("question_kind") or "none"),
             highlight_step_ids=list(a.get("highlight_step_ids") or []),
         )
         for a in result.get("assessments", [])
+    ]
+    peer_replies_out = [
+        AgentTurnOut(
+            turn_id=str(r.get("turn_id") or f"reply_{idx}"),
+            role=r.get("role", "monitor"),
+            display_name=str(r.get("display_name") or ""),
+            text=str(r.get("text") or ""),
+            highlight_step_ids=list(r.get("highlight_step_ids") or []),
+        )
+        for idx, r in enumerate(result.get("peer_replies") or [], start=1)
     ]
     teacher_out: AgentTurnOut | None = None
     if teacher_summary:
@@ -241,6 +268,7 @@ def _build_submit_response(
     turns_payload = _assessments_to_turns_payload(
         result.get("assessments", []),
         teacher_summary,
+        result.get("peer_replies"),
     )
     turns = [
         AgentTurnOut(
@@ -259,6 +287,7 @@ def _build_submit_response(
         mastery_delta=int(result.get("mastery_delta", 0) or 0),
         all_understood=bool(result.get("all_understood")),
         assessments=assessments_out,
+        peer_replies=peer_replies_out,
         teacher_summary=teacher_out,
         turns=turns,
     )
@@ -346,6 +375,7 @@ async def submit_lecture(
     turns_payload = _assessments_to_turns_payload(
         result.get("assessments", []),
         teacher_summary,
+        result.get("peer_replies"),
     )
 
     logger.info(

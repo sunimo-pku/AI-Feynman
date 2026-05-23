@@ -692,23 +692,34 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   String _assessmentRoundSummary(List<PeerAssessment> assessments) {
+    final speaking =
+        assessments
+            .where((a) => !a.understood)
+            .toList(growable: false);
     final understood =
         assessments
             .where((a) => a.understood)
             .map((a) => a.displayName)
             .toList();
-    final confused =
-        assessments
-            .where((a) => !a.understood)
-            .map((a) => a.displayName)
-            .toList();
-    if (confused.isEmpty) {
+    if (speaking.isEmpty) {
       return '小明、大雄、班长都听懂了！';
     }
+    final confused = speaking.map((a) => a.displayName).toList();
+    final misc = speaking.any((a) => a.isMisconception);
     if (understood.isEmpty) {
-      return '小明、大雄、班长都还没完全听懂，请看下面的理由再讲一轮。';
+      if (speaking.length == 1) {
+        return misc
+            ? '${confused.first}有个常见误区想跟你确认，听听看怎么讲。'
+            : '${confused.first}还想再听你说说。';
+      }
+      return misc
+          ? '${confused.join('、')}还有疑问；其中可能有常见误区，别被带偏。'
+          : '${confused.join('、')}还想再听你说说，像自习室讨论一样逐个回应。';
     }
-    return '${understood.join('、')}听懂了，${confused.join('、')}还没听懂，请看理由再讲一轮。';
+    if (speaking.length == 1) {
+      return '${understood.join('、')}先听懂了，${confused.first}${misc ? '有个误区想确认' : '还想再听一点'}。';
+    }
+    return '${understood.join('、')}听懂了，${confused.join('、')}还想再聊聊。';
   }
 
   /// P1/P3：文字提交与实时语音共用 —— 把三人评估结果落到 UI / history / 播放队列。
@@ -719,6 +730,7 @@ class _LecturePageState extends State<LecturePage> {
     required int masteryDelta,
     AgentTurn? teacherSummary,
     LectureHistoryItem? committedStudent,
+    List<AgentTurn> peerReplies = const [],
     bool omitTeacherTurn = false,
   }) {
     _speechController.clear();
@@ -761,6 +773,18 @@ class _LecturePageState extends State<LecturePage> {
       for (final a in assessments.where((x) => !x.understood)) {
         _turns.add(a.toReasonTurn(turnId: 'reason_${agentRoleWire(a.role)}'));
       }
+      for (final reply in peerReplies) {
+        if (reply.text.trim().isEmpty) continue;
+        _turns.add(
+          AgentTurn(
+            turnId: reply.turnId ?? 'reply_${agentRoleWire(reply.role)}',
+            role: reply.role,
+            displayName: reply.displayName,
+            text: reply.text,
+            highlightStepIds: reply.highlightStepIds,
+          ),
+        );
+      }
       _status = _LectureStatus.awaiting;
       _reasonPlayback.setQueue(assessments);
     }
@@ -770,6 +794,9 @@ class _LecturePageState extends State<LecturePage> {
     }
     for (final a in assessments) {
       _history.add(a.toHistoryItem());
+    }
+    for (final reply in peerReplies) {
+      _history.add(_agentTurnToHistory(reply));
     }
     if (teacherSummary != null) {
       _history.add(_agentTurnToHistory(teacherSummary));
@@ -883,6 +910,7 @@ class _LecturePageState extends State<LecturePage> {
           masteryDelta: response.masteryDelta,
           teacherSummary: response.teacherSummary,
           committedStudent: committedStudent,
+          peerReplies: response.peerReplies,
         );
       });
       _scrollToBottomSoon();
@@ -1929,6 +1957,7 @@ class _LecturePageState extends State<LecturePage> {
             masteryDelta: peerPayload.masteryDelta,
             teacherSummary: peerPayload.teacherSummary,
             committedStudent: _buildLiveStudentHistoryItem(),
+            peerReplies: peerPayload.peerReplies,
             omitTeacherTurn:
                 peerPayload.allUnderstood && peerPayload.teacherSummary != null,
           );
