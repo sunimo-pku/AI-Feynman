@@ -255,6 +255,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
         children: [
           _StudentHeaderCard(payload: p),
           const SizedBox(height: AppSpacing.sectionGap),
+          _WeeklyHeatmapCard(activity: p.weeklyActivity),
+          const SizedBox(height: AppSpacing.moduleGap),
           StudyInlineBanner(
             message: p.suggestedNextAction.isEmpty
                 ? '继续保持每日讲题节奏，同伴们会在旁边听。'
@@ -412,6 +414,87 @@ class _StudentHeaderCard extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: AppPalette.textSecondary,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeeklyHeatmapCard extends StatelessWidget {
+  const _WeeklyHeatmapCard({required this.activity});
+  final List<DayActivity> activity;
+
+  static final List<String> _weekdays = <String>['一', '二', '三', '四', '五', '六', '日'];
+
+  String _weekdayLabel(String isoDate) {
+    try {
+      final dt = DateTime.parse(isoDate);
+      // DateTime.weekday: 1=Mon ... 7=Sun
+      final idx = (dt.weekday - 1) % 7;
+      return _weekdays[idx];
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Color _cellColor(int count, BuildContext context) {
+    if (count <= 0) return AppPalette.primary.withValues(alpha: 0.06);
+    if (count == 1) return AppPalette.primary.withValues(alpha: 0.25);
+    if (count == 2) return AppPalette.primary.withValues(alpha: 0.5);
+    return AppPalette.primary.withValues(alpha: 0.85);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StudyPanel(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionHeader(
+            title: '近 7 天讲题节奏',
+            subtitle: '颜色越深表示当天完成轮数越多',
+            accent: AppPalette.primary,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: activity.map((day) {
+              return Expanded(
+                child: Column(
+                  children: [
+                    Container(
+                      height: 32,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: _cellColor(day.completedRounds, context),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: AppPalette.primary.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${day.completedRounds}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: day.completedRounds > 2
+                                ? Colors.white
+                                : AppPalette.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _weekdayLabel(day.date),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),

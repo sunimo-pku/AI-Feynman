@@ -100,6 +100,20 @@ class ParentReviewCard {
   }
 }
 
+class DayActivity {
+  const DayActivity({required this.date, required this.completedRounds});
+
+  final String date;
+  final int completedRounds;
+
+  factory DayActivity.fromJson(Map<String, dynamic> json) {
+    return DayActivity(
+      date: json['date'] as String? ?? '',
+      completedRounds: (json['completedRounds'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class ParentDashboardPayload {
   const ParentDashboardPayload({
     required this.studentName,
@@ -110,6 +124,7 @@ class ParentDashboardPayload {
     required this.weakSections,
     required this.strongSections,
     required this.recentReviews,
+    required this.weeklyActivity,
     required this.suggestedNextAction,
     required this.serverTime,
   });
@@ -122,6 +137,7 @@ class ParentDashboardPayload {
   final List<WeakSectionInfo> weakSections;
   final List<WeakSectionInfo> strongSections;
   final List<ParentReviewCard> recentReviews;
+  final List<DayActivity> weeklyActivity;
   final String suggestedNextAction;
   final DateTime serverTime;
 
@@ -143,6 +159,14 @@ class ParentDashboardPayload {
             .toList(growable: false)
         : const <ParentReviewCard>[];
 
+    final activityRaw = json['weeklyActivity'];
+    final weeklyActivity = activityRaw is List
+        ? activityRaw
+            .whereType<Map<String, dynamic>>()
+            .map(DayActivity.fromJson)
+            .toList(growable: false)
+        : const <DayActivity>[];
+
     return ParentDashboardPayload(
       studentName: json['studentName'] as String? ?? '同学',
       grade: json['grade'] as String? ?? '八年级',
@@ -152,6 +176,7 @@ class ParentDashboardPayload {
       weakSections: readSections('weakSections'),
       strongSections: readSections('strongSections'),
       recentReviews: reviewCards,
+      weeklyActivity: weeklyActivity,
       suggestedNextAction: json['suggestedNextAction'] as String? ?? '',
       serverTime: DateTime.tryParse(
               (json['serverTime'] as String?) ?? '') ??

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -152,6 +153,13 @@ class ReviewCardOut(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class DayActivityOut(BaseModel):
+    date: str
+    completed_rounds: int = Field(0, serialization_alias="completedRounds")
+
+    model_config = {"populate_by_name": True}
+
+
 class DashboardOut(BaseModel):
     student_name: str = Field(..., serialization_alias="studentName")
     grade: str
@@ -166,6 +174,9 @@ class DashboardOut(BaseModel):
     )
     recent_reviews: list[ReviewCardOut] = Field(
         default_factory=list, serialization_alias="recentReviews"
+    )
+    weekly_activity: list[DayActivityOut] = Field(
+        default_factory=list, serialization_alias="weeklyActivity"
     )
     suggested_next_action: str = Field(
         "", serialization_alias="suggestedNextAction"
@@ -286,6 +297,31 @@ def _build_suggested_action(
     return "保持每天 10-15 分钟讲题节奏，效果最稳。"
 
 
+def _build_weekly_activity(db: Session, student_id: int) -> list[DayActivityOut]:
+    """返回最近 7 天（含今天）每天的完成轮数，用于家长端热力图。"""
+    since = datetime.utcnow() - timedelta(days=6)
+    rows = (
+        db.query(LectureReview)
+        .filter(
+            LectureReview.student_id == student_id,
+            LectureReview.created_at >= since,
+        )
+        .all()
+    )
+    date_counts: Counter[str] = Counter()
+    for r in rows:
+        if r.created_at is not None:
+            date_counts[r.created_at.date().isoformat()] += 1
+
+    today = datetime.utcnow().date()
+    result: list[DayActivityOut] = []
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        d_str = d.isoformat()
+        result.append(DayActivityOut(date=d_str, completed_rounds=date_counts.get(d_str, 0)))
+    return result
+
+
 # ---------------------------------------------------------------------------
 # 路由
 # ---------------------------------------------------------------------------
@@ -387,6 +423,8 @@ async def parent_dashboard(
         len(practiced),
     )
 
+    weekly = _build_weekly_activity(db, profile.id)
+
     return DashboardOut(
         student_name=profile.display_name or user.username,
         grade=profile.grade or "八年级",
@@ -396,6 +434,7 @@ async def parent_dashboard(
         weak_sections=weak_out,
         strong_sections=strong_out,
         recent_reviews=review_out,
+        weekly_activity=weekly,
         suggested_next_action=suggestion,
     )
 
