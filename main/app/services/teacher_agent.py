@@ -185,6 +185,18 @@ _TEACHER_SUMMARY_PROMPT = """你是初中数学讲题课的李老师。
 """
 
 
+def _parse_bool_field(value: Any, *, field: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    raise LectureAgentError(f"Teacher summary {field} must be boolean")
+
+
 def _peer_understood_ack(peer_assessments: list[dict[str, Any]] | None) -> str:
     """收束小结用：只传「谁听懂了」，不传 assessment reason（避免李老师转述未开口的同伴）。"""
     order = ("小明", "大雄", "班长")
@@ -218,7 +230,16 @@ def apply_teacher_completion_gate(
     teacher_summary: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """李老师核对不通过时，禁止 completed。"""
-    if teacher_summary is None or bool(teacher_summary.get("approved", True)):
+    approved = False
+    if teacher_summary is not None:
+        try:
+            approved = _parse_bool_field(
+                teacher_summary.get("approved"),
+                field="approved",
+            )
+        except LectureAgentError:
+            approved = False
+    if teacher_summary is None or approved:
         return result
     patched = dict(result)
     patched["status"] = "needs_explanation"
@@ -314,7 +335,7 @@ def generate_teacher_summary(
     if len(method_summary) > _MAX_METHOD_SUMMARY_LEN:
         method_summary = method_summary[:_MAX_METHOD_SUMMARY_LEN].rstrip() + "…"
 
-    approved = bool(payload.get("approved", True))
+    approved = _parse_bool_field(payload.get("approved"), field="approved")
     if not approved:
         method_summary = ""
 

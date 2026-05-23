@@ -52,6 +52,18 @@ _SPEECH_QUOTE_RE = re.compile(
 )
 
 
+def _parse_bool_field(value: Any, *, field: str, role: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    raise LectureAgentError(f"{role} assessment {field} must be boolean")
+
+
 def _system_prompt_for_role(role: str) -> str:
     return build_peer_assessment_system_prompt(role)
 
@@ -109,7 +121,11 @@ def _parse_assessment(
     if not isinstance(payload, dict):
         raise LectureAgentError(f"{role} assessment top-level not object")
 
-    understood = bool(payload.get("understood"))
+    understood = _parse_bool_field(
+        payload.get("understood"),
+        field="understood",
+        role=role,
+    )
     reason = str(payload.get("reason") or "").strip()
     if not reason:
         reason = default_assessment_reason(role=role, understood=understood)

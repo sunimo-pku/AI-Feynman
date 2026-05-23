@@ -139,6 +139,7 @@ def _fake_teacher_summary(**kwargs: Any) -> dict[str, Any]:
         "display_name": "李老师",
         "text": "你说出了 a≥0 的前提，这一题讲清楚了。",
         "highlight_step_ids": ["step_2"],
+        "approved": True,
     }
 
 

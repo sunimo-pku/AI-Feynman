@@ -245,5 +245,26 @@ void main() {
       expect(q.image?.asset, 'assets/questions/diagrams/q-image.svg');
       expect(q.image?.alt, '一张图形题配图');
     });
+
+    test('fromJson 可解析可选老师解答视频', () {
+      final q = LectureQuestion.fromJson(const {
+        'questionId': 'q-video',
+        'sectionId': 's-video',
+        'sectionLabel': '视频题',
+        'prompt': '看完老师讲解后复述。',
+        'hint': '提示：先抓关键步骤。',
+        'referenceSteps': ['看视频', '复述'],
+        'answerVideo': {
+          'asset': 'assets/videos/answers/q-video.mp4',
+          'title': '李老师完整讲解',
+          'durationSeconds': 95,
+        },
+      });
+
+      expect(q.answerVideo?.hasSource, isTrue);
+      expect(q.answerVideo?.asset, 'assets/videos/answers/q-video.mp4');
+      expect(q.answerVideo?.displayTitle, '李老师完整讲解');
+      expect(q.answerVideo?.durationSeconds, 95);
+    });
   });
 }

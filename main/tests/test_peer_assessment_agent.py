@@ -18,6 +18,29 @@ def test_generate_peer_assessments_requires_key(monkeypatch) -> None:
         )
 
 
+def test_parse_assessment_string_false_is_false() -> None:
+    parsed = peer_assessment_agent._parse_assessment(
+        '{"understood":"false","questionKind":"gap","reason":"我这里没听懂","highlightStepIds":["step_1"]}',
+        role="xiaoming",
+        allowed_step_ids=["step_1"],
+        student_speech_text="",
+        steps=[{"stepId": "step_1", "strokeCount": 1}],
+    )
+    assert parsed["understood"] is False
+    assert parsed["question_kind"] == "gap"
+
+
+def test_parse_assessment_rejects_missing_understood() -> None:
+    with pytest.raises(LectureAgentError):
+        peer_assessment_agent._parse_assessment(
+            '{"questionKind":"gap","reason":"我这里没听懂","highlightStepIds":["step_1"]}',
+            role="xiaoming",
+            allowed_step_ids=["step_1"],
+            student_speech_text="",
+            steps=[{"stepId": "step_1", "strokeCount": 1}],
+        )
+
+
 def test_generate_peer_assessments_parallel(monkeypatch) -> None:
     calls: list[str] = []
 

@@ -25,6 +25,7 @@ dependencies:
   flutter_math_fork: ^0.7.4
   flutter_svg: ^2.3.0
   image_picker: ^1.1.2
+  video_player: ^2.11.1
 
 dev_dependencies:
   flutter_test:
@@ -38,5 +39,6 @@ flutter:
     - assets/curriculum/pep-junior-math.json
     - assets/questions/pep-junior-math-questions.json
     - assets/questions/diagrams/
+    - assets/videos/answers/
     - assets/agents/
     - assets/icons/

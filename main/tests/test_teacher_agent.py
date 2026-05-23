@@ -48,6 +48,36 @@ def test_apply_teacher_completion_gate_rejects_wrong_explanation() -> None:
     assert gated["mastery_delta"] == 0
 
 
+def test_apply_teacher_completion_gate_rejects_string_false() -> None:
+    result = {
+        "status": "completed",
+        "all_understood": True,
+        "mastery_delta": 2,
+    }
+    summary = {
+        "approved": "false",
+        "text": "结果不对。",
+        "method_summary": "",
+    }
+    gated = apply_teacher_completion_gate(result, summary)
+    assert gated["status"] == "needs_explanation"
+    assert gated["all_understood"] is False
+    assert gated["mastery_delta"] == 0
+
+
+def test_apply_teacher_completion_gate_rejects_missing_approved() -> None:
+    result = {
+        "status": "completed",
+        "all_understood": True,
+        "mastery_delta": 2,
+    }
+    summary = {"text": "字段缺失时不能放行。"}
+    gated = apply_teacher_completion_gate(result, summary)
+    assert gated["status"] == "needs_explanation"
+    assert gated["all_understood"] is False
+    assert gated["mastery_delta"] == 0
+
+
 def test_apply_teacher_completion_gate_passes_when_approved() -> None:
     result = {
         "status": "completed",

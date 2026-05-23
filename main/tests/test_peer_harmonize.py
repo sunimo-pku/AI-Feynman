@@ -37,7 +37,7 @@ def test_normalize_question_kind_only_xiaoming_misconception() -> None:
     )
 
 
-def test_harmonize_limits_speakers_and_dedupes_same_step() -> None:
+def test_harmonize_keeps_all_peer_objections() -> None:
     raw = [
         _item("xiaoming", understood=False, reason="这一步为啥能直接这样写啊"),
         _item("daxiong", understood=False, reason="我代进去好像不对，中间是不是跳步了"),
@@ -45,8 +45,8 @@ def test_harmonize_limits_speakers_and_dedupes_same_step() -> None:
     ]
     out = harmonize_peer_assessments(raw)
     speakers = [a for a in out if not a["understood"]]
-    assert len(speakers) <= 2
-    assert any(a["role"] == "xiaoming" for a in speakers)
+    assert len(speakers) == 3
+    assert {a["role"] for a in speakers} == {"xiaoming", "daxiong", "monitor"}
 
 
 def test_harmonize_keeps_misconception_with_gap_on_different_angle() -> None:
@@ -79,4 +79,5 @@ def test_recompute_round_status_after_harmonize_all_understood() -> None:
     ]
     out = harmonize_peer_assessments(raw)
     bits = recompute_round_status(out)
-    assert bits["all_understood"] is False or sum(1 for a in out if not a["understood"]) <= 1
+    assert bits["all_understood"] is False
+    assert sum(1 for a in out if not a["understood"]) == 2

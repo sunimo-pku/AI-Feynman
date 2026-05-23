@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:video_player/video_player.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/knowledge_point_progress_models.dart';
@@ -1471,6 +1472,67 @@ class _LecturePageState extends State<LecturePage> {
     );
   }
 
+  void _showAnswerVideoSheet() {
+    final video = _question.answerVideo;
+    final hasVideo = video != null && video.hasSource;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (ctx) => DraggableScrollableSheet(
+            initialChildSize: 0.62,
+            minChildSize: 0.42,
+            maxChildSize: 0.9,
+            builder:
+                (_, scroll) => Container(
+                  decoration: const BoxDecoration(
+                    color: AppPalette.surface,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                  ),
+                  child: ListView(
+                    controller: scroll,
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppPalette.outline,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        hasVideo ? video.displayTitle : '老师解答视频',
+                        style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '先看老师完整讲一遍，再回到白板用自己的话复述。',
+                        style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                          color: AppPalette.textSecondary,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      if (hasVideo)
+                        _AnswerVideoPlayer(video: video)
+                      else
+                        const _AnswerVideoEmptyState(),
+                    ],
+                  ),
+                ),
+          ),
+    );
+  }
+
   /// 「再讲一遍」：保留**同一道题**，但清空多轮历史 / 画布 / 输入区,
   /// 让学生重新开口讲一遍。第五轮 `completed` 状态下提供这个入口，方便复盘。
   ///
@@ -1715,6 +1777,8 @@ class _LecturePageState extends State<LecturePage> {
     _armThinkingWatchdog();
     setState(() {
       _clearFinishedUiIfContinuing();
+      _peerAssessments = const [];
+      _expandedPeerBubble = null;
       _round += 1;
       _turns.add(
         AgentTurn(
@@ -2245,6 +2309,10 @@ class _LecturePageState extends State<LecturePage> {
       role == AgentRole.monitor ||
       role == AgentRole.classLeader;
 
+  bool get _isPeerRoundPending =>
+      (_liveStatus == _LiveStatus.thinking && !_hintLoading) ||
+      (_peerAssessments.isNotEmpty && _peerAssessments.length < 3);
+
   AgentTurn? _latestTurnFor(AgentRole role) {
     for (var i = _turns.length - 1; i >= 0; i--) {
       if (_turns[i].role == role && _turns[i].text.trim().isNotEmpty) {
@@ -2289,6 +2357,11 @@ class _LecturePageState extends State<LecturePage> {
       }
       // 当前轮评估已经覆盖该同伴状态；已听懂时不能再回退显示上一轮追问。
       if (_isPeerRole(role)) return null;
+    }
+    if (_isPeerRole(role) && _isPeerRoundPending) return null;
+    if (role == AgentRole.teacher &&
+        (_liveStatus == _LiveStatus.thinking || _hintLoading)) {
+      return null;
     }
     final turn = _latestTurnFor(role);
     if (turn != null && turn.text.trim().isNotEmpty) {
@@ -2677,6 +2750,14 @@ class _LecturePageState extends State<LecturePage> {
               tooltip: '全屏查看题面',
               size: 40,
               onPressed: _showQuestionSheet,
+            ),
+            const SizedBox(width: 6),
+            LectureOrbButton(
+              icon: Icons.play_circle_outline,
+              tooltip: '老师解答视频',
+              size: 40,
+              accent: AppPalette.primaryAccent,
+              onPressed: _showAnswerVideoSheet,
             ),
             const SizedBox(width: 6),
             AnimatedBuilder(
@@ -3188,6 +3269,214 @@ class _QuestionCard extends StatelessWidget {
             const SizedBox(height: 12),
             _QuestionImage(image: question.image!),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AnswerVideoPlayer extends StatefulWidget {
+  const _AnswerVideoPlayer({required this.video});
+
+  final AnswerVideo video;
+
+  @override
+  State<_AnswerVideoPlayer> createState() => _AnswerVideoPlayerState();
+}
+
+class _AnswerVideoPlayerState extends State<_AnswerVideoPlayer> {
+  late final VideoPlayerController _controller;
+  late final Future<void> _initFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    final asset = widget.video.asset.trim();
+    if (asset.isNotEmpty) {
+      _controller = VideoPlayerController.asset(asset);
+    } else {
+      _controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.video.url.trim()),
+      );
+    }
+    _initFuture = () async {
+      await _controller.initialize();
+      await _controller.setLooping(false);
+      if (mounted) setState(() {});
+    }();
+    _controller.addListener(_onVideoChanged);
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_onVideoChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onVideoChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _togglePlay() async {
+    if (!_controller.value.isInitialized) return;
+    if (_controller.value.isPlaying) {
+      await _controller.pause();
+    } else {
+      await _controller.play();
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (duration.inHours > 0) {
+      return '${duration.inHours}:$minutes:$seconds';
+    }
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _initFuture,
+      builder: (context, snapshot) {
+        final value = _controller.value;
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+        if (snapshot.hasError || value.hasError) {
+          return Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppPalette.error.withValues(alpha: 0.08),
+              borderRadius: AppRadius.cardR,
+            ),
+            child: Text(
+              '视频暂时无法播放，请检查题库里的 answerVideo 资源是否存在。',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppPalette.error,
+                height: 1.45,
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: AppRadius.cardR,
+              child: AspectRatio(
+                aspectRatio:
+                    value.aspectRatio == 0 ? 16 / 9 : value.aspectRatio,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    VideoPlayer(_controller),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _togglePlay,
+                        borderRadius: BorderRadius.circular(999),
+                        child: Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: AppPalette.textPrimary.withValues(
+                              alpha: 0.48,
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            value.isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                            size: 34,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            VideoProgressIndicator(
+              _controller,
+              allowScrubbing: true,
+              colors: const VideoProgressColors(
+                playedColor: AppPalette.primaryAccent,
+                bufferedColor: AppPalette.outline,
+                backgroundColor: AppPalette.warmTint,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text(
+                  _formatDuration(value.position),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: AppPalette.textSecondary,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  _formatDuration(value.duration),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: AppPalette.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _AnswerVideoEmptyState extends StatelessWidget {
+  const _AnswerVideoEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
+      decoration: BoxDecoration(
+        color: AppPalette.warmTint.withValues(alpha: 0.55),
+        borderRadius: AppRadius.cardR,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.video_library_outlined,
+            size: 36,
+            color: AppPalette.primary.withValues(alpha: 0.72),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '这道题的老师解答视频暂时还没有',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppPalette.primary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '你可以先自己讲一遍；视频录制好后会自动出现在这里。',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppPalette.textSecondary,
+              height: 1.45,
+            ),
+          ),
         ],
       ),
     );

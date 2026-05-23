@@ -116,6 +116,7 @@ class LectureQuestion {
     this.difficulty = 1,
     this.tags = const <String>[],
     this.image,
+    this.answerVideo,
     this.standardAnswer = '',
     this.variantQuestionId = '',
     this.knowledgePointId = '',
@@ -150,6 +151,9 @@ class LectureQuestion {
   /// 可选题图。JSON 中只保存 asset 路径与无障碍描述，图片文件单独放 assets。
   final QuestionImage? image;
 
+  /// 可选老师解答视频。题库 JSON 中只存 asset/url 元数据，视频文件单独管理。
+  final AnswerVideo? answerVideo;
+
   /// 标准答案（教研占位或完整解答）；完成讲题后可查看。
   final String standardAnswer;
 
@@ -183,6 +187,7 @@ class LectureQuestion {
       difficulty: (json['difficulty'] as num?)?.toInt() ?? 1,
       tags: readStringList('tags'),
       image: QuestionImage.fromJson(json['image']),
+      answerVideo: AnswerVideo.fromJson(json['answerVideo']),
       standardAnswer: json['standardAnswer'] as String? ?? '',
       variantQuestionId: json['variantQuestionId'] as String? ?? '',
       knowledgePointId: json['knowledgePointId'] as String? ?? '',
@@ -207,6 +212,38 @@ class QuestionImage {
     return QuestionImage(
       asset: asset,
       alt: raw['alt'] as String? ?? '题目配图',
+    );
+  }
+}
+
+class AnswerVideo {
+  const AnswerVideo({
+    this.asset = '',
+    this.url = '',
+    this.title = '',
+    this.durationSeconds = 0,
+  });
+
+  final String asset;
+  final String url;
+  final String title;
+  final int durationSeconds;
+
+  bool get hasSource => asset.trim().isNotEmpty || url.trim().isNotEmpty;
+
+  String get displayTitle => title.trim().isEmpty ? '老师解答视频' : title.trim();
+
+  static AnswerVideo? fromJson(Object? raw) {
+    if (raw is! Map<String, dynamic>) return null;
+    final asset = (raw['asset'] as String? ?? '').trim();
+    final url = (raw['url'] as String? ?? '').trim();
+    if (asset.isEmpty && url.isEmpty) return null;
+    final seconds = raw['durationSeconds'];
+    return AnswerVideo(
+      asset: asset,
+      url: url,
+      title: raw['title'] as String? ?? '',
+      durationSeconds: seconds is num ? seconds.toInt() : 0,
     );
   }
 }
@@ -333,7 +370,7 @@ class LectureHintResponse {
   factory LectureHintResponse.fromJson(Map<String, dynamic> json) {
     final turnJson = json['turn'];
     if (turnJson is! Map<String, dynamic>) {
-      return LectureHintResponse(
+      return const LectureHintResponse(
         turn: AgentTurn(
           role: AgentRole.teacher,
           displayName: '李老师',
