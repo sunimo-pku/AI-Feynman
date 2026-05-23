@@ -28,4 +28,4 @@ def test_default_assessment_reason_varies_by_role() -> None:
     assert default_assessment_reason(role="xiaoming", understood=False) != (
         default_assessment_reason(role="daxiong", understood=False)
     )
-    assert "代" in default_assessment_reason(role="daxiong", understood=True)
+    assert len(default_assessment_reason(role="daxiong", understood=True)) <= 12

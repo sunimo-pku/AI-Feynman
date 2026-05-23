@@ -760,6 +760,12 @@ git push origin main
   喂给 `generate_teacher_summary`，DeepSeek 常会改写成「大雄验证了…班长总结了…」
   让学生以为同伴说过。收束只传「谁听懂了 + 未当众发言」，System Prompt 禁止
   第三人称叙述同伴行为；小结只总结**学生**讲解。
+- **李老师收束含 `methodSummary`**：`generate_teacher_summary` 返回
+  `text`（本轮肯定）+ `methodSummary`（此类题通用套路）；Wire 字段
+  `methodSummary`；听懂时的 assessment `reason` 保持 ≤12 字且不对学生展示。
+- **题库 `standardAnswer` / `variantQuestionId`**：全册 JSON 由
+  `scripts/generate_section_questions.py` 生成；完成讲题后可查占位标准答案、
+  跳转变式题（默认同节循环下一题）。
 
 - **讲题主链路禁止 Mock / fallback 伪装成功**：`/lecture/submit` 的 LLM 调用、
   实时讲题的流式 Agent、流式 ASR、TTS 都必须在失败时显式返回 HTTP 502 或

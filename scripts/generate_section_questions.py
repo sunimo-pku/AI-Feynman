@@ -354,6 +354,30 @@ def _question_payload(section: dict[str, Any], difficulty: int) -> dict[str, Any
     return question
 
 
+def _default_standard_answer(question: dict[str, Any]) -> str:
+    steps = question.get("referenceSteps") or []
+    if question.get("quality") == "curated" and steps:
+        body = "\n".join(f"• {s}" for s in steps)
+        return f"（教研占位）标准解答要点：\n{body}"
+    return "（教研占位）本题标准答案与完整步骤将于后续版本填入。"
+
+
+def _attach_answer_fields(questions: list[dict[str, Any]]) -> None:
+    by_section: dict[str, list[dict[str, Any]]] = {}
+    for q in questions:
+        by_section.setdefault(str(q.get("sectionId") or ""), []).append(q)
+    for lst in by_section.values():
+        lst.sort(
+            key=lambda item: (
+                int(item.get("difficulty") or 1),
+                str(item.get("questionId") or ""),
+            )
+        )
+        for i, q in enumerate(lst):
+            q.setdefault("standardAnswer", _default_standard_answer(q))
+            q["variantQuestionId"] = str(lst[(i + 1) % len(lst)].get("questionId") or "")
+
+
 def _copy_outputs() -> None:
     MOBILE_OUT.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(DATA_OUT, MOBILE_OUT)
@@ -389,6 +413,8 @@ def main() -> None:
                     continue
                 for difficulty in (1, 2, 3):
                     questions.append(_question_payload(section, difficulty))
+
+    _attach_answer_fields(questions)
 
     DATA_OUT.write_text(
         json.dumps(

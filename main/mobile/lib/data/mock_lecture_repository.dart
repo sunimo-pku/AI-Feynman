@@ -95,7 +95,6 @@ class MockLectureRepository {
   ///   * `1` → `基础`
   ///   * `2` → `巩固`
   ///   * `3` → `挑战`
-  ///   * 其他值兜底回「基础」，避免 UI 出现空 chip。
   String difficultyLabel(int difficulty) {
     switch (difficulty) {
       case 3:
@@ -106,6 +105,20 @@ class MockLectureRepository {
       default:
         return '基础';
     }
+  }
+
+  /// 本题配置的相关变式题；缺省时回退到同节下一题（循环）。
+  LectureQuestion variantFor(LectureQuestion current) {
+    final list = questionsForSection(current.sectionId);
+    if (list.isEmpty) return current;
+    if (current.variantQuestionId.isNotEmpty) {
+      for (final q in list) {
+        if (q.questionId == current.variantQuestionId) return q;
+      }
+    }
+    final idx = list.indexWhere((q) => q.questionId == current.questionId);
+    final next = idx >= 0 ? (idx + 1) % list.length : 0;
+    return list[next];
   }
 
   LectureQuestion _stubQuestionForSection(String sectionId) {
@@ -122,6 +135,8 @@ class MockLectureRepository {
       ],
       difficulty: 1,
       tags: const ['教研中', '全册题库'],
+      standardAnswer: '（教研占位）本题标准答案与完整步骤将于后续版本填入。',
+      variantQuestionId: 'q-$sectionId-stub-001',
     );
   }
 }

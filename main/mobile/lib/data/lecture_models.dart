@@ -60,6 +60,7 @@ class AgentTurn {
     required this.role,
     required this.displayName,
     required this.text,
+    this.methodSummary = '',
     this.highlightStepIds = const [],
   });
 
@@ -67,6 +68,9 @@ class AgentTurn {
   final AgentRole role;
   final String displayName;
   final String text;
+
+  /// 李老师收束时：此类题的通用解题方法（可选）。
+  final String methodSummary;
   final List<String> highlightStepIds;
 
   factory AgentTurn.fromJson(Map<String, dynamic> json) {
@@ -75,6 +79,7 @@ class AgentTurn {
       role: parseAgentRole(json['role'] as String? ?? 'system'),
       displayName: json['displayName'] as String? ?? '匿名',
       text: json['text'] as String? ?? '',
+      methodSummary: json['methodSummary'] as String? ?? '',
       highlightStepIds: (json['highlightStepIds'] as List<dynamic>? ?? const [])
           .map((e) => e.toString())
           .toList(growable: false),
@@ -93,6 +98,8 @@ class LectureQuestion {
     this.difficulty = 1,
     this.tags = const <String>[],
     this.image,
+    this.standardAnswer = '',
+    this.variantQuestionId = '',
   });
 
   final String questionId;
@@ -123,6 +130,12 @@ class LectureQuestion {
   /// 可选题图。JSON 中只保存 asset 路径与无障碍描述，图片文件单独放 assets。
   final QuestionImage? image;
 
+  /// 标准答案（教研占位或完整解答）；完成讲题后可查看。
+  final String standardAnswer;
+
+  /// 相关变式题 questionId；默认同节下一题。
+  final String variantQuestionId;
+
   factory LectureQuestion.fromJson(Map<String, dynamic> json) {
     List<String> readStringList(String key) {
       final raw = json[key];
@@ -144,6 +157,8 @@ class LectureQuestion {
       difficulty: (json['difficulty'] as num?)?.toInt() ?? 1,
       tags: readStringList('tags'),
       image: QuestionImage.fromJson(json['image']),
+      standardAnswer: json['standardAnswer'] as String? ?? '',
+      variantQuestionId: json['variantQuestionId'] as String? ?? '',
     );
   }
 }

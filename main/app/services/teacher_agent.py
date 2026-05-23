@@ -25,6 +25,8 @@ _TEACHER_TEMPERATURE = 0.3
 _TEACHER_EXTRA_BODY: dict[str, Any] = DEEPSEEK_THINKING_DISABLED
 _LLM_TIMEOUT_SECONDS = 6.0
 _MAX_TEXT_LEN = 220
+_MAX_SUMMARY_TEXT_LEN = 140
+_MAX_METHOD_SUMMARY_LEN = 180
 
 _TEACHER_SYSTEM_PROMPT = """你是初中数学讲题课的李老师。
 **只有当学生主动点击「需要提示」时**，你才发言；平时不参与同伴追问。
@@ -156,25 +158,24 @@ def generate_teacher_hint(
 
 
 _TEACHER_SUMMARY_PROMPT = """你是初中数学讲题课的李老师。
-小明、大雄、班长**都已听懂**学生的讲解。请给出收束小结：
+小明、大雄、班长**都已听懂**学生的讲解（他们本轮未当众发言）。请输出收束内容：
 
-1. **只总结学生自己的讲解**：关键规则 / 依据 / 检查点（不要直接报完整答案）；
-2. 语气温和、肯定学生的费曼讲解；
-3. 数学用 LaTeX；不超过 180 字；
+1. `text`：先肯定学生**本轮**讲清楚的关键点（规则 / 依据 / 检查点），不要直接报完整数值答案；
+2. `methodSummary`：用 2～3 句话归纳**此类题**的通用解题方法/套路（可略高于本题，但不要写完整演算）；
+3. 语气温和；数学用 LaTeX；`text` ≤120 字，`methodSummary` ≤160 字；
 4. `highlightStepIds` 只能引用白名单 stepId。
 
-【同伴发言规则 · 必须遵守】
-- 本轮三名同伴**没有当众开口**（屏幕上不会出现他们的气泡），只在旁听并表示听懂。
-- **禁止**写「大雄验证了…」「班长总结了…」「小明说…」等，仿佛同伴刚才发言或做了某步操作。
-- **禁止**把内部评估备注改写成第三人称叙事。
-- 如需提及同伴，最多一句：「小明、大雄、班长都表示听懂了。」然后立刻回到**学生**讲了什么。
+【同伴规则】
+- 禁止写「大雄验证了…」「班长总结了…」等，仿佛同伴刚才发言。
+- 最多一句「同伴们都听懂了」，其余只谈学生和题型方法。
 
 【反幻觉】
-- 只基于【学生口述】与白板步骤；禁止编造学生或同伴未出现的内容。
+- 只基于【学生口述】与白板；禁止编造未出现的内容。
 
 只输出一个 JSON 对象：
 {
   "text": "……",
+  "methodSummary": "……",
   "highlightStepIds": ["step_x"]
 }
 """
@@ -281,8 +282,14 @@ def generate_teacher_summary(
     text = str(payload.get("text") or "").strip()
     if not text:
         raise LectureAgentError("Teacher summary text is empty")
-    if len(text) > _MAX_TEXT_LEN:
-        text = text[:_MAX_TEXT_LEN].rstrip() + "…"
+    if len(text) > _MAX_SUMMARY_TEXT_LEN:
+        text = text[:_MAX_SUMMARY_TEXT_LEN].rstrip() + "…"
+
+    method_summary = str(
+        payload.get("methodSummary") or payload.get("method_summary") or ""
+    ).strip()
+    if len(method_summary) > _MAX_METHOD_SUMMARY_LEN:
+        method_summary = method_summary[:_MAX_METHOD_SUMMARY_LEN].rstrip() + "…"
 
     allowed_set = set(allowed_step_ids)
     fallback_step = allowed_step_ids[0] if allowed_step_ids else None
@@ -304,6 +311,7 @@ def generate_teacher_summary(
         "role": "teacher",
         "display_name": "李老师",
         "text": text,
+        "method_summary": method_summary,
         "highlight_step_ids": highlight,
         "source": "llm",
     }

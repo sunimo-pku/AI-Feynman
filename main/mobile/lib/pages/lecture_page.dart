@@ -171,6 +171,7 @@ class _LecturePageState extends State<LecturePage> {
 
   /// 本次 completed 的小结文案（前端拼装：最后一条 teacher / AI turn）。
   String _lastSummary = '';
+  String _lastMethodSummary = '';
 
   /// 第八轮：本轮 completed 是否已经写过 review 记录。
   ///
@@ -681,8 +682,10 @@ class _LecturePageState extends State<LecturePage> {
       if (teacherSummary != null && !omitTeacherTurn) {
         _turns.add(teacherSummary);
         _lastSummary = teacherSummary.text.trim();
+        _lastMethodSummary = teacherSummary.methodSummary.trim();
       } else if (teacherSummary != null) {
         _lastSummary = teacherSummary.text.trim();
+        _lastMethodSummary = teacherSummary.methodSummary.trim();
       } else {
         _lastSummary = _composeCompletionSummary(const []);
       }
@@ -856,30 +859,35 @@ class _LecturePageState extends State<LecturePage> {
   /// 节明确要求「不要因为 progress 读取失败影响课程目录展示。失败时可以当
   /// 作空进度」，这里在写入侧也保持同样口径。
   Future<void> _persistCompletion(LectureSubmitResponse response) async {
-    final summary =
-        response.teacherSummary?.text.trim() ??
+    final teacher = response.teacherSummary;
+    final textPart =
+        teacher?.text.trim() ??
         _composeCompletionSummary(
-          response.teacherSummary != null
-              ? [response.teacherSummary!]
-              : const [],
+          teacher != null ? [teacher] : const [],
         );
+    final methodPart = teacher?.methodSummary.trim() ?? '';
+    final summaryForProgress =
+        methodPart.isNotEmpty
+            ? '$textPart\n\n【此类题方法】$methodPart'
+            : textPart;
     final result = await ProgressRepository.instance.applyCompleted(
       sectionId: widget.section.id,
       masteryDelta: response.masteryDelta,
-      summary: summary,
+      summary: summaryForProgress,
     );
     if (!mounted) return;
     setState(() {
       _sectionProgressAfterCompletion = result.next;
       _lastMasteryGain = result.gained;
-      _lastSummary = summary;
+      _lastSummary = textPart;
+      _lastMethodSummary = methodPart;
     });
     // 第八轮：progress 落库（成功或失败都已经走完）之后再写 review 记录。
     // 仓库内部已经吞掉所有写入异常，这里不需要 try/catch；按 brief 第 8
     // 节「如果保存 review 失败，掌握度仍应正常更新」—— progress 已先更新。
     if (!_reviewSavedForCurrentRound) {
       _reviewSavedForCurrentRound = true;
-      await _persistReview(response: response, summary: summary);
+      await _persistReview(response: response, summary: summaryForProgress);
     }
     // 第十轮：登录后才同步；未登录时静默跳过。失败不弹错。
     if (AuthService.instance.isLoggedIn) {
@@ -1149,6 +1157,7 @@ class _LecturePageState extends State<LecturePage> {
     _sectionProgressAfterCompletion = null;
     _lastMasteryGain = 0;
     _lastSummary = '';
+    _lastMethodSummary = '';
     // 第八轮：进入新一轮后允许再次保存 review 记录（再讲一遍同题 / 下一题
     // 都属于「新一轮」语义；不重置会导致连续两题只留下第一题的回顾）。
     _reviewSavedForCurrentRound = false;
@@ -1193,13 +1202,6 @@ class _LecturePageState extends State<LecturePage> {
     _liveFailureReason = null;
   }
 
-  /// 第七轮：「下一题」=切到本节题库的下一道题。索引循环（第 3 题点下一题
-  /// 回到第 1 题），同时清空所有临时态、重置 intro 气泡、引用新题面。
-  ///
-  /// 仅在本轮 `completed`（三名同伴都听懂）后允许切题；`awaiting` 时必须
-  /// 先根据右侧追问再讲，不能跳过。
-  ///
-  /// 提交失败 / 错误重试时**不**走这里，仍保留输入（见 `_sendRequest` 错误分支）。
   Future<void> _onContinue() async {
     if (!_canShowCompletionOrbs) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1207,20 +1209,106 @@ class _LecturePageState extends State<LecturePage> {
       );
       return;
     }
+    if (_questions.isEmpty) return;
+    final nextIndex = (_questionIndex + 1) % _questions.length;
+    await _jumpToQuestion(_questions[nextIndex]);
+  }
+
+  Future<void> _jumpToQuestion(
+    LectureQuestion target, {
+    bool showVariantIntro = false,
+  }) async {
     await _prepareForQuestionReset();
     if (!mounted) return;
     _resetTransientState();
     setState(() {
-      if (_questions.isNotEmpty) {
-        _questionIndex = (_questionIndex + 1) % _questions.length;
-        _question = _questions[_questionIndex];
-        _advanceQuestionGeneration();
-      }
+      final idx = _questions.indexWhere((q) => q.questionId == target.questionId);
+      _questionIndex = idx >= 0 ? idx : _questionIndex;
+      _question = target;
+      _advanceQuestionGeneration();
       _turns
         ..clear()
         ..add(_introTurn());
+      if (showVariantIntro) {
+        _turns.add(
+          const AgentTurn(
+            role: AgentRole.system,
+            displayName: '系统',
+            text: '来做一道相关变式题，试着用刚才的方法再讲一遍。',
+            highlightStepIds: [],
+          ),
+        );
+      }
     });
     unawaited(_precacheQuestionImage(_question));
+  }
+
+  Future<void> _onOpenVariantQuestion() async {
+    if (!_canShowCompletionOrbs) return;
+    final variant = MockLectureRepository.instance.variantFor(_question);
+    await _jumpToQuestion(variant, showVariantIntro: true);
+  }
+
+  void _showStandardAnswerSheet() {
+    final answer =
+        _question.standardAnswer.trim().isNotEmpty
+            ? _question.standardAnswer.trim()
+            : '（教研占位）本题标准答案与完整步骤将于后续版本填入。';
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (ctx) => DraggableScrollableSheet(
+            initialChildSize: 0.42,
+            minChildSize: 0.28,
+            maxChildSize: 0.75,
+            builder:
+                (_, scroll) => Container(
+                  decoration: const BoxDecoration(
+                    color: AppPalette.surface,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                  ),
+                  child: ListView(
+                    controller: scroll,
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppPalette.outline,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '标准答案',
+                        style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      FormulaText(
+                        answer,
+                        style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                          height: 1.5,
+                        ),
+                        formulaStyle: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                          color: AppPalette.primary,
+                          fontWeight: FontWeight.w700,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+          ),
+    );
   }
 
   /// 「再讲一遍」：保留**同一道题**，但清空多轮历史 / 画布 / 输入区,
@@ -1672,6 +1760,7 @@ class _LecturePageState extends State<LecturePage> {
                 role: prev.role,
                 displayName: prev.displayName,
                 text: '${prev.text}${p.delta}',
+                methodSummary: prev.methodSummary,
                 highlightStepIds: prev.highlightStepIds,
               );
             });
@@ -2137,8 +2226,35 @@ class _LecturePageState extends State<LecturePage> {
               children: [
                 _LectureSummaryCard(
                   summary: _lastSummary,
+                  methodSummary: _lastMethodSummary,
                   progress: _sectionProgressAfterCompletion,
                   gained: _lastMasteryGain,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _showStandardAnswerSheet();
+                        },
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                        label: const Text('标准答案'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          unawaited(_onOpenVariantQuestion());
+                        },
+                        icon: const Icon(Icons.swap_horiz, size: 18),
+                        label: const Text('变式题'),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -2277,6 +2393,29 @@ class _LecturePageState extends State<LecturePage> {
             bottom: MediaQuery.paddingOf(context).bottom + 12,
             child: _buildOrbToolbar(),
           ),
+          if (_canShowCompletionOrbs)
+            Positioned(
+              left: 12,
+              right: 220,
+              bottom: MediaQuery.paddingOf(context).bottom + 72,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _showStandardAnswerSheet,
+                      child: const Text('标准答案'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => unawaited(_onOpenVariantQuestion()),
+                      child: const Text('变式题'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_status == _LectureStatus.submitting ||
               _liveStatus == _LiveStatus.thinking)
             Positioned(
@@ -2643,11 +2782,13 @@ class _LecturePageState extends State<LecturePage> {
 class _LectureSummaryCard extends StatelessWidget {
   const _LectureSummaryCard({
     required this.summary,
+    required this.methodSummary,
     required this.progress,
     required this.gained,
   });
 
   final String summary;
+  final String methodSummary;
   final SectionProgress? progress;
   final int gained;
 
@@ -2655,6 +2796,7 @@ class _LectureSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasSummary = summary.trim().isNotEmpty;
+    final hasMethod = methodSummary.trim().isNotEmpty;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -2697,6 +2839,29 @@ class _LectureSummaryCard extends StatelessWidget {
             const SizedBox(height: 4),
             FormulaText(
               summary,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppPalette.textPrimary,
+                height: 1.5,
+              ),
+              formulaStyle: theme.textTheme.bodyMedium?.copyWith(
+                color: AppPalette.primary,
+                fontWeight: FontWeight.w700,
+                height: 1.5,
+              ),
+            ),
+          ],
+          if (hasMethod) ...[
+            const SizedBox(height: 12),
+            Text(
+              '此类题方法',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: AppPalette.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            FormulaText(
+              methodSummary,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: AppPalette.textPrimary,
                 height: 1.5,

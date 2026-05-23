@@ -135,6 +135,7 @@ class AgentTurnOut(BaseModel):
     role: AgentRole
     display_name: str = Field(..., serialization_alias="displayName")
     text: str
+    method_summary: str = Field("", serialization_alias="methodSummary")
     highlight_step_ids: list[str] = Field(
         default_factory=list,
         serialization_alias="highlightStepIds",
@@ -234,6 +235,7 @@ def _build_submit_response(
             role=teacher_summary["role"],
             display_name=teacher_summary["display_name"],
             text=teacher_summary["text"],
+            method_summary=str(teacher_summary.get("method_summary") or ""),
             highlight_step_ids=list(teacher_summary.get("highlight_step_ids") or []),
         )
     turns_payload = _assessments_to_turns_payload(
