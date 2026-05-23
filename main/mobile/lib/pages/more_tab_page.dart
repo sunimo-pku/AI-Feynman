@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/study_layout.dart';
-import 'privacy_notice_page.dart';
 import 'v2_pages.dart';
 
 /// 学生端「工具」Tab：学习辅助与系统功能。
@@ -29,7 +28,7 @@ class MoreTabPage extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '拍照识题、个人资料与隐私设置',
+          '低频辅助功能，高频入口在「今日」。',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppPalette.textSecondary,
             height: 1.4,
@@ -40,34 +39,12 @@ class MoreTabPage extends StatelessWidget {
           cells: [
             StudyToolCell(
               label: '拍照识题',
-              subtitle: '相册或拍照识题',
+              subtitle: '拍照或相册识题',
               icon: Icons.document_scanner_outlined,
               onTap:
                   () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const PhotoQuestionPage(),
-                    ),
-                  ),
-            ),
-            StudyToolCell(
-              label: '我的资料',
-              subtitle: '年级与昵称',
-              icon: Icons.person_outline,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const StudentProfileEditPage(),
-                    ),
-                  ),
-            ),
-            StudyToolCell(
-              label: '隐私说明',
-              subtitle: '数据与权限',
-              icon: Icons.privacy_tip_outlined,
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const PrivacyNoticePage(),
                     ),
                   ),
             ),

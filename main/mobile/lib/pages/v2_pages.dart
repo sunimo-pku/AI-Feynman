@@ -14,6 +14,7 @@ import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/study_layout.dart';
 import 'lecture_page.dart';
+import 'privacy_notice_page.dart';
 
 const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
 
@@ -140,19 +141,6 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: () async {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const StudentProfileEditPage(),
-                      ),
-                    );
-                    await widget.onProfileSaved?.call();
-                  },
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('编辑展示名 / 年级'),
-                ),
-                const SizedBox(height: 12),
                 StudySectionTitle(
                   title: grade == null ? '章节战力' : '$grade · 章节战力',
                 ),
@@ -176,6 +164,34 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                             )
                             .toList(),
                   ),
+                const SizedBox(height: 20),
+                const StudySectionTitle(title: '资料与隐私'),
+                StudyGroupedPanel(
+                  children: [
+                    StudyListRow(
+                      title: '我的资料',
+                      subtitle: '年级、昵称与学校地区',
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const StudentProfileEditPage(),
+                          ),
+                        );
+                        await widget.onProfileSaved?.call();
+                      },
+                    ),
+                    StudyListRow(
+                      title: '隐私说明',
+                      subtitle: '数据收集、权限与麦克风使用',
+                      onTap:
+                          () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const PrivacyNoticePage(),
+                            ),
+                          ),
+                    ),
+                  ],
+                ),
                 if (widget.embeddedInTab) ...[
                   const SizedBox(height: 20),
                   const StudySectionTitle(title: '账号'),

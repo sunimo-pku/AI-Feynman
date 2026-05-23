@@ -51,7 +51,7 @@ lib/
 │   ├── student_main_shell.dart      # 学生主壳（底部四 Tab）
 │   ├── home_dashboard_tab.dart      # 今日 Tab
 │   ├── curriculum_tab_page.dart     # 课程 Tab + curriculum_book_page 二级目录
-│   ├── more_tab_page.dart           # 更多 Tab
+│   ├── more_tab_page.dart           # 工具 Tab
 │   ├── home_page.dart               # 导出 StudentMainShell（兼容旧 import）
 │   └── lecture_page.dart            # 讲题页（左右双栏，平板优先）
 ├── services/                        # HTTP / SSE / 语音等
