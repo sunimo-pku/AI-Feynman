@@ -924,6 +924,10 @@ git push origin main
 - **exportBoardPng 必须 OCR 友好**：大屏 1:1 导出时 3dp 笔迹只有几个像素宽，
   VL 几乎读不出。离屏导出需白底黑字 + 长边缩放至 ~1024px，且线宽乘数保证
   输出 bitmap 里笔迹 ≥6px。
+- **实时讲题 OCR 只在「讲题结束」跑**：`_scheduleInkSnapshot` / 落笔 debounce
+  只发 step 结构（strokeCount / boundingBox），**禁止**带 `boardImageBase64`
+  或调 `/ocr/ink`。整板 Qwen-VL 仅在 `_onManualPause` →
+  `_pushInkSnapshotNow(runOcr: true)` 时 await 一次，再发 `pause_detected`。
 - **同伴 TTS 只在展开「有话要说」后播放**：`agent_tts_chunk` 与
   `agent_turn_done` 不再自动出声；`PeerReasonPlaybackService.playPeer`
   只播当前点击的一位，禁止连带播队列里后面的人。

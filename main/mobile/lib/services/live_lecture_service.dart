@@ -49,7 +49,7 @@ class LiveLectureService {
   final OcrService _ocrService;
   final LiveWebSocketConnector _webSocketConnector;
 
-  /// 第十轮：当前题目相关上下文，供 [sendInkSnapshot] 调用 OCR 兜底。
+  /// 第十轮：当前题目相关上下文；OCR 仅在 [runOcr] 为 true 时调用。
   /// 由调用方在 [connectAndStart] 时一并传入。
   String _currentSectionId = '';
   String _currentQuestionId = '';
@@ -337,29 +337,55 @@ class LiveLectureService {
     );
   }
 
-  void sendInkSnapshot(
+  Future<void> sendInkSnapshot(
     List<Map<String, dynamic>> steps, {
     String boardImageBase64 = '',
-  }) {
+    bool runOcr = false,
+  }) async {
     if (!_isConnected || _sessionId.isEmpty) return;
     final sessionId = _sessionId;
-    final sectionId = _currentSectionId;
-    final questionId = _currentQuestionId;
-    final referenceSteps = List<String>.unmodifiable(_currentReferenceSteps);
     if (steps.isEmpty && boardImageBase64.isEmpty) {
       _sendJson(
         LiveClientEvent.inkSnapshot(sessionId: sessionId, steps: steps),
       );
       return;
     }
-    unawaited(
-      _enrichAndSendSnapshot(
-        steps,
+    if (!runOcr) {
+      await _sendStructureSnapshot(steps, sessionId: sessionId);
+      return;
+    }
+    final sectionId = _currentSectionId;
+    final questionId = _currentQuestionId;
+    final referenceSteps = List<String>.unmodifiable(_currentReferenceSteps);
+    await _enrichAndSendSnapshot(
+      steps,
+      sessionId: sessionId,
+      sectionId: sectionId,
+      questionId: questionId,
+      referenceSteps: referenceSteps,
+      boardImageBase64: boardImageBase64,
+    );
+  }
+
+  Future<void> _sendStructureSnapshot(
+    List<Map<String, dynamic>> steps, {
+    required String sessionId,
+  }) async {
+    final payloadSteps = steps
+        .map(
+          (s) => <String, dynamic>{
+            'stepId': s['stepId'],
+            'strokeCount': s['strokeCount'],
+            if (s['boundingBox'] != null) 'boundingBox': s['boundingBox'],
+            'latex': '',
+            'plainText': '',
+          },
+        )
+        .toList(growable: false);
+    _sendJson(
+      LiveClientEvent.inkSnapshot(
         sessionId: sessionId,
-        sectionId: sectionId,
-        questionId: questionId,
-        referenceSteps: referenceSteps,
-        boardImageBase64: boardImageBase64,
+        steps: payloadSteps,
       ),
     );
   }

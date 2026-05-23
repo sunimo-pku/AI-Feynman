@@ -434,12 +434,8 @@ class _LecturePageState extends State<LecturePage> {
     _scheduleInkSnapshot();
   }
 
-  /// 第十二轮：调用方传 [immediate=true] 可以**跳过 480ms debounce** 直接
-  /// 发 ink_snapshot。用在：
-  ///   * `_onStartLive` 连接成功后立即把白板状态同步给新 session，避免
-  ///     学生因为「换题 / 重新连接 → 新 ws + 新 session_start」导致后端
-  ///     latest_steps 重新清零，然后秒按「讲题结束」时撞 no_steps_yet。
-  ///   * 任何其它「立刻让后端拿到当前白板」的场景。
+  /// 白板更新 debounce 后只同步 step 结构（笔画数 / 包围盒），**不**导出 PNG、
+  /// **不**调 OCR；整板识别仅在「讲题结束」时跑。
   void _scheduleInkSnapshot({bool immediate = false}) {
     _inkSnapshotDebounce?.cancel();
     final generation = _questionGeneration;
@@ -455,7 +451,11 @@ class _LecturePageState extends State<LecturePage> {
     });
   }
 
-  Future<void> _pushInkSnapshotNow({int? generation, String? sessionId}) async {
+  Future<void> _pushInkSnapshotNow({
+    int? generation,
+    String? sessionId,
+    bool runOcr = false,
+  }) async {
     if (!mounted) return;
     if (!_liveService.isConnected) return;
     if (generation != null && generation != _questionGeneration) return;
@@ -466,15 +466,18 @@ class _LecturePageState extends State<LecturePage> {
     }
     final stepInfos = _canvasController.collectStepInfos();
     if (stepInfos.isEmpty) return;
-    final boardPng = await _canvasController.exportBoardPng(
-      penStyle: UserCosmeticsPrefs.instance.penStyle,
-    );
-    if (!mounted) return;
-    if (generation != null && generation != _questionGeneration) return;
-    if (sessionId != null &&
-        sessionId.isNotEmpty &&
-        sessionId != _liveService.sessionId) {
-      return;
+    Uint8List? boardPng;
+    if (runOcr) {
+      boardPng = await _canvasController.exportBoardPng(
+        penStyle: UserCosmeticsPrefs.instance.penStyle,
+      );
+      if (!mounted) return;
+      if (generation != null && generation != _questionGeneration) return;
+      if (sessionId != null &&
+          sessionId.isNotEmpty &&
+          sessionId != _liveService.sessionId) {
+        return;
+      }
     }
     final steps = <Map<String, dynamic>>[];
     for (final info in stepInfos) {
@@ -497,9 +500,11 @@ class _LecturePageState extends State<LecturePage> {
         'plainText': '',
       });
     }
-    _liveService.sendInkSnapshot(
+    await _liveService.sendInkSnapshot(
       steps,
-      boardImageBase64: boardPng == null ? '' : base64Encode(boardPng),
+      boardImageBase64:
+          runOcr && boardPng != null ? base64Encode(boardPng) : '',
+      runOcr: runOcr,
     );
     _replayService.appendInk(steps);
   }
@@ -1433,6 +1438,17 @@ class _LecturePageState extends State<LecturePage> {
       await _audioService.stop();
       if (!mounted) return;
     }
+    if (!_liveService.isConnected) {
+      setState(() {
+        _liveStatus = _LiveStatus.disconnected;
+        _liveFailureReason = '连接已断开，请点「重新连接」。';
+      });
+      _showLiveSnack('连接已断开，未能提交本轮讲解。');
+      return;
+    }
+    _inkSnapshotDebounce?.cancel();
+    await _pushInkSnapshotNow(runOcr: true);
+    if (!mounted) return;
     if (!_liveService.isConnected) {
       setState(() {
         _liveStatus = _LiveStatus.disconnected;
