@@ -1749,31 +1749,17 @@ class _LecturePageState extends State<LecturePage> {
     // 像发语音一样，学生点结束后立即停掉本段录音；AI 追问完成后再让
     // 学生手动开始下一段。
     if (_isLiveRecording) {
-      await _audioService.stop();
-      if (!mounted) return;
+      unawaited(_audioService.stop());
     }
     if (!_liveService.isConnected) {
       setState(() {
+        _rollbackPendingLiveRound();
         _liveStatus = _LiveStatus.disconnected;
         _liveFailureReason = '连接已断开，请点「重新连接」。';
       });
       _showLiveSnack('连接已断开，未能提交本轮讲解。');
       return;
     }
-    _inkSnapshotDebounce?.cancel();
-    await _pushInkSnapshotNow(runOcr: true);
-    if (!mounted) return;
-    if (!_liveService.isConnected) {
-      setState(() {
-        _liveStatus = _LiveStatus.disconnected;
-        _liveFailureReason = '连接已断开，请点「重新连接」。';
-      });
-      _showLiveSnack('连接已断开，未能提交本轮讲解。');
-      return;
-    }
-    _liveService.sendPauseDetected(silenceMs: 0);
-    _liveService.clearSegmentAudio();
-    _resumeRecordingAfterReconnect = false;
     _armThinkingWatchdog();
     setState(() {
       _clearFinishedUiIfContinuing();
@@ -1791,6 +1777,20 @@ class _LecturePageState extends State<LecturePage> {
       _liveStatus = _LiveStatus.thinking;
     });
     _scrollToBottomSoon();
+    _inkSnapshotDebounce?.cancel();
+    await _pushInkSnapshotNow(runOcr: true);
+    if (!mounted) return;
+    if (!_liveService.isConnected) {
+      setState(() {
+        _liveStatus = _LiveStatus.disconnected;
+        _liveFailureReason = '连接已断开，请点「重新连接」。';
+      });
+      _showLiveSnack('连接已断开，未能提交本轮讲解。');
+      return;
+    }
+    _liveService.sendPauseDetected(silenceMs: 0);
+    _liveService.clearSegmentAudio();
+    _resumeRecordingAfterReconnect = false;
   }
 
   /// 启动 thinking 看门狗。重复调用幂等：每次调用都会 cancel 旧定时器。
