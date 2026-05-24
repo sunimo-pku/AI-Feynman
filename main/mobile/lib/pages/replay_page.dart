@@ -3,14 +3,18 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
+import '../config/api_config.dart';
 import '../data/lecture_models.dart';
+import '../data/round12_models.dart';
 import '../services/replay_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/pcm_wav.dart';
 import '../widgets/agent_message_bubble.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/replay_ink_canvas.dart';
+import '../widgets/study_layout.dart';
 
 class ReplayPage extends StatefulWidget {
   const ReplayPage({super.key, required this.sessionId, this.studentId});
@@ -32,6 +36,8 @@ class _ReplayPageState extends State<ReplayPage> {
   bool _seeking = false;
   int _positionMs = 0;
   int _durationMs = 0;
+  int _likeCount = 0;
+  bool _likedByMe = false;
   Uint8List? _wavBytes;
   Timer? _fallbackTimer;
   StreamSubscription<Duration>? _posSub;
@@ -66,6 +72,8 @@ class _ReplayPageState extends State<ReplayPage> {
       setState(() {
         _payload = p;
         _durationMs = duration;
+        _likeCount = (p['likeCount'] as num?)?.toInt() ?? 0;
+        _likedByMe = p['likedByMe'] == true;
         _wavBytes = wav;
       });
       _bindPlayerEvents();
@@ -149,6 +157,29 @@ class _ReplayPageState extends State<ReplayPage> {
     }
   }
 
+  Future<void> _toggleLike() async {
+    final p = _payload;
+    if (p == null) return;
+    final replay = ReplaySummary.fromJson(p);
+    final nextLiked = !_likedByMe;
+    try {
+      final updated = await _service.setReplayLiked(
+        replay: replay,
+        liked: nextLiked,
+      );
+      if (!mounted) return;
+      setState(() {
+        _likedByMe = updated.likedByMe;
+        _likeCount = updated.likeCount;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('点赞失败：$e')));
+    }
+  }
+
   @override
   void dispose() {
     _fallbackTimer?.cancel();
@@ -162,68 +193,105 @@ class _ReplayPageState extends State<ReplayPage> {
   @override
   Widget build(BuildContext context) {
     final p = _payload;
+    final canLike = p != null && p['isPublic'] == true;
+    final videoUrl = p == null ? '' : (p['videoUrl'] as String? ?? '').trim();
     return Scaffold(
       backgroundColor: AppPalette.background,
-      appBar: AppBar(title: const Text('精彩讲题回放')),
+      appBar: AppBar(
+        title: const Text('讲题视频'),
+        actions: [
+          TextButton.icon(
+            onPressed: canLike ? () => unawaited(_toggleLike()) : null,
+            icon: Icon(
+              _likedByMe ? Icons.favorite : Icons.favorite_border,
+              color: _likedByMe ? AppPalette.error : AppPalette.primary,
+            ),
+            label: Text('$_likeCount'),
+          ),
+        ],
+      ),
       body: SafeArea(
-        child: p == null
-            ? Center(child: Text(_error ?? '加载中…'))
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.pageEdge,
-                        AppSpacing.pageEdge,
-                        AppSpacing.pageEdge,
-                        8,
-                      ),
-                      children: [
-                        FormulaText(
-                          p['questionPrompt'] as String? ?? '暂无题面',
-                          style: Theme.of(context).textTheme.titleMedium,
+        child:
+            p == null
+                ? Center(child: Text(_error ?? '加载中…'))
+                : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.pageEdge,
+                          AppSpacing.pageEdge,
+                          AppSpacing.pageEdge,
+                          8,
                         ),
-                        const SizedBox(height: 12),
-                        AspectRatio(
-                          aspectRatio: 4 / 3,
-                          child: ReplayInkCanvas(
-                            frame: replayInkFrameAt(
-                              (p['inkTimeline'] as List?) ?? const [],
-                              _positionMs,
+                        children: [
+                          FormulaText(
+                            p['questionPrompt'] as String? ?? '暂无题面',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          if ((p['description'] as String? ?? '')
+                              .trim()
+                              .isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            StudyPanel(
+                              tone: StudyPanelTone.quiet,
+                              padding: const EdgeInsets.fromLTRB(
+                                14,
+                                10,
+                                14,
+                                10,
+                              ),
+                              child: Text(
+                                p['description'] as String,
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _ReplayTransportBar(
-                          playing: _playing,
-                          positionMs: _positionMs,
-                          durationMs: _durationMs,
-                          hasAudio: _wavBytes != null && _wavBytes!.isNotEmpty,
-                          onPlayPause: () => unawaited(_togglePlay()),
-                          onSeekStart: () => _seeking = true,
-                          onSeekEnd: (v) {
-                            _seeking = false;
-                            unawaited(_seekTo(v.round()));
-                          },
-                          onSeekChanged: (v) {
-                            setState(() => _positionMs = v.round());
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '同伴发言',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        ..._buildTurnBubbles(p),
-                      ],
+                          ],
+                          const SizedBox(height: 12),
+                          if (videoUrl.isNotEmpty)
+                            _ReplayMp4Player(videoUrl: videoUrl)
+                          else ...[
+                            AspectRatio(
+                              aspectRatio: 4 / 3,
+                              child: ReplayInkCanvas(
+                                frame: replayInkFrameAt(
+                                  (p['inkTimeline'] as List?) ?? const [],
+                                  _positionMs,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _ReplayTransportBar(
+                              playing: _playing,
+                              positionMs: _positionMs,
+                              durationMs: _durationMs,
+                              hasAudio:
+                                  _wavBytes != null && _wavBytes!.isNotEmpty,
+                              onPlayPause: () => unawaited(_togglePlay()),
+                              onSeekStart: () => _seeking = true,
+                              onSeekEnd: (v) {
+                                _seeking = false;
+                                unawaited(_seekTo(v.round()));
+                              },
+                              onSeekChanged: (v) {
+                                setState(() => _positionMs = v.round());
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '同伴发言',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 8),
+                            ..._buildTurnBubbles(p),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
       ),
     );
   }
@@ -237,9 +305,9 @@ class _ReplayPageState extends State<ReplayPage> {
       return [
         Text(
           '播放到对应时刻后，小明、大雄和班长的发言会出现在这里。',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: AppPalette.textSecondary,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppPalette.textSecondary),
         ),
       ];
     }
@@ -257,6 +325,136 @@ class _ReplayPageState extends State<ReplayPage> {
         ),
       );
     }).toList();
+  }
+}
+
+class _ReplayMp4Player extends StatefulWidget {
+  const _ReplayMp4Player({required this.videoUrl});
+
+  final String videoUrl;
+
+  @override
+  State<_ReplayMp4Player> createState() => _ReplayMp4PlayerState();
+}
+
+class _ReplayMp4PlayerState extends State<_ReplayMp4Player> {
+  late final VideoPlayerController _controller;
+  late final Future<void> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(
+      _resolveUrl(widget.videoUrl),
+    );
+    _future = _controller.initialize().then((_) async {
+      await _controller.setLooping(false);
+      if (mounted) setState(() {});
+    });
+    _controller.addListener(_onChanged);
+  }
+
+  Uri _resolveUrl(String raw) {
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return Uri.parse(raw);
+    }
+    return Uri.parse('${ApiConfig.baseUrl}$raw');
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _togglePlay() async {
+    if (!_controller.value.isInitialized) return;
+    if (_controller.value.isPlaying) {
+      await _controller.pause();
+    } else {
+      await _controller.play();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_onChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+        final value = _controller.value;
+        if (snapshot.hasError || value.hasError) {
+          return StudyPanel(
+            tone: StudyPanelTone.danger,
+            child: Text(
+              '视频暂时无法播放，请稍后再试。',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: AppRadius.cardR,
+              child: AspectRatio(
+                aspectRatio:
+                    value.aspectRatio == 0 ? 16 / 9 : value.aspectRatio,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    VideoPlayer(_controller),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _togglePlay,
+                        borderRadius: BorderRadius.circular(999),
+                        child: Container(
+                          width: 68,
+                          height: 68,
+                          decoration: BoxDecoration(
+                            color: AppPalette.textPrimary.withValues(
+                              alpha: 0.48,
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            value.isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                            size: 36,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            VideoProgressIndicator(
+              _controller,
+              allowScrubbing: true,
+              colors: const VideoProgressColors(
+                playedColor: AppPalette.primaryAccent,
+                bufferedColor: AppPalette.outline,
+                backgroundColor: AppPalette.warmTint,
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -297,7 +495,9 @@ class _ReplayTransportBar extends StatelessWidget {
             children: [
               IconButton.filled(
                 onPressed: onPlayPause,
-                icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                icon: Icon(
+                  playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                ),
               ),
               Expanded(
                 child: Slider(
@@ -318,7 +518,9 @@ class _ReplayTransportBar extends StatelessWidget {
                 style: Theme.of(context).textTheme.labelMedium,
               ),
               Text(
-                hasAudio ? '含录音 ${_fmtTime(durationMs)}' : '过程回放 ${_fmtTime(durationMs)}',
+                hasAudio
+                    ? '含录音 ${_fmtTime(durationMs)}'
+                    : '过程回放 ${_fmtTime(durationMs)}',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: AppPalette.textSecondary,
                 ),

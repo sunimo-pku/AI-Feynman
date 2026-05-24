@@ -2,9 +2,11 @@ import os
 import logging
 from datetime import datetime
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.branding import API_TITLE, DISPLAY_NAME
+from app.config import Config
 from app.routers import (
     asr,
     assignments,
@@ -72,6 +74,13 @@ app.include_router(question_engagement.parent_router)
 app.include_router(assignments.router)
 app.include_router(ocr.router)
 app.include_router(round11.router)
+
+os.makedirs(Config.REPLAY_STORAGE_DIR, exist_ok=True)
+app.mount(
+    "/replay-videos",
+    StaticFiles(directory=Config.REPLAY_STORAGE_DIR),
+    name="replay-videos",
+)
 
 @app.get("/")
 async def root():

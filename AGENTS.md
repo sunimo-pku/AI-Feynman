@@ -952,6 +952,13 @@ git push origin main
 - **同伴 TTS 只在展开「有话要说」后播放**：`agent_tts_chunk` 与
   `agent_turn_done` 不再自动出声；`PeerReasonPlaybackService.playPeer`
   只播当前点击的一位，禁止连带播队列里后面的人。
+- **同学讲法发布要生成 MP4，而不是只暴露过程回放**：学生/同学广场心智是
+  “点开看视频”。发布接口 `/replays/{sessionId}/publish` 会用
+  `app.services.replay_video.render_replay_mp4` 把白板时间轴、同伴发言和
+  PCM 录音合成 `data/replays/<session>.mp4`，通过 `/replay-videos/...`
+  静态路径播放。依赖是 `pillow` + `imageio-ffmpeg`；不要假设服务器预装
+  系统 `ffmpeg`。私有家长回放可继续用结构化过程回放兜底，但公开内容优先
+  使用 `videoUrl`。
 
 ---
 

@@ -25,6 +25,7 @@ from app.db import (
     LeaderboardSnapshot,
     LearningProgress,
     LectureReplayRecord,
+    LectureReplayLike,
     PowerEvent,
     RedeemOrder,
     SectionPower,
@@ -44,6 +45,7 @@ from app.middleware.auth import (
 )
 from app.services import knowledge_index
 from app.services.qwen_vision import recognize_question_image
+from app.services.replay_video import render_replay_mp4
 from app.services.section_chapter import (
     chapter_in_student_grade,
     chapter_label,
@@ -154,6 +156,13 @@ class ReplayRequest(BaseModel):
     turns_timeline: list[dict[str, Any]] = Field(default_factory=list, alias="turnsTimeline")
     duration_ms: int = Field(0, alias="durationMs", ge=0)
     difficulty: int = Field(1, alias="difficulty", ge=1, le=3)
+
+    model_config = {"populate_by_name": True}
+
+
+class ReplayPublishRequest(BaseModel):
+    description: str = Field("", max_length=120)
+    is_public: bool = Field(True, alias="isPublic")
 
     model_config = {"populate_by_name": True}
 
@@ -921,6 +930,43 @@ async def parent_replays(
     return {"replays": [_replay_payload(r, include_timeline=False) for r in rows]}
 
 
+@router.get("/replays/public")
+async def public_replays(
+    section_id: str | None = Query(None, alias="sectionId"),
+    limit: int = Query(20, ge=1, le=50),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    viewer = ensure_student_profile(db, user) if user.role == "student" else linked_child_profile(db, user)
+    query = db.query(LectureReplayRecord).filter(LectureReplayRecord.is_public == 1)
+    if section_id:
+        query = query.filter(LectureReplayRecord.section_id == section_id)
+    rows = query.order_by(LectureReplayRecord.published_at.desc(), LectureReplayRecord.created_at.desc()).limit(limit).all()
+    liked_ids: set[int] = set()
+    if viewer is not None and rows:
+        replay_ids = [int(r.id) for r in rows]
+        liked_ids = {
+            int(x[0])
+            for x in db.query(LectureReplayLike.replay_id)
+            .filter(
+                LectureReplayLike.student_id == viewer.id,
+                LectureReplayLike.replay_id.in_(replay_ids),
+            )
+            .all()
+        }
+    return {
+        "replays": [
+            _replay_payload(
+                r,
+                include_timeline=False,
+                viewer_student_id=viewer.id if viewer is not None else None,
+                liked_replay_ids=liked_ids,
+            )
+            for r in rows
+        ]
+    }
+
+
 @router.get("/replays/{session_id}")
 async def get_replay(
     session_id: str,
@@ -930,12 +976,106 @@ async def get_replay(
 ):
     profile = _replay_subject_profile(db, user, session_role)
     row = db.query(LectureReplayRecord).filter(
+        LectureReplayRecord.session_id == session_id,
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Replay not found.")
+    if row.student_id != profile.id and not row.is_public:
+        raise HTTPException(status_code=404, detail="Replay not found.")
+    liked = (
+        db.query(LectureReplayLike)
+        .filter(LectureReplayLike.student_id == profile.id, LectureReplayLike.replay_id == row.id)
+        .first()
+        is not None
+    )
+    return _replay_payload(row, include_timeline=True, viewer_student_id=profile.id, liked_override=liked)
+
+
+@router.post("/replays/{session_id}/publish")
+async def publish_replay(
+    session_id: str,
+    req: ReplayPublishRequest,
+    user: User = Depends(require_student_user),
+    db: Session = Depends(get_db),
+):
+    profile = ensure_student_profile(db, user)
+    row = db.query(LectureReplayRecord).filter(
         LectureReplayRecord.student_id == profile.id,
         LectureReplayRecord.session_id == session_id,
     ).first()
     if row is None:
         raise HTTPException(status_code=404, detail="Replay not found.")
-    return _replay_payload(row, include_timeline=True)
+    row.is_public = 1 if req.is_public else 0
+    row.publish_description = req.description.strip()[:120]
+    if req.is_public and row.published_at is None:
+        row.published_at = datetime.utcnow()
+    if req.is_public:
+        try:
+            row.video_url = render_replay_mp4(
+                session_id=row.session_id,
+                question_prompt=row.question_prompt,
+                description=row.publish_description or "",
+                duration_ms=int(row.duration_ms or 0),
+                audio_base64_chunks=load_json(row.audio_base64_chunks_json, []),
+                ink_timeline=load_json(row.ink_timeline_json, []),
+                turns_timeline=load_json(row.turns_timeline_json, []),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[replay] mp4 render failed session=%s: %s", session_id, e)
+            raise HTTPException(status_code=502, detail="Replay video render failed.") from e
+    db.commit()
+    db.refresh(row)
+    return _replay_payload(row, include_timeline=False, viewer_student_id=profile.id, liked_override=False)
+
+
+@router.post("/replays/{session_id}/like")
+async def like_replay(
+    session_id: str,
+    user: User = Depends(require_student_user),
+    db: Session = Depends(get_db),
+):
+    profile = ensure_student_profile(db, user)
+    row = db.query(LectureReplayRecord).filter(
+        LectureReplayRecord.session_id == session_id,
+        LectureReplayRecord.is_public == 1,
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Replay not found.")
+    existing = db.query(LectureReplayLike).filter(
+        LectureReplayLike.student_id == profile.id,
+        LectureReplayLike.replay_id == row.id,
+    ).first()
+    if existing is None:
+        db.add(LectureReplayLike(student_id=profile.id, replay_id=row.id))
+        row.like_count = int(row.like_count or 0) + 1
+        db.commit()
+        db.refresh(row)
+    return {"sessionId": row.session_id, "liked": True, "likeCount": int(row.like_count or 0)}
+
+
+@router.delete("/replays/{session_id}/like")
+async def unlike_replay(
+    session_id: str,
+    user: User = Depends(require_student_user),
+    db: Session = Depends(get_db),
+):
+    profile = ensure_student_profile(db, user)
+    row = db.query(LectureReplayRecord).filter(
+        LectureReplayRecord.session_id == session_id,
+        LectureReplayRecord.is_public == 1,
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Replay not found.")
+    existing = db.query(LectureReplayLike).filter(
+        LectureReplayLike.student_id == profile.id,
+        LectureReplayLike.replay_id == row.id,
+    ).first()
+    if existing is not None:
+        db.delete(existing)
+        row.like_count = max(0, int(row.like_count or 0) - 1)
+        db.commit()
+        db.refresh(row)
+    return {"sessionId": row.session_id, "liked": False, "likeCount": int(row.like_count or 0)}
 
 
 @router.post("/questions/upload-image")
@@ -981,7 +1121,16 @@ async def knowledge_search(payload: dict[str, Any]):
     return {"hits": hits, "source": "local_json_keyword"}
 
 
-def _replay_payload(row: LectureReplayRecord, *, include_timeline: bool) -> dict[str, Any]:
+def _replay_payload(
+    row: LectureReplayRecord,
+    *,
+    include_timeline: bool,
+    viewer_student_id: int | None = None,
+    liked_replay_ids: set[int] | None = None,
+    liked_override: bool | None = None,
+) -> dict[str, Any]:
+    owner = row.student_id == viewer_student_id if viewer_student_id is not None else False
+    liked = bool(liked_override) if liked_override is not None else bool(liked_replay_ids and int(row.id) in liked_replay_ids)
     payload = {
         "sessionId": row.session_id,
         "sectionId": row.section_id,
@@ -990,6 +1139,13 @@ def _replay_payload(row: LectureReplayRecord, *, include_timeline: bool) -> dict
         "questionPrompt": row.question_prompt,
         "durationMs": row.duration_ms,
         "difficulty": int(row.difficulty or 1),
+        "isPublic": bool(row.is_public),
+        "description": row.publish_description or "",
+        "likeCount": int(row.like_count or 0),
+        "likedByMe": liked,
+        "isMine": owner,
+        "videoUrl": row.video_url or "",
+        "publishedAt": row.published_at,
         "createdAt": row.created_at,
     }
     if include_timeline:

@@ -192,6 +192,26 @@ class ReplayService {
         : const <ReplaySummary>[];
   }
 
+  Future<List<ReplaySummary>> fetchPublicReplays({
+    String? sectionId,
+    int limit = 20,
+  }) async {
+    final params = <String, String>{'limit': '$limit'};
+    if (sectionId != null && sectionId.isNotEmpty) {
+      params['sectionId'] = sectionId;
+    }
+    final decoded = await _getMap(
+      ApiConfig.uri('/replays/public').replace(queryParameters: params),
+    );
+    final raw = decoded['replays'];
+    return raw is List
+        ? raw
+            .whereType<Map<String, dynamic>>()
+            .map(ReplaySummary.fromJson)
+            .toList(growable: false)
+        : const <ReplaySummary>[];
+  }
+
   Future<Map<String, dynamic>> fetchReplay(String sessionId, {int? studentId}) {
     final params = <String, String>{};
     if (studentId != null && studentId > 0) {
@@ -202,10 +222,73 @@ class ReplayService {
     );
   }
 
+  Future<ReplaySummary> publishReplay({
+    required String sessionId,
+    required String description,
+  }) async {
+    final decoded = await _postMap(
+      ApiConfig.uri('/replays/$sessionId/publish'),
+      {'isPublic': true, 'description': description},
+    );
+    return ReplaySummary.fromJson(decoded);
+  }
+
+  Future<ReplaySummary> setReplayLiked({
+    required ReplaySummary replay,
+    required bool liked,
+  }) async {
+    final uri = ApiConfig.uri('/replays/${replay.sessionId}/like');
+    final decoded =
+        liked
+            ? await _postMap(uri, const <String, dynamic>{})
+            : await _deleteMap(uri);
+    return replay.copyWith(
+      likedByMe: decoded['liked'] == true,
+      likeCount: (decoded['likeCount'] as num?)?.toInt() ?? replay.likeCount,
+    );
+  }
+
   Future<Map<String, dynamic>> _getMap(Uri uri) async {
     await AuthService.instance.load();
     final resp = await _client
         .get(uri, headers: AuthService.instance.authHeaders())
+        .timeout(_timeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw ReplayApiException('请求失败（HTTP ${resp.statusCode}）。');
+    }
+    final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+    if (decoded is! Map<String, dynamic>) {
+      throw const ReplayApiException('后端返回格式不符合契约。');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> _postMap(
+    Uri uri,
+    Map<String, dynamic> payload,
+  ) async {
+    await AuthService.instance.load();
+    final resp = await _client
+        .post(
+          uri,
+          headers: AuthService.instance.authHeaders(),
+          body: utf8.encode(jsonEncode(payload)),
+        )
+        .timeout(_timeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw ReplayApiException('请求失败（HTTP ${resp.statusCode}）。');
+    }
+    final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+    if (decoded is! Map<String, dynamic>) {
+      throw const ReplayApiException('后端返回格式不符合契约。');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> _deleteMap(Uri uri) async {
+    await AuthService.instance.load();
+    final resp = await _client
+        .delete(uri, headers: AuthService.instance.authHeaders())
         .timeout(_timeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw ReplayApiException('请求失败（HTTP ${resp.statusCode}）。');

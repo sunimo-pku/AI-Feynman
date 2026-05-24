@@ -11,3 +11,5 @@ websockets
 python-multipart
 pytest
 pytest-asyncio
+pillow
+imageio-ffmpeg

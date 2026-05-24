@@ -210,6 +210,25 @@ class LectureReplayRecord(Base):
     turns_timeline_json = Column(Text, default="[]")
     duration_ms = Column(Integer, default=0)
     difficulty = Column(Integer, default=1)
+    is_public = Column(Integer, default=0, nullable=False, index=True)
+    publish_description = Column(Text, default="")
+    published_at = Column(DateTime, nullable=True, index=True)
+    like_count = Column(Integer, default=0)
+    video_url = Column(String(256), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LectureReplayLike(Base):
+    """学生给公开讲题回放点赞；同一学生同一回放只能点一次。"""
+
+    __tablename__ = "lecture_replay_likes"
+    __table_args__ = (
+        UniqueConstraint("student_id", "replay_id", name="uq_replay_like_student_replay"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    replay_id = Column(Integer, ForeignKey("lecture_replay_records.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -424,21 +443,10 @@ def _run_lightweight_migrations() -> None:
                 logger.warning("[db-migrate] inspect %s failed: %s", table, e)
                 return []
 
-        cols = _columns("lecture_session_records")
+        session_cols = _columns("lecture_session_records")
 
-        if cols:  # 表已存在
-            if "difficulty" not in cols:
-                try:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE lecture_replay_records "
-                            "ADD COLUMN difficulty INTEGER DEFAULT 1"
-                        )
-                    )
-                    logger.info("[db-migrate] added lecture_replay_records.difficulty")
-                except Exception as e:  # noqa: BLE001
-                    logger.warning("[db-migrate] add difficulty failed: %s", e)
-            if "mastery_after" not in cols:
+        if session_cols:  # 表已存在
+            if "mastery_after" not in session_cols:
                 try:
                     conn.execute(
                         text(
@@ -449,7 +457,7 @@ def _run_lightweight_migrations() -> None:
                     logger.info("[db-migrate] added lecture_session_records.mastery_after")
                 except Exception as e:  # noqa: BLE001
                     logger.warning("[db-migrate] add mastery_after failed: %s", e)
-            if "mastery_delta" not in cols:
+            if "mastery_delta" not in session_cols:
                 try:
                     conn.execute(
                         text(
@@ -460,7 +468,7 @@ def _run_lightweight_migrations() -> None:
                     logger.info("[db-migrate] added lecture_session_records.mastery_delta")
                 except Exception as e:  # noqa: BLE001
                     logger.warning("[db-migrate] add mastery_delta failed: %s", e)
-            if "round_count" not in cols:
+            if "round_count" not in session_cols:
                 try:
                     conn.execute(
                         text(
@@ -471,6 +479,25 @@ def _run_lightweight_migrations() -> None:
                     logger.info("[db-migrate] added lecture_session_records.round_count")
                 except Exception as e:  # noqa: BLE001
                     logger.warning("[db-migrate] add round_count failed: %s", e)
+
+        replay_cols = _columns("lecture_replay_records")
+        replay_additions = {
+            "difficulty": "ALTER TABLE lecture_replay_records ADD COLUMN difficulty INTEGER DEFAULT 1",
+            "is_public": "ALTER TABLE lecture_replay_records ADD COLUMN is_public INTEGER DEFAULT 0",
+            "publish_description": "ALTER TABLE lecture_replay_records ADD COLUMN publish_description TEXT DEFAULT ''",
+            "published_at": "ALTER TABLE lecture_replay_records ADD COLUMN published_at DATETIME",
+            "like_count": "ALTER TABLE lecture_replay_records ADD COLUMN like_count INTEGER DEFAULT 0",
+            "video_url": "ALTER TABLE lecture_replay_records ADD COLUMN video_url VARCHAR(256) DEFAULT ''",
+        }
+        if replay_cols:
+            for col, sql in replay_additions.items():
+                if col in replay_cols:
+                    continue
+                try:
+                    conn.execute(text(sql))
+                    logger.info("[db-migrate] added lecture_replay_records.%s", col)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[db-migrate] add lecture_replay_records.%s failed: %s", col, e)
 
         profile_cols = _columns("student_profiles")
         profile_additions = {

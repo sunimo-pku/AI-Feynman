@@ -19,6 +19,7 @@ import '../widgets/study_layout.dart';
 import 'curriculum_tab_page.dart';
 import 'home_dashboard_tab.dart';
 import 'lecture_page.dart';
+import 'public_replays_page.dart';
 // import 'privacy_notice_page.dart';
 import 'review_page.dart';
 import 'section_knowledge_page.dart';
@@ -45,7 +46,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
   int _tabIndex = 0;
   int _pendingAssignments = 0;
 
-  static const _tabTitles = ['今日', '课程', '排行榜', '我的'];
+  static const _tabTitles = ['今日', '课程', '同学讲法', '排行榜', '我的'];
 
   @override
   void initState() {
@@ -111,9 +112,9 @@ class _StudentMainShellState extends State<StudentMainShell> {
       return;
     }
     if (section.knowledgePoints.isEmpty) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => LecturePage(section: section)),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => LecturePage(section: section)));
       if (mounted) setState(() {});
       return;
     }
@@ -136,8 +137,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
   ) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder:
-            (_) => LecturePage(section: section, knowledgePoint: kp),
+        builder: (_) => LecturePage(section: section, knowledgePoint: kp),
       ),
     );
     if (mounted) setState(() {});
@@ -171,21 +171,19 @@ class _StudentMainShellState extends State<StudentMainShell> {
     }
     if (target == null) return;
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ReviewPage(section: target!)),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => ReviewPage(section: target!)));
     if (mounted) setState(() {});
   }
-
 
   List<CurriculumBook> _booksForGrade(
     MathCurriculum curriculum,
     String gradeLabel,
   ) {
-    final books =
-        curriculum.books
-            .where((book) => book.gradeLabel == gradeLabel)
-            .toList(growable: true);
+    final books = curriculum.books
+        .where((book) => book.gradeLabel == gradeLabel)
+        .toList(growable: true);
     books.sort((a, b) => a.semester.compareTo(b.semester));
     return books;
   }
@@ -239,6 +237,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
                     onSectionTap: _onSectionTap,
                     onSectionReview: _onSectionReview,
                   ),
+                  const PublicReplaysPage(embeddedInTab: true),
                   const LeaderboardPage(embeddedInTab: true),
                   PowerProfilePage(
                     embeddedInTab: true,
@@ -254,11 +253,11 @@ class _StudentMainShellState extends State<StudentMainShell> {
         selectedIndex: _tabIndex,
         onDestinationSelected: (index) {
           setState(() => _tabIndex = index);
-          if (index == 3) {
+          if (index == 4) {
             unawaited(_syncStudentGrade());
           }
         },
-        destinations: [
+        destinations: const [
           NavigationDestination(
             icon: StudyTabIcon(asset: 'assets/icons/tab_today.svg'),
             selectedIcon: StudyTabIcon(
@@ -274,6 +273,14 @@ class _StudentMainShellState extends State<StudentMainShell> {
               selected: true,
             ),
             label: '课程',
+          ),
+          NavigationDestination(
+            icon: StudyTabIcon(asset: 'assets/icons/tab_leaderboard.svg'),
+            selectedIcon: StudyTabIcon(
+              asset: 'assets/icons/tab_leaderboard.svg',
+              selected: true,
+            ),
+            label: '同学讲法',
           ),
           NavigationDestination(
             icon: StudyTabIcon(asset: 'assets/icons/tab_leaderboard.svg'),

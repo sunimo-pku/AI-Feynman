@@ -34,6 +34,7 @@ import '../widgets/hand_canvas.dart';
 import '../widgets/lecture_orb_button.dart';
 import '../widgets/lecture_peer_rail.dart';
 import '../widgets/realtime_audio_panel.dart';
+import '../widgets/study_layout.dart';
 import 'privacy_notice_page.dart';
 
 /// 讲题页：左侧多 Agent 对话区，右侧手写板（横屏），手机竖屏降级为上下布局。
@@ -222,6 +223,9 @@ class _LecturePageState extends State<LecturePage> {
   bool _segmentReplayInProgress = false;
   String _activeLiveSessionId = '';
   int _activeLiveGeneration = 0;
+  String _lastCompletedReplaySessionId = '';
+  bool _publishPromptShownForCurrentRound = false;
+  bool _publishingReplay = false;
 
   /// 断连时若正在录音（listening/paused/connecting），重连后自动开麦。
   bool _resumeRecordingAfterReconnect = false;
@@ -399,9 +403,10 @@ class _LecturePageState extends State<LecturePage> {
       );
     }
     if (_question.knowledgePointId.isNotEmpty) {
-      final stars = KnowledgePointProgressRepository.instance
-          .progressFor(_question.knowledgePointId)
-          .stars;
+      final stars =
+          KnowledgePointProgressRepository.instance
+              .progressFor(_question.knowledgePointId)
+              .stars;
       return MockLectureRepository.instance.initialIndexForKnowledgePoint(
         questions,
         stars,
@@ -757,10 +762,9 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   String _assessmentRoundSummary(List<PeerAssessment> assessments) {
-    final speaking =
-        assessments
-            .where((a) => !a.understood)
-            .toList(growable: false);
+    final speaking = assessments
+        .where((a) => !a.understood)
+        .toList(growable: false);
     final understood =
         assessments
             .where((a) => a.understood)
@@ -808,8 +812,7 @@ class _LecturePageState extends State<LecturePage> {
     _peerAssessments = assessments;
     _lastResponseStatus = status;
 
-    final teacherRejected =
-        teacherSummary != null && !teacherSummary.approved;
+    final teacherRejected = teacherSummary != null && !teacherSummary.approved;
     final completed = allUnderstood && !teacherRejected;
 
     final systemText =
@@ -1055,14 +1058,10 @@ class _LecturePageState extends State<LecturePage> {
     final teacher = response.teacherSummary;
     final textPart =
         teacher?.text.trim() ??
-        _composeCompletionSummary(
-          teacher != null ? [teacher] : const [],
-        );
+        _composeCompletionSummary(teacher != null ? [teacher] : const []);
     final methodPart = teacher?.methodSummary.trim() ?? '';
     final summaryForProgress =
-        methodPart.isNotEmpty
-            ? '$textPart\n\n【此类题方法】$methodPart'
-            : textPart;
+        methodPart.isNotEmpty ? '$textPart\n\n【此类题方法】$methodPart' : textPart;
     final result = await ProgressRepository.instance.applyCompleted(
       sectionId: widget.section.id,
       masteryDelta: response.masteryDelta,
@@ -1086,6 +1085,135 @@ class _LecturePageState extends State<LecturePage> {
     if (AuthService.instance.isLoggedIn) {
       unawaited(LearningSyncService.instance.syncNow());
     }
+    if (AuthService.instance.isStudent &&
+        _lastCompletedReplaySessionId.isEmpty &&
+        _activeLiveSessionId.isNotEmpty) {
+      _lastCompletedReplaySessionId = _activeLiveSessionId;
+    }
+    if (AuthService.instance.isStudent &&
+        _lastCompletedReplaySessionId.isNotEmpty &&
+        !_publishPromptShownForCurrentRound) {
+      _publishPromptShownForCurrentRound = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_canShowCompletionOrbs) return;
+        _showPublishReplaySheet();
+      });
+    }
+  }
+
+  Future<void> _showPublishReplaySheet() async {
+    final sessionId = _lastCompletedReplaySessionId;
+    if (sessionId.isEmpty) return;
+    final controller = TextEditingController();
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setSheetState) {
+              Future<void> publish() async {
+                final description = controller.text.trim();
+                setSheetState(() => _publishingReplay = true);
+                try {
+                  await _replayService.finishAndUpload();
+                  await _replayService.publishReplay(
+                    sessionId: sessionId,
+                    description: description,
+                  );
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).pop();
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已生成讲题视频并发布到同学讲法。')),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  setSheetState(() => _publishingReplay = false);
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('发布失败：$e')));
+                }
+              }
+
+              return Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                ),
+                child: StudyPanel(
+                  elevated: true,
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '发布我的讲法',
+                        style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '系统会把你的录音、白板笔迹和同伴讨论合成为 MP4 视频。可以写一句话告诉同学这题的关键点。',
+                        style: Theme.of(ctx).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: controller,
+                        maxLength: 120,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          hintText: '例如：这题关键是先看根号里的数不能为负。',
+                          filled: true,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed:
+                                _publishingReplay
+                                    ? null
+                                    : () => Navigator.of(ctx).pop(),
+                            child: const Text('先不发布'),
+                          ),
+                          const Spacer(),
+                          FilledButton.icon(
+                            onPressed: _publishingReplay ? null : publish,
+                            icon:
+                                _publishingReplay
+                                    ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                    : const Icon(Icons.public),
+                            label: Text(_publishingReplay ? '发布中' : '发布'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+      if (mounted) {
+        setState(() => _publishingReplay = false);
+      } else {
+        _publishingReplay = false;
+      }
+    }
   }
 
   Future<void> _persistKnowledgePointRound({
@@ -1093,8 +1221,7 @@ class _LecturePageState extends State<LecturePage> {
     required int masteryDelta,
     required List<PeerAssessment> assessments,
   }) async {
-    final kpId =
-        widget.knowledgePoint?.id ?? _question.knowledgePointId;
+    final kpId = widget.knowledgePoint?.id ?? _question.knowledgePointId;
     if (kpId.isEmpty) return;
     final understood = assessments.where((a) => a.understood).length;
     final result = await KnowledgePointProgressRepository.instance.applyRound(
@@ -1393,6 +1520,9 @@ class _LecturePageState extends State<LecturePage> {
     _resumeRecordingAfterReconnect = false;
     _activeLiveSessionId = '';
     _activeLiveGeneration = _questionGeneration;
+    _lastCompletedReplaySessionId = '';
+    _publishPromptShownForCurrentRound = false;
+    _publishingReplay = false;
   }
 
   void _rollbackPendingLiveRound() {
@@ -1456,7 +1586,9 @@ class _LecturePageState extends State<LecturePage> {
     if (!mounted) return;
     _resetTransientState();
     setState(() {
-      final idx = _questions.indexWhere((q) => q.questionId == target.questionId);
+      final idx = _questions.indexWhere(
+        (q) => q.questionId == target.questionId,
+      );
       _questionIndex = idx >= 0 ? idx : _questionIndex;
       _question = target;
       _advanceQuestionGeneration();
@@ -1529,10 +1661,12 @@ class _LecturePageState extends State<LecturePage> {
                       const SizedBox(height: 10),
                       FormulaText(
                         answer,
-                        style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
-                          height: 1.5,
-                        ),
-                        formulaStyle: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                        style: Theme.of(
+                          ctx,
+                        ).textTheme.bodyLarge?.copyWith(height: 1.5),
+                        formulaStyle: Theme.of(
+                          ctx,
+                        ).textTheme.bodyLarge?.copyWith(
                           color: AppPalette.primary,
                           fontWeight: FontWeight.w700,
                           height: 1.5,
@@ -1626,9 +1760,9 @@ class _LecturePageState extends State<LecturePage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('收藏失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('收藏失败：$e')));
     }
   }
 
@@ -1646,9 +1780,7 @@ class _LecturePageState extends State<LecturePage> {
             Future<void> submit() async {
               final note = controller.text.trim();
               if (note.isEmpty) {
-                setDialogState(
-                  () => errorMessage = '请写一点备注再发送',
-                );
+                setDialogState(() => errorMessage = '请写一点备注再发送');
                 return;
               }
               setDialogState(() {
@@ -1749,9 +1881,9 @@ class _LecturePageState extends State<LecturePage> {
     if (submittedSuccessfully && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已发送给家长')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已发送给家长')));
       });
     }
   }
@@ -3222,6 +3354,15 @@ class _LecturePageState extends State<LecturePage> {
           tooltip: '查看小结',
           accent: AppPalette.primaryAccent,
           onPressed: _showCompletionSheet,
+        ),
+        LectureOrbButton(
+          icon: Icons.public,
+          tooltip: '发布讲法',
+          accent: AppPalette.primaryAccent,
+          onPressed:
+              _lastCompletedReplaySessionId.isEmpty
+                  ? null
+                  : () => unawaited(_showPublishReplaySheet()),
         ),
       ]);
     }

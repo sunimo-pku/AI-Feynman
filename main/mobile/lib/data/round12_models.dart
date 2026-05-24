@@ -19,12 +19,13 @@ class PowerProfile {
       studentName: json['studentName'] as String? ?? '同学',
       equippedTitle: json['equippedTitle'] as String? ?? '',
       crystalBalance: (json['crystalBalance'] as num?)?.toInt() ?? 0,
-      chapters: raw is List
-          ? raw
-              .whereType<Map<String, dynamic>>()
-              .map(PowerChapter.fromJson)
-              .toList(growable: false)
-          : const <PowerChapter>[],
+      chapters:
+          raw is List
+              ? raw
+                  .whereType<Map<String, dynamic>>()
+                  .map(PowerChapter.fromJson)
+                  .toList(growable: false)
+              : const <PowerChapter>[],
     );
   }
 }
@@ -116,12 +117,13 @@ class BountyStepQuiz {
       index: (json['index'] as num?)?.toInt() ?? 0,
       statement: json['statement'] as String? ?? '',
       prompt: json['prompt'] as String? ?? '',
-      options: rawOpts is List
-          ? rawOpts
-              .whereType<Map<String, dynamic>>()
-              .map(BountyStepOption.fromJson)
-              .toList(growable: false)
-          : const <BountyStepOption>[],
+      options:
+          rawOpts is List
+              ? rawOpts
+                  .whereType<Map<String, dynamic>>()
+                  .map(BountyStepOption.fromJson)
+                  .toList(growable: false)
+              : const <BountyStepOption>[],
       correctOptionId: json['correctOptionId'] as String? ?? 'ok',
     );
   }
@@ -191,15 +193,18 @@ class BountyChallenge {
       sectionLabel: json['sectionLabel'] as String? ?? '',
       prompt: json['prompt'] as String? ?? '',
       wrongStep: json['wrongStep'] as String? ?? '',
-      wrongSolution: rawSolution is List
-          ? rawSolution.map((e) => e.toString()).toList(growable: false)
-          : const <String>[],
-      errorBox: rawBox is Map
-          ? rawBox.map((k, v) => MapEntry(k.toString(), (v as num?) ?? 0))
-          : const <String, num>{},
-      tags: rawTags is List
-          ? rawTags.map((e) => e.toString()).toList(growable: false)
-          : const <String>[],
+      wrongSolution:
+          rawSolution is List
+              ? rawSolution.map((e) => e.toString()).toList(growable: false)
+              : const <String>[],
+      errorBox:
+          rawBox is Map
+              ? rawBox.map((k, v) => MapEntry(k.toString(), (v as num?) ?? 0))
+              : const <String, num>{},
+      tags:
+          rawTags is List
+              ? rawTags.map((e) => e.toString()).toList(growable: false)
+              : const <String>[],
       difficulty: (json['difficulty'] as num?)?.toInt() ?? 1,
       rewardCrystals: (json['rewardCrystals'] as num?)?.toInt() ?? 0,
       rewardPower: (json['rewardPower'] as num?)?.toInt() ?? 0,
@@ -215,12 +220,13 @@ class BountyChallenge {
             : const <String, dynamic>{},
       ),
       rewardGranted: json['rewardGranted'] == true,
-      stepQuizzes: rawQuizzes is List
-          ? rawQuizzes
-              .whereType<Map<String, dynamic>>()
-              .map(BountyStepQuiz.fromJson)
-              .toList(growable: false)
-          : const <BountyStepQuiz>[],
+      stepQuizzes:
+          rawQuizzes is List
+              ? rawQuizzes
+                  .whereType<Map<String, dynamic>>()
+                  .map(BountyStepQuiz.fromJson)
+                  .toList(growable: false)
+              : const <BountyStepQuiz>[],
     );
   }
 }
@@ -244,18 +250,21 @@ class BountyToday {
 
   factory BountyToday.fromJson(Map<String, dynamic> json) {
     final raw = json['challenges'];
-    final challenges = raw is List
-        ? raw
-            .whereType<Map<String, dynamic>>()
-            .map(BountyChallenge.fromJson)
-            .toList(growable: false)
-        : const <BountyChallenge>[];
+    final challenges =
+        raw is List
+            ? raw
+                .whereType<Map<String, dynamic>>()
+                .map(BountyChallenge.fromJson)
+                .toList(growable: false)
+            : const <BountyChallenge>[];
     return BountyToday(
       dateKey: (json['dateKey'] as String?) ?? (json['date'] as String?) ?? '',
-      completedCount: (json['completedCount'] as num?)?.toInt() ??
+      completedCount:
+          (json['completedCount'] as num?)?.toInt() ??
           challenges.where((c) => c.isCompleted).length,
       totalCount: (json['totalCount'] as num?)?.toInt() ?? challenges.length,
-      totalCrystals: (json['totalCrystals'] as num?)?.toInt() ??
+      totalCrystals:
+          (json['totalCrystals'] as num?)?.toInt() ??
           challenges.fold<int>(0, (sum, c) => sum + c.rewardCrystals),
       streakDays: (json['streakDays'] as num?)?.toInt() ?? 0,
       challenges: challenges,
@@ -285,9 +294,10 @@ class BountyFeedback {
       nextHint: json['nextHint'] as String? ?? '',
       iouScore: (json['iouScore'] as num?)?.toDouble() ?? 0,
       explanationScore: (json['explanationScore'] as num?)?.toInt() ?? 0,
-      keywordHits: rawHits is List
-          ? rawHits.map((e) => e.toString()).toList(growable: false)
-          : const <String>[],
+      keywordHits:
+          rawHits is List
+              ? rawHits.map((e) => e.toString()).toList(growable: false)
+              : const <String>[],
     );
   }
 }
@@ -402,6 +412,13 @@ class ReplaySummary {
     required this.questionPrompt,
     required this.durationMs,
     required this.difficulty,
+    required this.isPublic,
+    required this.description,
+    required this.likeCount,
+    required this.likedByMe,
+    required this.isMine,
+    required this.videoUrl,
+    required this.publishedAt,
     required this.createdAt,
   });
 
@@ -412,6 +429,13 @@ class ReplaySummary {
   final String questionPrompt;
   final int durationMs;
   final int difficulty;
+  final bool isPublic;
+  final String description;
+  final int likeCount;
+  final bool likedByMe;
+  final bool isMine;
+  final String videoUrl;
+  final DateTime? publishedAt;
   final DateTime createdAt;
 
   factory ReplaySummary.fromJson(Map<String, dynamic> json) {
@@ -423,8 +447,41 @@ class ReplaySummary {
       questionPrompt: json['questionPrompt'] as String? ?? '',
       durationMs: (json['durationMs'] as num?)?.toInt() ?? 0,
       difficulty: (json['difficulty'] as num?)?.toInt() ?? 1,
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      isPublic: json['isPublic'] == true,
+      description: json['description'] as String? ?? '',
+      likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
+      likedByMe: json['likedByMe'] == true,
+      isMine: json['isMine'] == true,
+      videoUrl: json['videoUrl'] as String? ?? '',
+      publishedAt: DateTime.tryParse(json['publishedAt']?.toString() ?? ''),
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
+    );
+  }
+
+  ReplaySummary copyWith({
+    int? likeCount,
+    bool? likedByMe,
+    bool? isPublic,
+    String? description,
+  }) {
+    return ReplaySummary(
+      sessionId: sessionId,
+      sectionId: sectionId,
+      sectionLabel: sectionLabel,
+      questionId: questionId,
+      questionPrompt: questionPrompt,
+      durationMs: durationMs,
+      difficulty: difficulty,
+      isPublic: isPublic ?? this.isPublic,
+      description: description ?? this.description,
+      likeCount: likeCount ?? this.likeCount,
+      likedByMe: likedByMe ?? this.likedByMe,
+      isMine: isMine,
+      videoUrl: videoUrl,
+      publishedAt: publishedAt,
+      createdAt: createdAt,
     );
   }
 }
