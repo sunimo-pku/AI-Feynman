@@ -54,6 +54,9 @@ class LiveLectureService {
   String _currentSectionId = '';
   String _currentQuestionId = '';
   List<String> _currentReferenceSteps = const <String>[];
+  String _currentQuestionPrompt = '';
+  String _currentSectionLabel = '';
+  List<String> _currentKnowledgeTags = const <String>[];
 
   WebSocketChannel? _channel;
   StreamSubscription? _channelSub;
@@ -142,6 +145,8 @@ class LiveLectureService {
     required String questionPrompt,
     String standardAnswer = '',
     List<String> referenceSteps = const <String>[],
+    String sectionLabel = '',
+    List<String> knowledgeTags = const <String>[],
     int completedRoundIndex = 0,
     List<Map<String, dynamic>> history = const <Map<String, dynamic>>[],
     List<Map<String, dynamic>> roundBoardSnapshots =
@@ -159,6 +164,9 @@ class LiveLectureService {
     _currentSectionId = sectionId;
     _currentQuestionId = questionId;
     _currentReferenceSteps = List.unmodifiable(referenceSteps);
+    _currentQuestionPrompt = questionPrompt;
+    _currentSectionLabel = sectionLabel;
+    _currentKnowledgeTags = List.unmodifiable(knowledgeTags);
     _lastSectionId = sectionId;
     _lastQuestionId = questionId;
     _lastQuestionPrompt = questionPrompt;
@@ -319,6 +327,8 @@ class LiveLectureService {
         questionPrompt: _lastQuestionPrompt,
         standardAnswer: _lastStandardAnswer,
         referenceSteps: _currentReferenceSteps,
+        sectionLabel: _currentSectionLabel,
+        knowledgeTags: _currentKnowledgeTags,
         completedRoundIndex: _lastCompletedRoundIndex,
         history: _lastHistoryPayload,
         roundBoardSnapshots: _lastRoundBoardPayload,
@@ -391,12 +401,18 @@ class LiveLectureService {
     final sectionId = _currentSectionId;
     final questionId = _currentQuestionId;
     final referenceSteps = List<String>.unmodifiable(_currentReferenceSteps);
+    final questionPrompt = _currentQuestionPrompt;
+    final sectionLabel = _currentSectionLabel;
+    final knowledgeTags = List<String>.unmodifiable(_currentKnowledgeTags);
     await _enrichAndSendSnapshot(
       steps,
       sessionId: sessionId,
       sectionId: sectionId,
       questionId: questionId,
       referenceSteps: referenceSteps,
+      questionPrompt: questionPrompt,
+      sectionLabel: sectionLabel,
+      knowledgeTags: knowledgeTags,
       boardImageBase64: boardImageBase64,
     );
   }
@@ -427,6 +443,9 @@ class LiveLectureService {
     required String sectionId,
     required String questionId,
     required List<String> referenceSteps,
+    required String questionPrompt,
+    required String sectionLabel,
+    required List<String> knowledgeTags,
     String boardImageBase64 = '',
   }) async {
     var boardLatex = '';
@@ -448,6 +467,9 @@ class LiveLectureService {
           referenceSteps: referenceSteps,
           boardImageBase64: boardImageBase64,
           totalStrokeCount: totalStrokes,
+          questionPrompt: questionPrompt,
+          sectionLabel: sectionLabel,
+          knowledgeTags: knowledgeTags,
           steps: steps
               .map(
                 (s) => OcrStepInput(

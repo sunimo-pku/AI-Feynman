@@ -577,6 +577,16 @@ class _LecturePageState extends State<LecturePage> {
     }
   }
 
+  List<String> _ocrKnowledgeTags() {
+    return <String>{
+      ..._question.tags,
+      if (widget.knowledgePoint?.label.isNotEmpty == true)
+        widget.knowledgePoint!.label,
+      if (_question.knowledgePointLabel.isNotEmpty)
+        _question.knowledgePointLabel,
+    }.where((tag) => tag.trim().isNotEmpty).toList(growable: false);
+  }
+
   /// intro 文案随当前题目刷新：第七轮起每节有 3 道题，老师开场白也要点出
   /// 「这是本节第几道题」+ 题目难度，让学生对接下来要讲的内容心里有数。
   AgentTurn _introTurn() {
@@ -1025,6 +1035,8 @@ class _LecturePageState extends State<LecturePage> {
         request,
         referenceSteps: _question.referenceSteps,
         boardImageBase64: boardPng == null ? '' : base64Encode(boardPng),
+        sectionLabel: widget.section.label,
+        knowledgeTags: _ocrKnowledgeTags(),
       );
       final response = await _lectureService.submit(enriched);
       if (!mounted) return;
@@ -1470,6 +1482,8 @@ class _LecturePageState extends State<LecturePage> {
       final request = await _lectureService.enrichWithOcr(
         _buildRequest(),
         referenceSteps: _question.referenceSteps,
+        sectionLabel: widget.section.label,
+        knowledgeTags: _ocrKnowledgeTags(),
       );
       final response = await _lectureService.requestHint(request);
       if (!mounted) return;
@@ -2020,6 +2034,8 @@ class _LecturePageState extends State<LecturePage> {
         questionPrompt: _question.prompt,
         standardAnswer: _usableStandardAnswer(_question.standardAnswer),
         referenceSteps: _question.referenceSteps,
+        sectionLabel: widget.section.label,
+        knowledgeTags: _ocrKnowledgeTags(),
         completedRoundIndex: _round,
         history: _liveHistoryPayload(),
         roundBoardSnapshots: _liveRoundBoardPayload(),
@@ -2082,6 +2098,8 @@ class _LecturePageState extends State<LecturePage> {
       questionPrompt: _question.prompt,
       standardAnswer: _usableStandardAnswer(_question.standardAnswer),
       referenceSteps: _question.referenceSteps,
+      sectionLabel: widget.section.label,
+      knowledgeTags: _ocrKnowledgeTags(),
       completedRoundIndex: _round,
       history: _liveHistoryPayload(),
       roundBoardSnapshots: _liveRoundBoardPayload(),

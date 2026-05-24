@@ -581,6 +581,9 @@ def test_ocr_hwr_qwen_vl_returns_recognized_latex(
         json={
             "sectionId": "pep-g8-down-s16-1",
             "questionId": "q-s16-1-001",
+            "questionPrompt": r"化简：$\sqrt{12}$",
+            "sectionLabel": "二次根式的乘除",
+            "knowledgeTags": ["二次根式", "化简"],
             "mode": "hwr",
             "referenceSteps": [r"$\sqrt{12}=2\sqrt{3}$", "标准答案不应进 prompt"],
             "boardImageBase64": tiny_png_b64,
@@ -591,6 +594,9 @@ def test_ocr_hwr_qwen_vl_returns_recognized_latex(
     )
     assert resp.status_code == 200
     assert "reference_hints" not in captured
+    assert captured["question_prompt"] == r"化简：$\sqrt{12}$"
+    assert captured["section_label"] == "二次根式的乘除"
+    assert captured["knowledge_tags"] == ["二次根式", "化简"]
     board = resp.json()["board"]
     assert board["latex"] == r"\sqrt{12}=2\sqrt{3}"
     assert "根号" in board["plainText"]

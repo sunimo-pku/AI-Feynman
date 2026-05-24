@@ -36,6 +36,9 @@ class InkStepIn(BaseModel):
 class InkRequest(BaseModel):
     section_id: str = Field(..., alias="sectionId", min_length=1, max_length=64)
     question_id: str = Field("", alias="questionId", max_length=64)
+    question_prompt: str = Field("", alias="questionPrompt", max_length=2000)
+    section_label: str = Field("", alias="sectionLabel", max_length=120)
+    knowledge_tags: list[str] = Field(default_factory=list, alias="knowledgeTags")
     mode: str = Field("rule", pattern="^(rule|hwr)$")
     board_image_base64: str = Field("", alias="boardImageBase64")
     reference_steps: list[str] = Field(
@@ -104,11 +107,17 @@ def _recognize_board_with_qwen(
     board_image_base64: str,
     section_id: str,
     question_id: str,
+    question_prompt: str,
+    section_label: str,
+    knowledge_tags: list[str],
 ) -> InkBoardOut:
     vision = recognize_ink_board(
         image_base64=board_image_base64,
         section_id=section_id,
         question_id=question_id,
+        question_prompt=question_prompt,
+        section_label=section_label,
+        knowledge_tags=knowledge_tags,
     )
     if vision.get("error"):
         logger.info(
@@ -154,6 +163,9 @@ def recognize_steps(req: InkRequest) -> tuple[list[InkStepOut], InkBoardOut | No
             board_image_base64=req.board_image_base64.strip(),
             section_id=req.section_id,
             question_id=req.question_id,
+            question_prompt=req.question_prompt,
+            section_label=req.section_label,
+            knowledge_tags=req.knowledge_tags,
         )
         logger.info(
             "[ocr-ink] board section=%s source=%s conf=%.2f mode=hwr",

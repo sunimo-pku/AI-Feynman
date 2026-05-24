@@ -17,14 +17,17 @@ import 'ocr_service.dart';
 ///   * 路径统一经 [ApiConfig.uri]，禁止硬编码 IP / 协议。
 ///   * 仅依赖 `http` 包，避免引入新的网络层依赖。
 class LectureService {
-  LectureService({http.Client? client, Duration? timeout, OcrService? ocrService})
-      : _client = client ?? http.Client(),
-        _ocrService = ocrService ?? OcrService(),
-        // `/lecture/submit` 走 DeepSeek-V4-Flash 非思考模式的完整 JSON 路径；
-        // 实时讲题优先走 `/lecture/live` 流式路径。后端层自己有 6s timeout。
-        // 前端 timeout 给 12s，严格大于后端，确保后端能先返回明确错误，
-        // 而不是前端先断开但后端继续跑。
-        _timeout = timeout ?? const Duration(seconds: 12);
+  LectureService({
+    http.Client? client,
+    Duration? timeout,
+    OcrService? ocrService,
+  }) : _client = client ?? http.Client(),
+       _ocrService = ocrService ?? OcrService(),
+       // `/lecture/submit` 走 DeepSeek-V4-Flash 非思考模式的完整 JSON 路径；
+       // 实时讲题优先走 `/lecture/live` 流式路径。后端层自己有 6s timeout。
+       // 前端 timeout 给 12s，严格大于后端，确保后端能先返回明确错误，
+       // 而不是前端先断开但后端继续跑。
+       _timeout = timeout ?? const Duration(seconds: 12);
 
   final http.Client _client;
   final Duration _timeout;
@@ -39,6 +42,8 @@ class LectureService {
     LectureSubmitRequest request, {
     required List<String> referenceSteps,
     String boardImageBase64 = '',
+    String sectionLabel = '',
+    List<String> knowledgeTags = const <String>[],
   }) async {
     if (boardImageBase64.isEmpty) return request;
     final totalStrokes = request.steps.fold<int>(
@@ -51,26 +56,32 @@ class LectureService {
       referenceSteps: referenceSteps,
       boardImageBase64: boardImageBase64,
       totalStrokeCount: totalStrokes,
+      questionPrompt: request.questionPrompt,
+      sectionLabel: sectionLabel,
+      knowledgeTags: knowledgeTags,
       steps: request.steps
-          .map((s) => OcrStepInput(
-                stepId: s.stepId,
-                strokeCount: s.strokeCount,
-                boundingBox: {
-                  'x': s.boundingBox.x,
-                  'y': s.boundingBox.y,
-                  'width': s.boundingBox.width,
-                  'height': s.boundingBox.height,
-                },
-              ))
+          .map(
+            (s) => OcrStepInput(
+              stepId: s.stepId,
+              strokeCount: s.strokeCount,
+              boundingBox: {
+                'x': s.boundingBox.x,
+                'y': s.boundingBox.y,
+                'width': s.boundingBox.width,
+                'height': s.boundingBox.height,
+              },
+            ),
+          )
           .toList(growable: false),
     );
     if (board == null ||
         (board.latex.trim().isEmpty && board.plainText.trim().isEmpty)) {
       return request;
     }
-    final bb = request.steps.isNotEmpty
-        ? request.steps.first.boundingBox
-        : const BoundingBoxPayload(x: 0, y: 0, width: 1, height: 1);
+    final bb =
+        request.steps.isNotEmpty
+            ? request.steps.first.boundingBox
+            : const BoundingBoxPayload(x: 0, y: 0, width: 1, height: 1);
     return LectureSubmitRequest(
       sectionId: request.sectionId,
       questionId: request.questionId,
@@ -116,10 +127,7 @@ class LectureService {
         cause: e,
       );
     } on http.ClientException catch (e) {
-      throw LectureApiException(
-        userMessage: '网络请求失败：${e.message}',
-        cause: e,
-      );
+      throw LectureApiException(userMessage: '网络请求失败：${e.message}', cause: e);
     }
 
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
@@ -157,7 +165,8 @@ class LectureService {
           .timeout(_timeout);
     } on TimeoutException {
       throw const LectureApiException(
-        userMessage: 'AI 同伴想得有点久（超过 12 秒），可能是网络不稳或 LLM 拥塞，'
+        userMessage:
+            'AI 同伴想得有点久（超过 12 秒），可能是网络不稳或 LLM 拥塞，'
             '稍等几秒再点一次「重新提交」试试。',
       );
     } on SocketException catch (e) {
@@ -166,10 +175,7 @@ class LectureService {
         cause: e,
       );
     } on http.ClientException catch (e) {
-      throw LectureApiException(
-        userMessage: '网络请求失败：${e.message}',
-        cause: e,
-      );
+      throw LectureApiException(userMessage: '网络请求失败：${e.message}', cause: e);
     }
 
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
@@ -214,9 +220,7 @@ class LectureService {
   static String _userMessageFor(int status, String detail) {
     switch (status) {
       case 400:
-        return detail.isNotEmpty
-            ? detail
-            : '画板还没有内容，先写一两行思路再提交。';
+        return detail.isNotEmpty ? detail : '画板还没有内容，先写一两行思路再提交。';
       case 404:
         return '当前章节暂时无法提交讲题，请换一个小节再试。';
       case 422:
@@ -249,6 +253,7 @@ class LectureApiException implements Exception {
   final Object? cause;
 
   @override
-  String toString() => 'LectureApiException(status=$statusCode, '
+  String toString() =>
+      'LectureApiException(status=$statusCode, '
       'userMessage=$userMessage, detail=$detail)';
 }

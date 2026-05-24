@@ -989,6 +989,11 @@ git push origin main
 - **Qwen-VL 白板 OCR 禁止喂 referenceSteps**：题库 `referenceSteps` 常含
   `$5-x\\ge0$`、`\\sqrt{12}=2\\sqrt{3}` 等标准答案；写进 VL prompt 会诱发
   「抄答案」式误识别。HWR 只看 PNG，不传解题框架 hint。
+- **Qwen-VL 白板 OCR 可喂题面上下文但只能消歧**：`/ocr/ink mode=hwr`
+  可带 `questionPrompt / sectionLabel / knowledgeTags`，帮助识别模糊变量、
+  根号范围、上下标和阅读顺序；prompt 必须写死「只允许用原题上下文做符号
+  消歧，不能补全学生没写的步骤、答案或推理」。仍然禁止传
+  `referenceSteps` 或标准答案。
 - **exportBoardPng 必须 OCR 友好**：大屏 1:1 导出时 3dp 笔迹只有几个像素宽，
   VL 几乎读不出。离屏导出需白底黑字 + 长边缩放至 ~1024px，且线宽乘数保证
   输出 bitmap 里笔迹 ≥6px。

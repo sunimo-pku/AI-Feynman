@@ -203,6 +203,9 @@ def recognize_ink_board(
     image_base64: str,
     section_id: str = "",
     question_id: str = "",
+    question_prompt: str = "",
+    section_label: str = "",
+    knowledge_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Recognize the full whiteboard handwriting in one Qwen-VL call.
 
@@ -222,8 +225,22 @@ def recognize_ink_board(
     if len(raw) < _MIN_INK_IMAGE_BYTES:
         return {"error": "image too small"}
 
+    tags = [
+        str(tag).strip()
+        for tag in (knowledge_tags or [])
+        if str(tag).strip()
+    ][:8]
+    context_lines = [
+        f"当前小节：{section_label or section_id or 'unknown'}",
+        f"知识点：{'、'.join(tags) if tags else 'unknown'}",
+        f"原题题面：{question_prompt.strip() or 'unknown'}",
+    ]
+
     prompt = f"""
 你是初中数学手写识别助手。图片是学生讲题白板的**完整内容**（可能含多行算式与简短中文说明）。
+下面是题目上下文，只能用于辨别白板里模糊的符号、变量、上下标和阅读顺序：
+{chr(10).join(context_lines)}
+
 请识别学生**实际写了什么**，只输出 JSON 对象，不要 Markdown：
 {{
   "latex": "尽量用 LaTeX 概括整板主要算式；若主要是中文步骤说明则留空",
@@ -232,6 +249,8 @@ def recognize_ink_board(
 }}
 规则：
 - 只认图片里的真实笔迹，禁止编造。
+- 只允许用原题上下文做符号消歧，不能补全学生没写在白板上的步骤、答案或推理。
+- 如果题面里有某个公式但白板没有写，禁止把它输出成学生白板内容。
 - 看不清、空白或无法辨认时 latex/plainText 留空，confidence <= 0.2。
 - 不要根据题面、章节或解题套路猜测学生写了什么。
 sectionId={section_id or "unknown"} questionId={question_id or "unknown"}

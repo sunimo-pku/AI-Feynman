@@ -10,8 +10,8 @@ import '../config/api_config.dart';
 /// 调用后端 `/ocr/ink` 的辅助 service（整板 HWR）。
 class OcrService {
   OcrService({http.Client? client, Duration? timeout})
-      : _client = client ?? http.Client(),
-        _timeout = timeout ?? const Duration(seconds: 22);
+    : _client = client ?? http.Client(),
+      _timeout = timeout ?? const Duration(seconds: 22);
 
   final http.Client _client;
   final Duration _timeout;
@@ -28,6 +28,9 @@ class OcrService {
     required List<String> referenceSteps,
     required String boardImageBase64,
     required int totalStrokeCount,
+    String questionPrompt = '',
+    String sectionLabel = '',
+    List<String> knowledgeTags = const <String>[],
     List<OcrStepInput> steps = const <OcrStepInput>[],
   }) async {
     if (boardImageBase64.isEmpty) return null;
@@ -35,31 +38,34 @@ class OcrService {
       final resp = await _client
           .post(
             ApiConfig.uri('/ocr/ink'),
-            headers: const {
-              'Content-Type': 'application/json; charset=utf-8',
-            },
-            body: utf8.encode(jsonEncode({
-              'sectionId': sectionId,
-              'questionId': questionId,
-              'mode': 'hwr',
-              'boardImageBase64': boardImageBase64,
-              'referenceSteps': referenceSteps,
-              'steps': steps.isEmpty
-                  ? [
-                      {
-                        'stepId': 'board',
-                        'strokeCount': totalStrokeCount,
-                      },
-                    ]
-                  : steps
-                      .map((s) => {
-                            'stepId': s.stepId,
-                            'strokeCount': s.strokeCount,
-                            if (s.boundingBox != null)
-                              'boundingBox': s.boundingBox,
-                          })
-                      .toList(growable: false),
-            })),
+            headers: const {'Content-Type': 'application/json; charset=utf-8'},
+            body: utf8.encode(
+              jsonEncode({
+                'sectionId': sectionId,
+                'questionId': questionId,
+                'questionPrompt': questionPrompt,
+                'sectionLabel': sectionLabel,
+                'knowledgeTags': knowledgeTags,
+                'mode': 'hwr',
+                'boardImageBase64': boardImageBase64,
+                'referenceSteps': referenceSteps,
+                'steps':
+                    steps.isEmpty
+                        ? [
+                          {'stepId': 'board', 'strokeCount': totalStrokeCount},
+                        ]
+                        : steps
+                            .map(
+                              (s) => {
+                                'stepId': s.stepId,
+                                'strokeCount': s.strokeCount,
+                                if (s.boundingBox != null)
+                                  'boundingBox': s.boundingBox,
+                              },
+                            )
+                            .toList(growable: false),
+              }),
+            ),
           )
           .timeout(_timeout);
       if (resp.statusCode < 200 || resp.statusCode >= 300) return null;
@@ -92,18 +98,21 @@ class OcrService {
     required String questionId,
     required List<String> referenceSteps,
     required List<OcrStepInput> steps,
+    String questionPrompt = '',
+    String sectionLabel = '',
+    List<String> knowledgeTags = const <String>[],
     String boardImageBase64 = '',
   }) async {
-    final totalStrokes = steps.fold<int>(
-      0,
-      (sum, s) => sum + s.strokeCount,
-    );
+    final totalStrokes = steps.fold<int>(0, (sum, s) => sum + s.strokeCount);
     final board = await recognizeBoard(
       sectionId: sectionId,
       questionId: questionId,
       referenceSteps: referenceSteps,
       boardImageBase64: boardImageBase64,
       totalStrokeCount: totalStrokes,
+      questionPrompt: questionPrompt,
+      sectionLabel: sectionLabel,
+      knowledgeTags: knowledgeTags,
       steps: steps,
     );
     if (board == null) return null;
