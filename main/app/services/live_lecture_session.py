@@ -133,11 +133,14 @@ class _RoundBoardSnapshot:
     board_image_base64: str = ""
 
     def to_prompt_dict(self) -> dict[str, Any]:
+        # boardImageBase64 仅在同伴 multimodal 路径里被抽出来作为 image_url
+        # 附件；纯文本 prompt 渲染时会被忽略，不会污染 LaTeX 摘要段。
         return {
             "roundIndex": self.round_index,
             "boardLatex": self.board_latex,
             "boardPlainText": self.board_plain_text,
             "strokeCount": self.stroke_count,
+            "boardImageBase64": self.board_image_base64,
         }
 
 
@@ -805,6 +808,7 @@ class LiveLectureSession:
         round_index = self._assessment_round_index()
         history = list(self.history)
         prior_boards = self._prior_round_board_snapshots_for_prompt()
+        current_board_image = self.pending_board_image_b64
 
         async def _run_one(role: str) -> dict[str, Any]:
             return await loop.run_in_executor(
@@ -821,6 +825,7 @@ class LiveLectureSession:
                     history=history,
                     standard_answer=self.standard_answer,
                     round_board_snapshots=prior_boards,
+                    current_board_image_base64=current_board_image,
                 ),
             )
 

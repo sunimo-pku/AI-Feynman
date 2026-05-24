@@ -139,6 +139,14 @@ class LectureSubmitRequest(BaseModel):
         default_factory=list,
         alias="roundBoardSnapshots",
     )
+    # 本轮整板 PNG（base64）。第十二轮第四轮后同伴评估走 Qwen-VL multimodal，
+    # 客户端可以把整板截图带上来给同伴**直接看图**，避免 OCR 文字 diff 把
+    # 「上一轮已写的」与「本轮新增的」混为一谈。旧客户端可不传，留空即走纯文本。
+    board_image_base64: str = Field(
+        "",
+        alias="boardImageBase64",
+        max_length=2_000_000,
+    )
 
     model_config = {
         "populate_by_name": True,
@@ -369,6 +377,7 @@ async def submit_lecture(
             "boardLatex": s.board_latex,
             "boardPlainText": s.board_plain_text,
             "strokeCount": s.stroke_count,
+            "boardImageBase64": s.board_image_base64,
         }
         for s in req.round_board_snapshots
     ]
@@ -384,6 +393,7 @@ async def submit_lecture(
             history=history_payload,
             standard_answer=req.standard_answer,
             round_board_snapshots=round_board_payload,
+            current_board_image_base64=req.board_image_base64,
         )
         teacher_summary: dict[str, Any] | None = None
         if result.get("all_understood"):

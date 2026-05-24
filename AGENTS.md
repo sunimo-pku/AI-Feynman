@@ -907,6 +907,10 @@ git push origin main
   不能在当前轮已收到某同伴 assessment 且 `understood=true` 时，再 fallback 到
   `_turns` 里上一轮的 `reason_*` 发言；否则上一轮没懂、下一轮已懂后，头像旁
   仍残留「有话要说」。全懂时也要清 `_expandedPeerBubble` 和 reason queue。
+- **全员听懂后李老师收束要立即 materialize**：实时路径的 `peer_assessments`
+  已带 `teacherSummary`，前端必须立刻插入李老师气泡并播放整段 TTS；后端随后
+  可能再发同 `turnId` 的 `agent_turn_*` 流式事件，只能用于防重，不能依赖它
+  才展示老师。否则网络/队列时序稍抖就会出现「三人都通过了但李老师不发言」。
 - **讲题多轮输入必须按 session 隔离**：服务端 `LiveLectureSession.handle_event`
   对 `audio_chunk` / `ink_snapshot` / `pause_detected` / `request_hint` 必须校验
   客户端 `sessionId == self.session_id`，旧 session 的迟到事件直接丢弃。每次
@@ -925,6 +929,48 @@ git push origin main
   `LiveLectureSession`，只补传 PCM 不够；`session_start` 必须带
   `completedRoundIndex / history / roundBoardSnapshots`，后端仅在空 session
   恢复这些上下文。否则同题多轮重连后同伴会忘掉上一轮追问。
+
+### 第十二轮第四轮 · 同伴看不出哪些是本轮新增白板（Qwen-VL multimodal）
+
+- **OCR LaTeX diff 永远做不出"本轮新增"**：第二轮学生不擦白板续写时，
+  整板 Qwen-VL OCR 返回的是 **第一轮 + 第二轮的混合 LaTeX 字符串**。
+  即使把上一轮的 OCR LaTeX 摘要也塞进 prompt 让 DeepSeek 文本同伴模型做
+  diff，它也分不清「物理上是同一笔但 OCR 重排了」vs「真的写了第二遍」——
+  实测同伴会问「为什么写了两个答案」「这两个答案哪个是对的」这种致命问题，
+  学生体感比"没追问"还糟。**结论**：纯文本 LLM + 整板 OCR 这条路根本走不通。
+- **同伴评估已切到 Qwen-VL multimodal**：`peer_assessment_agent._assess_one_peer`
+  默认走 Qwen-VL（`Config.QWEN_VL_MODEL`，默认 `qwen-vl-max-latest`），把
+  **每轮归档的整板 PNG 按轮次标签 + 本轮整板 PNG** 作为 multimodal user
+  content 一起发；DashScope 兼容 OpenAI SDK，复用现有 `ALIYUN_API_KEY` /
+  `ALIYUN_BASE_URL`，**不需要新依赖**。`ALIYUN_API_KEY` 缺失或 vision 调用
+  失败时，自动 fallback 到原 DeepSeek 纯文本路径（不会让讲题闭环挂掉）。
+- **每张图前必须配 text 标签**：messages 里 image_url 项之前要先放一段
+  `【第 N 轮 · 历史 / 本轮 整板照片】` 的 text 段，让 VL 模型在 vision
+  context 里也明确分辨轮次。直接连发多张图模型分不清谁是谁。
+- **图片数量上限 4 张**：Qwen-VL-Max 单次官方上限较高，但同伴评估并行 ×3,
+  每张图过大会让单次延迟从 ~2s 涨到 ~10s。`_VISION_MAX_IMAGES=4`：保留
+  最近 3 轮历史 + 本轮整板，更早的轮次直接丢；`_VISION_MAX_IMAGE_B64_LEN=
+  6M`：单张 PNG base64 超过 6MB 直接跳过。
+- **prompt 必须明确「最后一张图是本轮整板」**：System prompt + user prompt
+  都要写「最后一张图物理上仍包含上一轮所有未擦笔迹」「请优先用图片对比
+  上一轮整板 vs 本轮整板找出真正新增的笔迹」「禁止把上一轮就写过的内容
+  当作本轮新增的第二个答案追问」。仅靠图片标签 + 默认 prompt 模型会偶发
+  误判「学生写了两个答案」（依旧有图，但没明确"做轮次对比"的指令）。
+- **OCR 文字摘要保留为消歧补充，不删**：板上字迹潦草时 VL 模型也会读错；
+  把 OCR LaTeX/PlainText 作为「辅助文字摘要，仅供符号消歧、不要用文字
+  diff 判断新增」写在 prompt 里，比完全砍掉 OCR 文字段效果更稳。
+- **历史轮归档要透传 `board_image_base64`**：`_RoundBoardSnapshot.to_prompt_dict`
+  必须把 image base64 输出，`_sanitize_round_board_snapshots` 也要透传，
+  否则 prior_boards 在 service 层被清洗后图片就丢了。早期版本 `to_prompt_dict`
+  只输出 LaTeX/PlainText/strokeCount，导致即使前端把 image 发上来了，
+  prompt 里也用不到。
+- **`/lecture/submit` 路径同步加 `boardImageBase64` 字段**：`LectureSubmitRequest`
+  新增可选字段（默认空）；前端 `LectureSubmitRequest.boardImageBase64` 与
+  `enrichWithOcr` 保留 boardImage，提交时一并上送。fallback 路径也能用图。
+- **不要在 enrichWithOcr 失败分支直接 `return request`**：OCR 文字没识别
+  出来时旧代码会直接返回原 request，会**丢掉 boardImageBase64**——而图片
+  恰恰是同伴最需要的视觉证据。失败分支也要重组 request，保留 image 字段
+  + history / standardAnswer / roundBoardSnapshots。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

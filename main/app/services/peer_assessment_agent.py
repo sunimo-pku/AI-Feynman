@@ -2,6 +2,11 @@
 
 P1：学生每提交一轮讲解，三人并行评估「听懂 / 没听懂」及理由。
 全员听懂时由 `teacher_agent.generate_teacher_summary` 收束（在路由层触发）。
+
+第十二轮第四轮（Bug Fix · 多轮白板辨识）：同伴评估已切到 Qwen-VL multimodal，
+让三个同伴**直接看到每一轮的整板照片**（按轮次标注），从图片层面对比上一轮 vs
+本轮新增的笔迹。原因见 AGENTS.md「踩坑记录 · 同伴看不出哪些是本轮新增白板」。
+原 DeepSeek-V4-Flash 纯文本路径作为 fallback 保留（ALIYUN_API_KEY 缺失时）。
 """
 
 from __future__ import annotations
@@ -12,6 +17,8 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+
+from openai import OpenAI
 
 from app.config import Config
 from app.services.kimi import deepseek_api_key_configured, deepseek_client, deepseek_thinking_disabled_extra_body
@@ -44,7 +51,29 @@ _ASSESSMENT_MODEL = Config.DEEPSEEK_MODEL
 _ASSESSMENT_TEMPERATURE = 0.45
 _ASSESSMENT_EXTRA_BODY: dict[str, Any] = {}  # 见 deepseek_thinking_disabled_extra_body()
 _LLM_TIMEOUT_SECONDS = 5.0
+# 同伴 Qwen-VL multimodal 路径单次需要读多张白板照片，比纯文本慢；放宽一点。
+_VISION_TIMEOUT_SECONDS = 12.0
 _MAX_REASON_LEN = 220
+# multimodal 路径单次最多附几张白板图（含本轮整板）。Qwen-VL-Max 单次官方
+# 上限较高，但为了延迟可控限制为最多 4 张（=最近 3 轮历史 + 当前轮）。
+_VISION_MAX_IMAGES = 4
+# 客户端送上来的 PNG 偶尔太大，过 6MB 直接跳过，避免一条 LLM 请求被 base64
+# 撑爆。OCR/同伴评估失败也要让讲题闭环继续。
+_VISION_MAX_IMAGE_B64_LEN = 6_000_000
+
+
+def _vision_client() -> OpenAI | None:
+    """构造 Qwen-VL OpenAI-compatible client。
+
+    DashScope 既承载 DeepSeek 又承载 Qwen-VL，共用同一 key / base_url。
+    没配 `ALIYUN_API_KEY` 时直接返回 None，让上层回退到纯文本 DeepSeek。
+    """
+    if not Config.ALIYUN_API_KEY:
+        return None
+    return OpenAI(
+        api_key=Config.ALIYUN_API_KEY,
+        base_url=Config.ALIYUN_BASE_URL,
+    )
 # 与 lecture_agent._HISTORY_KEEP_LAST 对齐（约 10 轮完整闭环）。
 # 不再在 peer 路径做更紧的二次裁切——同伴能看到的跨轮记忆与全局一致，
 # 包括前几轮学生 ASR 全文、三人判断与老师收束。如果未来 prompt 长度
@@ -184,8 +213,15 @@ def assess_one_peer(
     history: list[dict[str, Any]],
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
+    current_board_image_base64: str = "",
 ) -> dict[str, Any]:
-    """单次 LLM 评估一名同伴（供 live session 并行 + 增量推送）。"""
+    """单次 LLM 评估一名同伴（供 live session 并行 + 增量推送）。
+
+    `current_board_image_base64`：本轮（学生**正在评估的这一轮**）的整板 PNG。
+    `round_board_snapshots[i].board_image_base64`：前几轮归档的整板 PNG。
+    两者都有时走 Qwen-VL multimodal，让同伴**用图片**而不是 OCR LaTeX
+    判断「本轮真正新增的笔迹」。
+    """
     return _assess_one_peer(
         role=role,
         section_id=section_id,
@@ -198,7 +234,86 @@ def assess_one_peer(
         history=history,
         standard_answer=standard_answer,
         round_board_snapshots=round_board_snapshots,
+        current_board_image_base64=current_board_image_base64,
     )
+
+
+def _valid_image_b64(value: str | None) -> bool:
+    if not value:
+        return False
+    if len(value) > _VISION_MAX_IMAGE_B64_LEN:
+        return False
+    return True
+
+
+def _collect_board_images(
+    prior_boards: list[dict[str, Any]],
+    current_board_image_base64: str,
+    *,
+    current_round: int,
+) -> list[dict[str, Any]]:
+    """收集本次同伴评估要带的所有整板照片，按轮次从早到晚排序。
+
+    每条返回结构：``{"round": int, "image_base64": str, "is_current": bool}``。
+    超出 `_VISION_MAX_IMAGES` 时丢掉**最早**的几轮，留下最近几轮 + 本轮整板。
+    """
+    out: list[dict[str, Any]] = []
+    for item in prior_boards:
+        b64 = str(item.get("board_image_base64") or "").strip()
+        if not _valid_image_b64(b64):
+            continue
+        round_idx = int(item.get("round_index") or 0)
+        if round_idx <= 0 or round_idx >= current_round:
+            continue
+        out.append({
+            "round": round_idx,
+            "image_base64": b64,
+            "is_current": False,
+        })
+    if _valid_image_b64(current_board_image_base64):
+        out.append({
+            "round": max(1, current_round),
+            "image_base64": current_board_image_base64.strip(),
+            "is_current": True,
+        })
+    out.sort(key=lambda x: (x["round"], 1 if x["is_current"] else 0))
+    if len(out) > _VISION_MAX_IMAGES:
+        # 永远保留最后一张（本轮），其余只保留最近 N-1 轮
+        head = out[:-1][-(_VISION_MAX_IMAGES - 1):]
+        out = head + [out[-1]]
+    return out
+
+
+def _build_vision_user_content(
+    *,
+    text_prompt: str,
+    board_images: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """把 text + 多张白板照片拼成 OpenAI multimodal user content。
+
+    每张图片前会先放一个 text 段，标明轮次和是否「本轮整板」，让 VL 模型
+    在 vision context 里也能明确分辨「上一轮 vs 本轮」。
+    """
+    content: list[dict[str, Any]] = []
+    for item in board_images:
+        round_idx = item["round"]
+        is_current = item["is_current"]
+        label = (
+            f"【第 {round_idx} 轮 · 本轮整板照片（可能仍包含上一轮未擦笔迹）】"
+            if is_current
+            else f"【第 {round_idx} 轮 · 历史整板照片（已归档）】"
+        )
+        content.append({"type": "text", "text": label})
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{item['image_base64']}",
+                },
+            }
+        )
+    content.append({"type": "text", "text": text_prompt})
+    return content
 
 
 def _assess_one_peer(
@@ -214,6 +329,7 @@ def _assess_one_peer(
     history: list[dict[str, Any]],
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
+    current_board_image_base64: str = "",
 ) -> dict[str, Any]:
     cleaned_history = _sanitize_history(history)
     if len(cleaned_history) > _PEER_HISTORY_KEEP:
@@ -225,6 +341,15 @@ def _assess_one_peer(
         round_board_snapshots,
         current_round=round_index,
     )
+
+    board_images = _collect_board_images(
+        prior_boards,
+        current_board_image_base64,
+        current_round=round_index,
+    )
+    vision_client = _vision_client() if board_images else None
+    use_vision = vision_client is not None and bool(board_images)
+
     context = _build_user_prompt(
         section_id=section_id,
         question_id=question_id,
@@ -238,6 +363,7 @@ def _assess_one_peer(
         standard_answer=std,
         round_board_snapshots=prior_boards,
         assessing_role=role,
+        vision_attached=use_vision,
     )
     user_prompt = (
         f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
@@ -245,11 +371,79 @@ def _assess_one_peer(
         f"{context}\n\n"
         "请只输出一个 JSON 对象。"
     )
+
+    t0 = time.monotonic()
+    if use_vision:
+        assert vision_client is not None  # for mypy
+        user_content = _build_vision_user_content(
+            text_prompt=user_prompt,
+            board_images=board_images,
+        )
+        messages = [
+            {"role": "system", "content": _system_prompt_for_role(role)},
+            {"role": "user", "content": user_content},
+        ]
+        try:
+            resp = vision_client.with_options(max_retries=0).chat.completions.create(
+                model=Config.QWEN_VL_MODEL,
+                messages=messages,
+                temperature=_ASSESSMENT_TEMPERATURE,
+                max_tokens=400,
+                response_format={"type": "json_object"},
+                timeout=_VISION_TIMEOUT_SECONDS,
+            )
+            raw = (resp.choices[0].message.content or "") if resp.choices else ""
+        except Exception as e:  # noqa: BLE001
+            logger.exception(
+                "[peer-assessment] %s Qwen-VL failed: %s (will fallback to text)",
+                role,
+                e,
+            )
+            raw = ""
+        if raw:
+            parsed = _parse_assessment(
+                raw,
+                role=role,
+                allowed_step_ids=allowed_step_ids,
+                student_speech_text=student_speech_text,
+                steps=steps,
+            )
+            logger.info(
+                "[peer-assessment] %s vision ms=%.0f images=%d understood=%s kind=%s",
+                role,
+                (time.monotonic() - t0) * 1000,
+                len(board_images),
+                parsed.get("understood"),
+                parsed.get("question_kind"),
+            )
+            return parsed
+        # vision 失败 → 重新生成不带 vision_attached 提示的纯文本 context
+        context = _build_user_prompt(
+            section_id=section_id,
+            question_id=question_id,
+            question_prompt=question_prompt,
+            student_speech_text=student_speech_text,
+            steps=steps,
+            allowed_step_ids=allowed_step_ids,
+            round_index=round_index,
+            history=cleaned_history,
+            purpose="peer_assessment",
+            standard_answer=std,
+            round_board_snapshots=prior_boards,
+            assessing_role=role,
+            vision_attached=False,
+        )
+        user_prompt = (
+            f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
+            f"{PEER_ASSESSMENT_USER_SUFFIX}\n\n"
+            f"{context}\n\n"
+            "请只输出一个 JSON 对象。"
+        )
+
     messages = [
         {"role": "system", "content": _system_prompt_for_role(role)},
         {"role": "user", "content": user_prompt},
     ]
-    t0 = time.monotonic()
     try:
         resp = deepseek_client.with_options(max_retries=0).chat.completions.create(
             model=_ASSESSMENT_MODEL,
@@ -273,7 +467,7 @@ def _assess_one_peer(
         steps=steps,
     )
     logger.info(
-        "[peer-assessment] %s ms=%.0f understood=%s kind=%s",
+        "[peer-assessment] %s text ms=%.0f understood=%s kind=%s",
         role,
         (time.monotonic() - t0) * 1000,
         parsed.get("understood"),
@@ -427,6 +621,7 @@ def generate_peer_assessments(
     history: list[dict[str, Any]] | None = None,
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
+    current_board_image_base64: str = "",
 ) -> dict[str, Any]:
     """并行评估三名同伴，返回 assessments + all_understood。"""
 
@@ -459,6 +654,7 @@ def generate_peer_assessments(
         "history": cleaned_history,
         "standard_answer": std,
         "round_board_snapshots": prior_boards,
+        "current_board_image_base64": current_board_image_base64,
     }
 
     by_role: dict[str, dict[str, Any]] = {}

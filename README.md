@@ -125,6 +125,7 @@ API 文档：`http://127.0.0.1:8001/docs`
   都会显式报错；`/lecture/submit` 返回 502，实时讲题发送 WebSocket `error` 事件。
   不再用 Mock 追问或老师通用文案伪装成功。
 - 全册 90 节均可提交讲题，并进入同一套多 Agent 追问链路。16.1 / 16.2 / 16.3 目前额外有本地知识库增强；其余章节同样由 LLM 根据题面、学生口述和手写步骤追问。
+- 同伴评估（小明 / 大雄 / 班长）走 **Qwen-VL multimodal**（默认 `qwen-vl-max-latest`），把每轮整板照片连同 OCR 文字一起发给模型，让它**直接看图**对比"上一轮已写"与"本轮新增"，避免不擦白板续写时被误判为「写了两个答案」。`ALIYUN_API_KEY` 缺失或 Qwen-VL 调用失败时自动回退 DeepSeek 纯文本。李老师收束 / 讲题剧本仍走 DeepSeek-V4-Flash 文本。
 - 旧客户端（不传 `history` / `roundIndex`）继续兼容：默认 `roundIndex=1`、`history=[]`。
 
 ```bash

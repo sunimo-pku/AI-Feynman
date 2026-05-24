@@ -76,7 +76,20 @@ class LectureService {
     );
     if (board == null ||
         (board.latex.trim().isEmpty && board.plainText.trim().isEmpty)) {
-      return request;
+      // OCR 没出文字也仍保留 boardImageBase64：同伴 Qwen-VL 评估可以直接看图，
+      // 不需要等 OCR 文字。但要保留原 steps（含笔画结构）+ 历史 / 标准答案。
+      return LectureSubmitRequest(
+        sectionId: request.sectionId,
+        questionId: request.questionId,
+        questionPrompt: request.questionPrompt,
+        standardAnswer: request.standardAnswer,
+        studentSpeechText: request.studentSpeechText,
+        steps: request.steps,
+        roundIndex: request.roundIndex,
+        history: request.history,
+        roundBoardSnapshots: request.roundBoardSnapshots,
+        boardImageBase64: boardImageBase64,
+      );
     }
     final bb =
         request.steps.isNotEmpty
@@ -86,6 +99,7 @@ class LectureService {
       sectionId: request.sectionId,
       questionId: request.questionId,
       questionPrompt: request.questionPrompt,
+      standardAnswer: request.standardAnswer,
       studentSpeechText: request.studentSpeechText,
       steps: [
         LectureStepPayload(
@@ -98,6 +112,8 @@ class LectureService {
       ],
       roundIndex: request.roundIndex,
       history: request.history,
+      roundBoardSnapshots: request.roundBoardSnapshots,
+      boardImageBase64: boardImageBase64,
     );
   }
 

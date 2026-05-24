@@ -316,6 +316,7 @@ class LectureSubmitRequest {
     this.roundIndex = 1,
     this.history = const [],
     this.roundBoardSnapshots = const [],
+    this.boardImageBase64 = '',
   });
 
   final String sectionId;
@@ -334,6 +335,11 @@ class LectureSubmitRequest {
   /// 已完成各轮的白板 OCR 摘要（不含当前正在提交的轮次）。
   final List<RoundBoardSnapshot> roundBoardSnapshots;
 
+  /// 本轮整板 PNG（base64）。第十二轮第四轮后同伴评估走 Qwen-VL multimodal，
+  /// 把当前轮整板图也传给后端可以让同伴**用图片直接对比**上一轮整板，避免
+  /// 「上一轮没擦的内容」被当成「本轮新增的第二个答案」。空字符串时退回纯文本。
+  final String boardImageBase64;
+
   Map<String, dynamic> toJson() => {
         'sectionId': sectionId,
         'questionId': questionId,
@@ -346,6 +352,7 @@ class LectureSubmitRequest {
         if (roundBoardSnapshots.isNotEmpty)
           'roundBoardSnapshots':
               roundBoardSnapshots.map((s) => s.toJson()).toList(growable: false),
+        if (boardImageBase64.isNotEmpty) 'boardImageBase64': boardImageBase64,
         'steps': steps.map((s) => s.toJson()).toList(growable: false),
       };
 }
