@@ -98,16 +98,17 @@ class AuthService extends ChangeNotifier {
       _username = prefs.getString(_usernameKey) ?? '';
       _role = prefs.getString(_roleKey) ?? 'student';
       if (_token.isNotEmpty) {
-        if (_isTokenExpired(_token)) {
+        if (!_isUsablePersistedToken(_token) ||
+            !await _verifyPersistedSession()) {
           await _clearPersistedSession(prefs);
           _token = '';
           _username = '';
           _role = 'student';
         }
-        final jwtRole = _sessionRoleFromToken(_token);
-        if (jwtRole == 'parent' || jwtRole == 'student') {
-          _role = jwtRole!;
-        }
+      } else {
+        await _clearPersistedSession(prefs);
+        _username = '';
+        _role = 'student';
       }
     } catch (e, st) {
       developer.log(
@@ -137,6 +138,68 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  int? _expSecondsFromPayload(Map<String, dynamic>? payload) {
+    final exp = payload?['exp'];
+    if (exp is num) return exp.toInt();
+    if (exp is String) return int.tryParse(exp);
+    return null;
+  }
+
+  bool _isUsablePersistedToken(String token) {
+    final payload = _payloadFromToken(token);
+    if (payload == null) return false;
+    final sub = (payload['sub'] as String?)?.trim() ?? '';
+    final role = (payload['role'] as String?)?.trim();
+    final expSeconds = _expSecondsFromPayload(payload);
+    if (sub.isEmpty || (role != 'parent' && role != 'student')) return false;
+    if (expSeconds == null) return false;
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return expSeconds > nowSeconds;
+  }
+
+  Future<bool> _verifyPersistedSession() async {
+    try {
+      final resp = await _client
+          .get(ApiConfig.uri('/auth/me'), headers: authHeaders())
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode < 200 || resp.statusCode >= 300) return false;
+      final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+      if (decoded is! Map<String, dynamic>) return false;
+      final username = (decoded['username'] as String?)?.trim() ?? '';
+      final role = (decoded['role'] as String?)?.trim();
+      if (username.isEmpty || (role != 'student' && role != 'parent')) {
+        return false;
+      }
+      _username = username;
+      _role = role!;
+      return true;
+    } on TimeoutException catch (e, st) {
+      developer.log(
+        'AuthService persisted token verification timed out',
+        name: 'ai_feynman.auth',
+        error: e,
+        stackTrace: st,
+      );
+      return false;
+    } on SocketException catch (e, st) {
+      developer.log(
+        'AuthService persisted token verification failed to connect',
+        name: 'ai_feynman.auth',
+        error: e,
+        stackTrace: st,
+      );
+      return false;
+    } catch (e, st) {
+      developer.log(
+        'AuthService persisted token verification failed',
+        name: 'ai_feynman.auth',
+        error: e,
+        stackTrace: st,
+      );
+      return false;
+    }
+  }
+
   Map<String, dynamic>? _payloadFromToken(String token) {
     if (token.isEmpty) return null;
     try {
@@ -151,20 +214,6 @@ class AuthService extends ChangeNotifier {
       /* 解析失败时走 prefs / loginAs 兜底 */
     }
     return null;
-  }
-
-  bool _isTokenExpired(String token) {
-    final payload = _payloadFromToken(token);
-    final exp = payload?['exp'];
-    int? seconds;
-    if (exp is num) {
-      seconds = exp.toInt();
-    } else if (exp is String) {
-      seconds = int.tryParse(exp);
-    }
-    if (seconds == null) return false;
-    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    return seconds <= nowSeconds;
   }
 
   String? _sessionRoleFromToken(String token) {

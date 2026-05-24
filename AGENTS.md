@@ -731,6 +731,11 @@ git push origin main
   `ai_feynman.section_progress.v1.<namespace>` 与
   `ai_feynman.lecture_reviews.v1.<namespace>`；**App 已禁止游客**，未登录不能进首页；
   logout 后需重新登录，本地数据仍保留在该用户 namespace 下。
+- **本地 token 非空不等于已登录**：`AuthService.load()` 必须校验 JWT payload
+  至少含 `sub / role / exp` 且未过期，并用 `/auth/me` 做服务端验真；
+  prefs 里残留的乱 token、无 `exp` 的旧 token、后端已不接受的 token 一律清掉。
+  登出或 token 被清时，根 `Navigator` 要
+  `popUntil(route.isFirst)`，否则二级页面可能盖在登录页上形成“游客态”。
 - **回放时间轴不要等视频编码**：Round 11 验收底线是「音频片段 + 笔迹 timeline +
   气泡 timeline」可播放；MP4 合成失败时必须保留过程回放入口。
 - **排行榜周结算要幂等**：`LeaderboardSnapshot` 以

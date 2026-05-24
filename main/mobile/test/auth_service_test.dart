@@ -18,6 +18,13 @@ void main() {
         '${encodePart({'sub': 'student-a', 'role': role, 'exp': expSeconds})}.sig';
   }
 
+  String jwtWithoutExp({String role = 'student'}) {
+    String encodePart(Map<String, dynamic> value) =>
+        base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+    return '${encodePart({'alg': 'HS256', 'typ': 'JWT'})}.'
+        '${encodePart({'sub': 'student-a', 'role': role})}.sig';
+  }
+
   group('AuthService persistence', () {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
@@ -60,6 +67,34 @@ void main() {
       expect(prefs.getString('ai_feynman.auth.token.v1'), isNull);
       expect(prefs.getString('ai_feynman.auth.username.v1'), isNull);
       expect(prefs.getString('ai_feynman.auth.role.v1'), isNull);
+    });
+
+    test('load clears malformed persisted token', () async {
+      final prefs = AuthService.instance.testPrefsOverride!;
+      await prefs.setString('ai_feynman.auth.token.v1', 'not-a-jwt');
+      await prefs.setString('ai_feynman.auth.username.v1', 'student-a');
+      await prefs.setString('ai_feynman.auth.role.v1', 'student');
+      AuthService.instance.resetCacheOnlyForTesting();
+
+      await AuthService.instance.load();
+
+      expect(AuthService.instance.isLoggedIn, false);
+      expect(AuthService.instance.currentUsername, '');
+      expect(prefs.getString('ai_feynman.auth.token.v1'), isNull);
+    });
+
+    test('load clears persisted token without expiry', () async {
+      final prefs = AuthService.instance.testPrefsOverride!;
+      await prefs.setString('ai_feynman.auth.token.v1', jwtWithoutExp());
+      await prefs.setString('ai_feynman.auth.username.v1', 'student-a');
+      await prefs.setString('ai_feynman.auth.role.v1', 'student');
+      AuthService.instance.resetCacheOnlyForTesting();
+
+      await AuthService.instance.load();
+
+      expect(AuthService.instance.isLoggedIn, false);
+      expect(AuthService.instance.currentUsername, '');
+      expect(prefs.getString('ai_feynman.auth.token.v1'), isNull);
     });
 
     test(

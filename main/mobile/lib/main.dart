@@ -13,12 +13,43 @@ void main() {
   runApp(const AiFeynmanApp());
 }
 
-class AiFeynmanApp extends StatelessWidget {
+class AiFeynmanApp extends StatefulWidget {
   const AiFeynmanApp({super.key});
+
+  @override
+  State<AiFeynmanApp> createState() => _AiFeynmanAppState();
+}
+
+class _AiFeynmanAppState extends State<AiFeynmanApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  bool _routeResetScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AuthService.instance.addListener(_handleAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    AuthService.instance.removeListener(_handleAuthChanged);
+    super.dispose();
+  }
+
+  void _handleAuthChanged() {
+    final auth = AuthService.instance;
+    if (!auth.isLoaded || auth.isLoggedIn || _routeResetScheduled) return;
+    _routeResetScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _routeResetScheduled = false;
+      _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: AppBranding.displayName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
