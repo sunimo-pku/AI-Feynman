@@ -962,7 +962,8 @@ git push origin main
 - **同伴 TTS 只在展开「有话要说」后播放**：`agent_tts_chunk` 与
   `agent_turn_done` 不再自动出声；`PeerReasonPlaybackService` 在
   `peer_assessment_item` / `setQueue` 时后台预请求 `/tts` 缓存 mp3，
-  **预合成完成前不展示「有话要说」chip**，展示后再点开即播；`playPeer`
+  **预合成完成前不展示「有话要说」chip**；等待过程合并进底部
+  「同伴正在想怎么追问…」，谁合成好谁先出现 chip；`playPeer`
   只播当前点击的一位，禁止连带播队列里后面的人。
 - **同学讲法发布要生成 MP4，而不是只暴露过程回放**：学生/同学广场心智是
   “点开看视频”。发布接口 `/replays/{sessionId}/publish` 会用

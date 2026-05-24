@@ -2703,6 +2703,33 @@ class _LecturePageState extends State<LecturePage> {
       (_liveStatus == _LiveStatus.thinking && !_hintLoading) ||
       (_peerAssessments.isNotEmpty && _peerAssessments.length < 3);
 
+  /// 仍有同伴「有话要说」文案但 TTS 未预合成完成（chip 尚未出现）。
+  bool get _isPeerSpeakPrefetchPending {
+    if (_status != _LectureStatus.awaiting) return false;
+    for (final role in const [
+      AgentRole.xiaoming,
+      AgentRole.daxiong,
+      AgentRole.monitor,
+    ]) {
+      final assessment = _assessmentFor(role);
+      if (assessment == null ||
+          assessment.understood ||
+          assessment.reason.trim().isEmpty) {
+        continue;
+      }
+      if (!_reasonPlayback.isSpeakChipReady(
+        role: role,
+        text: assessment.reason,
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool get _showPeerFollowUpWaitBanner =>
+      _liveStatus == _LiveStatus.thinking || _isPeerSpeakPrefetchPending;
+
   AgentTurn? _latestTurnFor(AgentRole role) {
     for (var i = _turns.length - 1; i >= 0; i--) {
       if (_turns[i].role == role && _turns[i].text.trim().isNotEmpty) {
@@ -2776,25 +2803,13 @@ class _LecturePageState extends State<LecturePage> {
   void _onPeerAvatarTap(AgentRole role) {
     final msg = _peerInlineMessage(role);
     if (msg == null) {
+      if (_showPeerFollowUpWaitBanner) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${_defaultDisplayName(role)}还没有发言')),
       );
       return;
     }
-    if (!msg.showSpeakChip) {
-      final pending = _reasonPlayback.isPrefetching(
-        role: role,
-        text: msg.text,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            pending ? '语音正在准备，请稍候…' : '${_defaultDisplayName(role)}的语音暂时不可用',
-          ),
-        ),
-      );
-      return;
-    }
+    if (!msg.showSpeakChip) return;
     final collapsing = _expandedPeerBubble == role;
     setState(() {
       _expandedPeerBubble = collapsing ? null : role;
@@ -3076,7 +3091,7 @@ class _LecturePageState extends State<LecturePage> {
               ),
             ),
           if (_status == _LectureStatus.submitting ||
-              _liveStatus == _LiveStatus.thinking)
+              _showPeerFollowUpWaitBanner)
             Positioned(
               left: 0,
               right: 72,
@@ -3101,7 +3116,7 @@ class _LecturePageState extends State<LecturePage> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        _liveStatus == _LiveStatus.thinking
+                        _showPeerFollowUpWaitBanner
                             ? '同伴正在想怎么追问…'
                             : '正在让同学听讲…',
                         style: Theme.of(context).textTheme.bodySmall,
