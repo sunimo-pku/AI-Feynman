@@ -51,6 +51,16 @@ class SectionKnowledgePage extends StatelessWidget {
                     color: AppPalette.textSecondary,
                   ),
                 ),
+                if (kps.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const StudyInlineBanner(
+                    tone: StudyPanelTone.accent,
+                    icon: Icons.auto_graph_outlined,
+                    message:
+                        '会按每个知识点的掌握星级推送题目：星级低从基础题开始，'
+                        '练上来后会自动推荐巩固题、挑战题。右侧可查看当前星级。',
+                  ),
+                ],
               ],
             ),
           ),
