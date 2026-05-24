@@ -1044,6 +1044,20 @@ git push origin main
   ② 有图时复制 request 并写入 boardImageBase64，其它字段不变；③ <200ms 完成
   不发任何网络请求。锁死「OCR 已 noop」的契约，避免未来误改回去。
 
+### 第十二轮第六轮 · 小节讲题档案 vs 全册规划画像
+
+- **两套画像必须分离**：`learning_profile.build_learning_profile` 只做全册
+  简略规划（weak/strengths 各 ≤2、`primaryNextAction` 给今日 Tab / 家长板）；
+  `section_lecture_profile.build_section_lecture_profile` 读本节 Review 错因 /
+  同伴追问 / 未完成 session，生成详细 `promptContext` 仅供追问注入。
+- **追问档案不得替代本轮证据**：Prompt 里必须写死「`understood` 仍只看本轮
+  白板/语音」；不能把历史弱项当成「本轮一定错」或放水依据。
+- **星级走 `session_start` 即可**：`knowledgePointId` + `knowledgePointStars`
+  由 Flutter 从 `KnowledgePointProgressRepository` 读取上送；未登录时后端
+  只拼星级一行，不读 DB。
+- **登录用户档案在 `session_start` 时刷新**：`LiveLectureSession._resolve_section_profile_context`
+  每次新开录音段都会重建；换题 / 换节会随 event 更新 KP 字段。
+
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 
 - **`User.role` 与 `parent_password_hash`**：学生 `role=student` 仅账号密码；

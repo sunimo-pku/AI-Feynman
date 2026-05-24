@@ -349,6 +349,7 @@ def _build_user_prompt(
     round_board_snapshots: list[dict[str, Any]] | None = None,
     assessing_role: str | None = None,
     vision_attached: bool = False,
+    section_profile_context: str = "",
 ) -> str:
     """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。
 
@@ -367,6 +368,10 @@ def _build_user_prompt(
     lines.append(f"【当前讲题轮次】{round_index}")
     lines.append(f"【题目 ID】{question_id}")
     lines.append(f"【题面】{question_prompt or '（题面未提供）'}")
+    profile_ctx = (section_profile_context or "").strip()
+    if profile_ctx and purpose in ("peer_assessment", "teacher", "teacher_summary"):
+        lines.append("")
+        lines.append(profile_ctx)
     std = (standard_answer or "").strip()
     if std and purpose in ("peer_assessment", "teacher_summary"):
         lines.append("")

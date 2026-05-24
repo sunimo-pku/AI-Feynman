@@ -324,6 +324,8 @@ class LiveClientEvent {
     List<Map<String, dynamic>> history = const <Map<String, dynamic>>[],
     List<Map<String, dynamic>> roundBoardSnapshots =
         const <Map<String, dynamic>>[],
+    String knowledgePointId = '',
+    int knowledgePointStars = -1,
   }) {
     return {
       'type': LiveClientEventType.sessionStart.wire,
@@ -337,6 +339,9 @@ class LiveClientEvent {
       if (history.isNotEmpty) 'history': history,
       if (roundBoardSnapshots.isNotEmpty)
         'roundBoardSnapshots': roundBoardSnapshots,
+      if (knowledgePointId.trim().isNotEmpty)
+        'knowledgePointId': knowledgePointId.trim(),
+      if (knowledgePointStars >= 0) 'knowledgePointStars': knowledgePointStars,
     };
   }
 

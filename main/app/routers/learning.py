@@ -35,6 +35,10 @@ from app.db import (
 )
 from app.middleware.auth import require_student_user
 from app.services.learning_profile import LearningProfileOut, build_learning_profile
+from app.services.section_lecture_profile import (
+    SectionLectureProfileOut,
+    build_section_lecture_profile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -279,6 +283,29 @@ async def learning_profile_insights(
 ) -> LearningProfileOut:
     profile = ensure_student_profile(db, user)
     return build_learning_profile(db, profile)
+
+
+@router.get(
+    "/section-profile",
+    response_model=SectionLectureProfileOut,
+    response_model_by_alias=True,
+    summary="当前小节详细讲题档案（过程源画像，供追问背景）",
+)
+async def section_lecture_profile(
+    section_id: str = Query(..., alias="sectionId", min_length=1, max_length=64),
+    knowledge_point_id: str = Query("", alias="knowledgePointId", max_length=128),
+    knowledge_point_stars: int = Query(-1, alias="knowledgePointStars", ge=-1, le=5),
+    user: User = Depends(require_student_user),
+    db: Session = Depends(get_db),
+) -> SectionLectureProfileOut:
+    profile = ensure_student_profile(db, user)
+    return build_section_lecture_profile(
+        db,
+        profile,
+        section_id,
+        knowledge_point_id=knowledge_point_id,
+        knowledge_point_stars=knowledge_point_stars,
+    )
 
 
 @router.post(

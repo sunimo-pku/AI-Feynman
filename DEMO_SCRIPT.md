@@ -373,3 +373,12 @@
     大雄自动回退到 Qwen-VL 仍走多模态；把 `ALIYUN_API_KEY` 也删掉，整条链
     才会回退 DeepSeek 纯文本兜底。
 - **预估耗时**：90 秒
+
+## 29. 小节讲题档案 · 追问注入
+- **一句话描述**：全册规划画像（简略）与小节讲题档案（详细）拆分；追问链路在 `session_start` 携带知识点星级，登录用户把本节错因 / 同伴追问历史注入同伴与李老师 Prompt，辅助选追问角度但不影响 `understood` 判定。
+- **演示要点**：
+  - 同一小节完成 1～2 轮讲题并同步后，再开实时讲题；同伴追问可更贴近历史错因（如「上次忘记写 x≥0」）。
+  - DevTool 或后端日志可见 `session_start` 带 `knowledgePointId` / `knowledgePointStars`。
+  - `GET /learning/section-profile?sectionId=...` 返回 `promptContext` 与 `recentCautions`。
+  - 匿名 / 未登录仍可用，仅拼「当前知识点 · N 星」一行背景。
+- **预估耗时**：45 秒

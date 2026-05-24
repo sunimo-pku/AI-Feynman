@@ -88,6 +88,8 @@ class LiveLectureService {
       const <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _lastRoundBoardPayload =
       const <Map<String, dynamic>>[];
+  String _lastKnowledgePointId = '';
+  int _lastKnowledgePointStars = -1;
 
   /// 第十轮：TTS 淡出相关。
   ///
@@ -147,6 +149,8 @@ class LiveLectureService {
     List<Map<String, dynamic>> history = const <Map<String, dynamic>>[],
     List<Map<String, dynamic>> roundBoardSnapshots =
         const <Map<String, dynamic>>[],
+    String knowledgePointId = '',
+    int knowledgePointStars = -1,
     bool isAutoRetry = false,
   }) async {
     if (_disposed) return false;
@@ -172,6 +176,8 @@ class LiveLectureService {
     _lastRoundBoardPayload = List<Map<String, dynamic>>.unmodifiable(
       roundBoardSnapshots,
     );
+    _lastKnowledgePointId = knowledgePointId;
+    _lastKnowledgePointStars = knowledgePointStars;
     if (_segmentAudio.isNotEmpty) {
       // 每条新 WS session 的后端 ASR buffer 都是空的；未提交语音必须从头补传。
       // 同一连接内补传完成后 replay cursor 会前移，避免重复发送。
@@ -191,6 +197,8 @@ class LiveLectureService {
           completedRoundIndex: completedRoundIndex,
           history: history,
           roundBoardSnapshots: roundBoardSnapshots,
+          knowledgePointId: knowledgePointId,
+          knowledgePointStars: knowledgePointStars,
         ),
       );
       return true;
@@ -237,6 +245,8 @@ class LiveLectureService {
           completedRoundIndex: completedRoundIndex,
           history: history,
           roundBoardSnapshots: roundBoardSnapshots,
+          knowledgePointId: knowledgePointId,
+          knowledgePointStars: knowledgePointStars,
         ),
       );
       _startAppPing();
@@ -328,6 +338,8 @@ class LiveLectureService {
         completedRoundIndex: _lastCompletedRoundIndex,
         history: _lastHistoryPayload,
         roundBoardSnapshots: _lastRoundBoardPayload,
+        knowledgePointId: _lastKnowledgePointId,
+        knowledgePointStars: _lastKnowledgePointStars,
         isAutoRetry: true,
       );
     });

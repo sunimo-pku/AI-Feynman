@@ -1285,9 +1285,15 @@ class _LecturePageState extends State<LecturePage> {
   }
 
   int _currentKnowledgePointStars() {
-    final kpId = widget.knowledgePoint?.id ?? _question.knowledgePointId;
-    if (kpId.isEmpty) return 0;
+    final kpId = _currentKnowledgePointId();
+    if (kpId.isEmpty) return -1;
     return KnowledgePointProgressRepository.instance.progressFor(kpId).stars;
+  }
+
+  String _currentKnowledgePointId() {
+    final fromWidget = widget.knowledgePoint?.id ?? '';
+    if (fromWidget.isNotEmpty) return fromWidget;
+    return _question.knowledgePointId;
   }
 
   /// 第八轮：保存本题的回顾记录。
@@ -2041,6 +2047,8 @@ class _LecturePageState extends State<LecturePage> {
         completedRoundIndex: _round,
         history: _liveHistoryPayload(),
         roundBoardSnapshots: _liveRoundBoardPayload(),
+        knowledgePointId: _currentKnowledgePointId(),
+        knowledgePointStars: _currentKnowledgePointStars(),
       );
       if (!mounted) return;
       if (!sessionStarted) {
@@ -2105,6 +2113,8 @@ class _LecturePageState extends State<LecturePage> {
       completedRoundIndex: _round,
       history: _liveHistoryPayload(),
       roundBoardSnapshots: _liveRoundBoardPayload(),
+      knowledgePointId: _currentKnowledgePointId(),
+      knowledgePointStars: _currentKnowledgePointStars(),
     );
     if (!mounted) return;
     if (!connected) {

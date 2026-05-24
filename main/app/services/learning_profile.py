@@ -263,6 +263,11 @@ def _evidence(label: str, detail: str) -> ProfileEvidenceOut:
     return ProfileEvidenceOut(label=label, detail=detail)
 
 
+def _compact_global_insight(item: ProfileInsightOut) -> ProfileInsightOut:
+    """全册展示画像：每条只保留 1 条证据，控制卡片体积。"""
+    return item.model_copy(update={"evidence": item.evidence[:1]})
+
+
 def _insight_to_dict(item: ProfileInsightOut) -> dict[str, Any]:
     return {
         "title": item.title,
@@ -644,10 +649,10 @@ def build_learning_profile(db: Session, profile: StudentProfile) -> LearningProf
         grade=profile.grade or "八年级",
         overview=overview,
         data_points=data_points,
-        weak_knowledge=weak_knowledge,
-        strengths=strengths,
-        learning_traits=traits[:4],
-        next_actions=next_actions[:4],
+        weak_knowledge=[_compact_global_insight(x) for x in weak_knowledge[:2]],
+        strengths=[_compact_global_insight(x) for x in strengths[:2]],
+        learning_traits=[_compact_global_insight(x) for x in traits[:2]],
+        next_actions=next_actions[:3],
     )
     rule_primary = primary_next_action(rule_profile)
     ai_payload = _generate_ai_refinement(

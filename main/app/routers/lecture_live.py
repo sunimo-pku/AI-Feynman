@@ -80,6 +80,7 @@ async def lecture_live(websocket: WebSocket) -> None:
     await websocket.accept()
     user = _extract_user_from_ws(websocket)
     session = LiveLectureSession()
+    session.linked_user = user
     send_lock = asyncio.Lock()
 
     async def send(payload: dict[str, Any]) -> None:

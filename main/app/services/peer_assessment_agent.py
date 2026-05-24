@@ -253,6 +253,7 @@ def assess_one_peer(
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
     current_board_image_base64: str = "",
+    section_profile_context: str = "",
 ) -> dict[str, Any]:
     """单次 LLM 评估一名同伴（供 live session 并行 + 增量推送）。
 
@@ -274,6 +275,7 @@ def assess_one_peer(
         standard_answer=standard_answer,
         round_board_snapshots=round_board_snapshots,
         current_board_image_base64=current_board_image_base64,
+        section_profile_context=section_profile_context,
     )
 
 
@@ -369,6 +371,7 @@ def _assess_one_peer(
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
     current_board_image_base64: str = "",
+    section_profile_context: str = "",
 ) -> dict[str, Any]:
     cleaned_history = _sanitize_history(history)
     if len(cleaned_history) > _PEER_HISTORY_KEEP:
@@ -403,6 +406,7 @@ def _assess_one_peer(
         round_board_snapshots=prior_boards,
         assessing_role=role,
         vision_attached=use_vision,
+        section_profile_context=section_profile_context,
     )
     # 多模态路径要求模型额外输出 `boardSummary` —— 用作下一轮 history 与
     # 家长端落库的文字摘要，替代砍掉的 OCR 文本。
@@ -481,6 +485,7 @@ def _assess_one_peer(
             round_board_snapshots=prior_boards,
             assessing_role=role,
             vision_attached=False,
+            section_profile_context=section_profile_context,
         )
         user_prompt = (
             f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
@@ -671,6 +676,7 @@ def generate_peer_assessments(
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
     current_board_image_base64: str = "",
+    section_profile_context: str = "",
 ) -> dict[str, Any]:
     """并行评估三名同伴，返回 assessments + all_understood。"""
 
@@ -712,6 +718,7 @@ def generate_peer_assessments(
         "standard_answer": std,
         "round_board_snapshots": prior_boards,
         "current_board_image_base64": current_board_image_base64,
+        "section_profile_context": section_profile_context,
     }
 
     by_role: dict[str, dict[str, Any]] = {}

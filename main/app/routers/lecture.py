@@ -44,6 +44,7 @@ from app.db import (
 from app.middleware.auth import get_current_user
 from app.services.lecture_agent import LectureAgentError
 from app.services.peer_assessment_agent import generate_peer_assessments
+from app.services.section_lecture_profile import resolve_section_profile_context
 from app.services.teacher_agent import (
     apply_teacher_completion_gate,
     generate_teacher_hint,
@@ -154,6 +155,8 @@ class LectureSubmitRequest(BaseModel):
         alias="boardImageBase64",
         max_length=2_000_000,
     )
+    knowledge_point_id: str = Field("", alias="knowledgePointId", max_length=128)
+    knowledge_point_stars: int = Field(-1, alias="knowledgePointStars", ge=-1, le=5)
 
     model_config = {
         "populate_by_name": True,
@@ -390,6 +393,15 @@ async def submit_lecture(
         for s in req.round_board_snapshots
     ]
 
+    student_profile = ensure_student_profile(db, user) if user is not None else None
+    section_profile_context = resolve_section_profile_context(
+        db,
+        student=student_profile,
+        section_id=req.section_id,
+        knowledge_point_id=req.knowledge_point_id,
+        knowledge_point_stars=req.knowledge_point_stars,
+    )
+
     try:
         result = generate_peer_assessments(
             section_id=req.section_id,
@@ -402,6 +414,7 @@ async def submit_lecture(
             standard_answer=req.standard_answer,
             round_board_snapshots=round_board_payload,
             current_board_image_base64=req.board_image_base64,
+            section_profile_context=section_profile_context,
         )
         teacher_summary: dict[str, Any] | None = None
         if result.get("all_understood"):
@@ -417,6 +430,7 @@ async def submit_lecture(
                 standard_answer=req.standard_answer,
                 round_board_snapshots=round_board_payload,
                 current_board_image_base64=req.board_image_base64,
+                section_profile_context=section_profile_context,
             )
             result = apply_teacher_completion_gate(result, teacher_summary)
     except LectureAgentError as e:

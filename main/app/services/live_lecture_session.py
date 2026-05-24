@@ -166,6 +166,10 @@ class LiveLectureSession:
     question_id: str = ""
     question_prompt: str = ""
     standard_answer: str = ""
+    knowledge_point_id: str = ""
+    knowledge_point_stars: int = -1
+    section_profile_context: str = ""
+    linked_user: Any = None
 
     # ---- 实时缓冲 ----
     asr_buffer: LiveAsrBuffer = field(default_factory=LiveAsrBuffer)
@@ -397,6 +401,14 @@ class LiveLectureSession:
             question_id=next_question_id,
             client_answer=client_std,
         )
+        self.knowledge_point_id = str(
+            event.get("knowledgePointId") or event.get("knowledge_point_id") or ""
+        ).strip()
+        self.knowledge_point_stars = _coerce_int(
+            event.get("knowledgePointStars", event.get("knowledge_point_stars")),
+            default=-1,
+        )
+        self.section_profile_context = self._resolve_section_profile_context()
         self._started = True
         self.last_status = "needs_explanation"
         self.last_mastery_delta = 0
@@ -442,11 +454,34 @@ class LiveLectureSession:
             "sessionId": self.session_id,
         })
         logger.info(
-            "[live-session] session_start session=%s section=%s question=%s",
+            "[live-session] session_start session=%s section=%s question=%s kp=%s stars=%d",
             self.session_id,
             self.section_id,
             self.question_id,
+            self.knowledge_point_id or "(none)",
+            self.knowledge_point_stars,
         )
+
+    def _resolve_section_profile_context(self) -> str:
+        if not self.section_id:
+            return ""
+        from app.db import SessionLocal, ensure_student_profile
+        from app.services.section_lecture_profile import resolve_section_profile_context
+
+        db = SessionLocal()
+        try:
+            student = None
+            if self.linked_user is not None:
+                student = ensure_student_profile(db, self.linked_user)
+            return resolve_section_profile_context(
+                db,
+                student=student,
+                section_id=self.section_id,
+                knowledge_point_id=self.knowledge_point_id,
+                knowledge_point_stars=self.knowledge_point_stars,
+            )
+        finally:
+            db.close()
 
     async def _on_audio_chunk(
         self,
@@ -860,6 +895,7 @@ class LiveLectureSession:
                     standard_answer=self.standard_answer,
                     round_board_snapshots=prior_boards,
                     current_board_image_base64=current_board_image,
+                    section_profile_context=self.section_profile_context,
                 ),
             )
 
@@ -916,6 +952,7 @@ class LiveLectureSession:
                 round_index=self._assessment_round_index(),
                 history=list(self.history),
                 round_board_snapshots=self._prior_round_board_snapshots_for_prompt(),
+                section_profile_context=self.section_profile_context,
             ),
         )
 
@@ -943,6 +980,7 @@ class LiveLectureSession:
                 standard_answer=self.standard_answer,
                 round_board_snapshots=self._prior_round_board_snapshots_for_prompt(),
                 current_board_image_base64=current_board_image,
+                section_profile_context=self.section_profile_context,
             ),
         )
 
@@ -1289,6 +1327,7 @@ class LiveLectureSession:
                 history=list(self.history),
                 round_board_snapshots=self._prior_round_board_snapshots_for_prompt(),
                 current_board_image_base64=current_board_image,
+                section_profile_context=self.section_profile_context,
             ),
         )
 

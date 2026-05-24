@@ -1189,3 +1189,73 @@ async def test_pause_archives_round_board_snapshot() -> None:
     assert captured_kwargs
     assert captured_kwargs[0].get("round_board_snapshots") == []
 
+
+@pytest.mark.asyncio
+async def test_session_start_passes_section_profile_to_peer_assessment(
+    monkeypatch,
+) -> None:
+    captured: list[dict] = []
+
+    def _capture(*, role: str, **kwargs):  # noqa: ANN003
+        captured.append(dict(kwargs))
+        return _assessment_dict_from_bulk(
+            role,
+            _fake_peer_assessment_not_all_understood(),
+        )
+
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.assess_one_peer",
+        _capture,
+    )
+
+    session = LiveLectureSession()
+    sent: list[dict] = []
+
+    async def send(payload: dict) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {
+            "type": "session_start",
+            "sessionId": "sess-profile",
+            "sectionId": "pep-g8-down-s16-1",
+            "questionId": "q-profile",
+            "questionPrompt": "化简根号十二",
+            "knowledgePointId": "pep-g8-down-s16-1-kp1",
+            "knowledgePointStars": 2,
+        },
+        send=send,
+        recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert session.knowledge_point_id == "pep-g8-down-s16-1-kp1"
+    assert session.knowledge_point_stars == 2
+    assert "本节讲题档案" in session.section_profile_context
+    assert "2 星" in session.section_profile_context
+
+    await session.handle_event(
+        {
+            "type": "ink_snapshot",
+            "steps": [
+                {
+                    "stepId": "step_1",
+                    "strokeCount": 1,
+                    "boundingBox": {"x": 0, "y": 0, "width": 10, "height": 10},
+                }
+            ],
+        },
+        send=send,
+        recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    await session.handle_event(
+        {"type": "pause_detected", "silenceMs": 800},
+        send=send,
+        recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert captured
+    assert "本节讲题档案" in str(captured[0].get("section_profile_context") or "")
+

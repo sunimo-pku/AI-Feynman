@@ -178,6 +178,7 @@ def generate_teacher_hint(
     history: list[dict[str, Any]] | None = None,
     round_board_snapshots: list[dict[str, Any]] | None = None,
     current_board_image_base64: str = "",
+    section_profile_context: str = "",
 ) -> dict[str, Any]:
     """生成一条李老师提示 turn。
 
@@ -213,6 +214,7 @@ def generate_teacher_hint(
         purpose="teacher",
         round_board_snapshots=prior_boards,
         vision_attached=bool(board_images),
+        section_profile_context=section_profile_context,
     )
     user_prompt = (
         "【学生请求】学生刚刚主动点击了「需要提示」。请给出一条脚手架式提示，"
@@ -374,6 +376,7 @@ def generate_teacher_summary(
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
     current_board_image_base64: str = "",
+    section_profile_context: str = "",
 ) -> dict[str, Any]:
     """三名同伴都听懂时，李老师收束小结。"""
 
@@ -410,6 +413,7 @@ def generate_teacher_summary(
         standard_answer=std,
         round_board_snapshots=prior_boards,
         vision_attached=bool(board_images),
+        section_profile_context=section_profile_context,
     )
     peer_ack = _peer_understood_ack(peer_assessments)
 
