@@ -960,8 +960,9 @@ git push origin main
   「讲题结束」await 后再发 `pause_detected`；「需要提示」await 后再发
   `request_hint`。
 - **同伴 TTS 只在展开「有话要说」后播放**：`agent_tts_chunk` 与
-  `agent_turn_done` 不再自动出声；`PeerReasonPlaybackService.playPeer`
-  只播当前点击的一位，禁止连带播队列里后面的人。
+  `agent_turn_done` 不再自动出声；`PeerReasonPlaybackService` 在
+  `peer_assessment_item` / `setQueue` 时后台预请求 `/tts` 缓存 mp3，学生
+  点开时相当于按播放键；`playPeer` 只播当前点击的一位，禁止连带播队列里后面的人。
 - **同学讲法发布要生成 MP4，而不是只暴露过程回放**：学生/同学广场心智是
   “点开看视频”。发布接口 `/replays/{sessionId}/publish` 会用
   `app.services.replay_video.render_replay_mp4` 把白板时间轴、同伴发言和

@@ -9,7 +9,10 @@ import '../config/api_config.dart';
 import '../data/lecture_models.dart';
 import '../utils/tts_text.dart';
 
-/// P2：同伴「有话要说」理由的 TTS —— **仅**在学生点头像展开后播放。
+/// P2：同伴「有话要说」理由的 TTS。
+///
+/// 评估结果到达后后台预合成 mp3；学生点头像展开时相当于按播放键，
+/// 不再在点击瞬间才请求 `/tts`。
 class PeerReasonPlaybackService extends ChangeNotifier {
   PeerReasonPlaybackService({http.Client? client, AudioPlayer? player})
     : _client = client ?? http.Client(),
@@ -25,6 +28,10 @@ class PeerReasonPlaybackService extends ChangeNotifier {
   int _token = 0;
   String? _lastError;
   AgentRole? _playingRoleOverride;
+
+  /// 预合成缓存：`roleWire:spokenText` → mp3 bytes。
+  final Map<String, Uint8List> _audioCache = {};
+  final Set<String> _prefetchInFlight = {};
 
   List<PeerAssessment> get queue => _queue;
   bool get isPlaying => _busy;
@@ -46,6 +53,21 @@ class PeerReasonPlaybackService extends ChangeNotifier {
   bool get canPlayNext =>
       hasQueue && (!_busy || (_index >= 0 && _index < _queue.length - 1));
 
+  String _cacheKey(String roleWire, String text) {
+    final spoken = plainTextForTts(text);
+    return '$roleWire:$spoken';
+  }
+
+  bool hasCachedFor({required AgentRole role, required String text}) {
+    if (text.trim().isEmpty) return false;
+    return _audioCache.containsKey(_cacheKey(agentRoleWire(role), text));
+  }
+
+  bool isPrefetching({required AgentRole role, required String text}) {
+    if (text.trim().isEmpty) return false;
+    return _prefetchInFlight.contains(_cacheKey(agentRoleWire(role), text));
+  }
+
   void setQueue(List<PeerAssessment> assessments) {
     _queue =
         assessments
@@ -55,6 +77,7 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     _playingRoleOverride = null;
     _lastError = null;
     notifyListeners();
+    unawaited(_prefetchQueueItems());
   }
 
   void clearQueue() {
@@ -62,7 +85,50 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     _index = -1;
     _playingRoleOverride = null;
     _lastError = null;
+    _clearPrefetchCache();
     notifyListeners();
+  }
+
+  void _clearPrefetchCache() {
+    _audioCache.clear();
+    _prefetchInFlight.clear();
+  }
+
+  /// 单条同伴评估到达时预合成（流式 peer_assessment_item 路径）。
+  Future<void> prefetchAssessment(PeerAssessment assessment) async {
+    if (assessment.understood || assessment.reason.trim().isEmpty) return;
+    await prefetchText(role: assessment.role, text: assessment.reason);
+  }
+
+  /// 批量预合成当前队列里所有「有话要说」理由。
+  Future<void> _prefetchQueueItems() async {
+    if (_queue.isEmpty || _disposed) return;
+    await Future.wait(_queue.map(prefetchAssessment));
+  }
+
+  /// 预合成任意同伴/老师文案（peerReplies、李老师提示等）。
+  Future<void> prefetchText({
+    required AgentRole role,
+    required String text,
+  }) async {
+    if (_disposed || text.trim().isEmpty) return;
+    final roleWire = agentRoleWire(role);
+    final key = _cacheKey(roleWire, text);
+    if (_audioCache.containsKey(key) || _prefetchInFlight.contains(key)) {
+      return;
+    }
+    _prefetchInFlight.add(key);
+    notifyListeners();
+    try {
+      final bytes = await _fetchAudioBytes(text: text, role: roleWire);
+      if (bytes != null && !_disposed) {
+        _audioCache[key] = bytes;
+        notifyListeners();
+      }
+    } finally {
+      _prefetchInFlight.remove(key);
+      if (!_disposed) notifyListeners();
+    }
   }
 
   /// 从第一位起自动依次播完队列。
@@ -119,14 +185,7 @@ class PeerReasonPlaybackService extends ChangeNotifier {
       return;
     }
 
-    try {
-      await _player.onPlayerComplete.first.timeout(const Duration(minutes: 2));
-    } on TimeoutException {
-      // swallow
-    } catch (_) {
-      // swallow
-    }
-
+    await _awaitPlaybackComplete(myToken);
     if (myToken == _token) {
       _busy = false;
       _playingRoleOverride = null;
@@ -170,14 +229,7 @@ class PeerReasonPlaybackService extends ChangeNotifier {
       return;
     }
 
-    try {
-      await _player.onPlayerComplete.first.timeout(const Duration(minutes: 2));
-    } on TimeoutException {
-      // swallow
-    } catch (_) {
-      // swallow
-    }
-
+    await _awaitPlaybackComplete(myToken);
     if (myToken == _token) {
       _busy = false;
       notifyListeners();
@@ -219,14 +271,23 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     }
   }
 
-  Future<bool> _fetchAndPlay({
+  Future<void> _awaitPlaybackComplete(int token) async {
+    try {
+      await _player.onPlayerComplete.first.timeout(const Duration(minutes: 2));
+    } on TimeoutException {
+      // swallow
+    } catch (_) {
+      // swallow
+    }
+  }
+
+  Future<Uint8List?> _fetchAudioBytes({
     required String text,
     required String role,
-    required int token,
   }) async {
-    if (text.trim().isEmpty) return false;
+    if (text.trim().isEmpty) return null;
     final spoken = plainTextForTts(text);
-    if (spoken.isEmpty) return false;
+    if (spoken.isEmpty) return null;
     try {
       final resp = await _client
           .post(
@@ -235,50 +296,72 @@ class PeerReasonPlaybackService extends ChangeNotifier {
             body: utf8.encode(jsonEncode({'text': spoken, 'role': role})),
           )
           .timeout(const Duration(seconds: 12));
-      if (token != _token) return false;
+      if (_disposed) return null;
       if (resp.statusCode != 200) {
         _lastError = 'TTS 请求失败 (HTTP ${resp.statusCode})';
         notifyListeners();
-        return false;
+        return null;
       }
       final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
       if (decoded is! Map<String, dynamic>) {
         _lastError = 'TTS 返回格式异常';
         notifyListeners();
-        return false;
+        return null;
       }
       if (decoded['error'] != null) {
         _lastError = 'TTS：${decoded['error']}';
         notifyListeners();
-        return false;
+        return null;
       }
       final audioBase64 = decoded['audio_base64'] as String?;
       if (audioBase64 == null || audioBase64.isEmpty) {
         _lastError = 'TTS 返回空音频';
         notifyListeners();
-        return false;
+        return null;
       }
-      final bytes = base64Decode(audioBase64);
-      if (token != _token) return false;
-      try {
-        await _player.stop();
-      } catch (_) {}
-      try {
-        await _player.setVolume(1.0);
-      } catch (_) {}
-      await _player.play(BytesSource(bytes, mimeType: 'audio/mpeg'));
-      return true;
+      return base64Decode(audioBase64);
     } catch (e) {
       _lastError = 'TTS 异常：$e';
       notifyListeners();
-      return false;
+      return null;
     }
+  }
+
+  Future<bool> _playBytes(Uint8List bytes, int token) async {
+    if (token != _token || _disposed) return false;
+    try {
+      await _player.stop();
+    } catch (_) {}
+    try {
+      await _player.setVolume(1.0);
+    } catch (_) {}
+    if (token != _token) return false;
+    await _player.play(BytesSource(bytes, mimeType: 'audio/mpeg'));
+    return true;
+  }
+
+  Future<bool> _fetchAndPlay({
+    required String text,
+    required String role,
+    required int token,
+  }) async {
+    if (text.trim().isEmpty) return false;
+    final key = _cacheKey(role, text);
+    final cached = _audioCache[key];
+    if (cached != null) {
+      return _playBytes(cached, token);
+    }
+    final bytes = await _fetchAudioBytes(text: text, role: role);
+    if (bytes == null || token != _token) return false;
+    _audioCache[key] = bytes;
+    return _playBytes(bytes, token);
   }
 
   @override
   void dispose() {
     _disposed = true;
     unawaited(stop());
+    _clearPrefetchCache();
     _client.close();
     _player.dispose();
     super.dispose();

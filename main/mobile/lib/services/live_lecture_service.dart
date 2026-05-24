@@ -97,7 +97,7 @@ class LiveLectureService {
   int _currentTtsToken = 0;
 
   /// 后端 `agent_tts_chunk` 仅用于 [didStreamTtsForTurn] 标记；V2 不在未展开
-  /// 时自动播放，同伴语音由 [PeerReasonPlaybackService] 在用户点开气泡后触发。
+  /// 时自动播放，同伴语音由 [PeerReasonPlaybackService] 预合成后在用户点开气泡时播放。
   final Set<String> _streamedTtsTurnIds = <String>{};
   StreamSubscription? _ttsCompleteSub;
 

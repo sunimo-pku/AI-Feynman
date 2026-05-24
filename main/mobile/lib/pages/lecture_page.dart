@@ -885,6 +885,12 @@ class _LecturePageState extends State<LecturePage> {
       }
       _status = _LectureStatus.awaiting;
       _reasonPlayback.setQueue(assessments);
+      for (final reply in peerReplies) {
+        if (reply.text.trim().isEmpty) continue;
+        unawaited(
+          _reasonPlayback.prefetchText(role: reply.role, text: reply.text),
+        );
+      }
     }
 
     if (committedStudent != null && committedStudent.role == 'student') {
@@ -2406,12 +2412,16 @@ class _LecturePageState extends State<LecturePage> {
       case LiveServerEventType.peerAssessmentItem:
         _cancelThinkingWatchdog();
         final itemPayload = event.payload as LivePeerAssessmentItemPayload;
+        final incoming = itemPayload.assessment;
         setState(() {
           _peerAssessments = _mergePeerAssessment(
             _peerAssessments,
-            itemPayload.assessment,
+            incoming,
           );
         });
+        if (!incoming.understood && incoming.reason.trim().isNotEmpty) {
+          unawaited(_reasonPlayback.prefetchAssessment(incoming));
+        }
         break;
       case LiveServerEventType.peerAssessments:
         _cancelThinkingWatchdog();
@@ -2767,7 +2777,7 @@ class _LecturePageState extends State<LecturePage> {
     unawaited(_playExpandedRoleAudio(role));
   }
 
-  /// 学生点开「有话要说」/ 头像展开后，才播放该同伴（或李老师）的语音。
+  /// 学生点开「有话要说」/ 头像展开后播放预合成语音（未就绪则回退现场合成）。
   Future<void> _playExpandedRoleAudio(AgentRole role) async {
     await _liveService.clearPendingTts();
     await _liveService.stopTts();
