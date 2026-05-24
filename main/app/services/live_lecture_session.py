@@ -286,6 +286,22 @@ class LiveLectureSession:
             })
             return True
 
+        event_session_id = str(
+            event.get("sessionId") or event.get("session_id") or ""
+        ).strip()
+        if (
+            self.session_id
+            and event_session_id
+            and event_session_id != self.session_id
+        ):
+            logger.warning(
+                "[live-session] ignore stale event type=%s event_session=%s current_session=%s",
+                evt_type,
+                event_session_id,
+                self.session_id,
+            )
+            return True
+
         if evt_type == EVT_AUDIO_CHUNK:
             await self._on_audio_chunk(
                 event,
@@ -361,10 +377,32 @@ class LiveLectureSession:
             self.round_board_snapshots.clear()
             self.transcript_segments.clear()
             self._transcript_round_start = 0
-            self.latest_steps.clear()
-            self.board_latex = ""
-            self.board_plain_text = ""
-            self.pending_board_image_b64 = ""
+        restored_round = _coerce_int(event.get("completedRoundIndex"), default=0)
+        restored_history = _sanitize_restored_history(event.get("history"))
+        restored_boards = _sanitize_restored_board_snapshots(
+            event.get("roundBoardSnapshots") or event.get("round_board_snapshots")
+        )
+        if (
+            restored_round > self.round_index
+            and not self.history
+            and not self.round_board_snapshots
+        ):
+            self.round_index = restored_round
+            self.history.extend(restored_history)
+            self.round_board_snapshots.extend(restored_boards)
+            logger.info(
+                "[live-session] restored context session=%s round=%d history=%d boards=%d",
+                self.session_id,
+                self.round_index,
+                len(self.history),
+                len(self.round_board_snapshots),
+            )
+        # 每段新录音都必须从空的「当前轮白板」开始，再等待客户端发送
+        # fresh ink_snapshot 覆盖。history / round_board_snapshots 才是跨轮上下文。
+        self.latest_steps.clear()
+        self.board_latex = ""
+        self.board_plain_text = ""
+        self.pending_board_image_b64 = ""
         # 每次 session_start（含同题新一段录音）客户端都会把 audio seq 重置为 0。
         # 若不清 ASR 缓冲，倒退 seq 的 chunk 会被静默丢弃，表现为「只录到后半段」。
         self.asr_buffer.reset()
@@ -462,15 +500,16 @@ class LiveLectureSession:
         board_image = str(
             event.get("boardImageBase64") or event.get("board_image_base64") or ""
         ).strip()
-        if board_image:
-            if len(board_image) > _MAX_BOARD_IMAGE_B64_LEN:
+        if board_image and len(board_image) <= _MAX_BOARD_IMAGE_B64_LEN:
+            self.pending_board_image_b64 = board_image
+        else:
+            if board_image:
                 logger.warning(
                     "[live-session] ink_snapshot board image too large session=%s len=%d",
                     self.session_id,
                     len(board_image),
                 )
-            else:
-                self.pending_board_image_b64 = board_image
+            self.pending_board_image_b64 = ""
         # 第十二轮：no_steps_yet 故障线索几乎都是「新 session 没收到 snapshot」。
         # 加一条 info 日志，下次出问题立刻能看到「snapshot 到了哪个 session
         # 几步」，与 pause_detected 的时间戳对齐就能定位。
@@ -542,8 +581,8 @@ class LiveLectureSession:
                 "sessionId": self.session_id,
             })
             return
-        has_speech = any(seg.strip() for seg in self.transcript_segments)
-        if not self.latest_steps and not has_speech:
+        current_speech = self._current_round_speech()
+        if not self.latest_steps and not current_speech:
             await self._safe_send(send, {
                 "type": EVT_WARNING,
                 "sessionId": self.session_id,
@@ -1427,6 +1466,76 @@ class LiveLectureSession:
             "sessionId": self.session_id,
             "message": message,
         })
+
+
+def _coerce_int(value: Any, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _sanitize_restored_history(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip()
+        text = str(item.get("text") or "").strip()
+        if not role or not text:
+            continue
+        out.append({
+            "role": role[:32],
+            "displayName": str(item.get("displayName") or "")[:32],
+            "text": text[:1000],
+            "highlightStepIds": [
+                str(s).strip()[:64]
+                for s in (item.get("highlightStepIds") or [])
+                if str(s).strip()
+            ][:8],
+        })
+    if len(out) > _HISTORY_KEEP_LAST:
+        out = out[-_HISTORY_KEEP_LAST:]
+    return out
+
+
+def _sanitize_restored_board_snapshots(value: Any) -> list[_RoundBoardSnapshot]:
+    if not isinstance(value, list):
+        return []
+    out: list[_RoundBoardSnapshot] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        round_index = _coerce_int(
+            item.get("roundIndex") or item.get("round_index"),
+            default=0,
+        )
+        if round_index <= 0:
+            continue
+        out.append(
+            _RoundBoardSnapshot(
+                round_index=round_index,
+                board_latex=str(
+                    item.get("boardLatex") or item.get("board_latex") or ""
+                )[:4000],
+                board_plain_text=str(
+                    item.get("boardPlainText") or item.get("board_plain_text") or ""
+                )[:4000],
+                stroke_count=max(
+                    0,
+                    _coerce_int(
+                        item.get("strokeCount") or item.get("stroke_count"),
+                        default=0,
+                    ),
+                ),
+            )
+        )
+    out.sort(key=lambda x: x.round_index)
+    if len(out) > _ROUND_BOARD_KEEP_LAST:
+        out = out[-_ROUND_BOARD_KEEP_LAST:]
+    return out
 
 
 def _assessment_to_wire(item: dict[str, Any]) -> dict[str, Any]:

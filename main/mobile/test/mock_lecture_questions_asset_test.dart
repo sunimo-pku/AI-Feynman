@@ -7,28 +7,41 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('question asset covers 102 curriculum sections with 3 questions each', () async {
-    final raw = await rootBundle.loadString(
-      MockLectureRepository.questionBankAssetPath,
-    );
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    final questions = decoded['questions'] as List<dynamic>;
-    final sectionIds = questions
-        .whereType<Map<String, dynamic>>()
-        .map((q) => q['sectionId'] as String? ?? '')
-        .where((id) => id.isNotEmpty)
-        .toSet();
-    expect(sectionIds.length, 102);
-    expect(questions.length, 306);
-
-    for (final sectionId in sectionIds) {
-      final sectionQuestions = questions
+  test(
+    'question asset covers 102 curriculum sections with 3 questions each',
+    () async {
+      final raw = await rootBundle.loadString(
+        MockLectureRepository.questionBankAssetPath,
+      );
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final rawQuestions = decoded['questions'] as List<dynamic>;
+      final questions = rawQuestions
           .whereType<Map<String, dynamic>>()
-          .where((q) => q['sectionId'] == sectionId)
+          .where((q) {
+            final id = q['questionId'] as String? ?? '';
+            return !id.endsWith('-d2') && !id.endsWith('-d3');
+          })
           .toList(growable: false);
-      expect(sectionQuestions.map((q) => q['difficulty']).toList(), [1, 2, 3]);
-    }
-  });
+      final sectionIds =
+          questions
+              .map((q) => q['sectionId'] as String? ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet();
+      expect(sectionIds.length, 102);
+      expect(questions.length, 306);
+
+      for (final sectionId in sectionIds) {
+        final sectionQuestions = questions
+            .where((q) => q['sectionId'] == sectionId)
+            .toList(growable: false);
+        expect(sectionQuestions.map((q) => q['difficulty']).toList(), [
+          1,
+          2,
+          3,
+        ]);
+      }
+    },
+  );
 
   test('question asset image references point to bundled SVG files', () async {
     final raw = await rootBundle.loadString(

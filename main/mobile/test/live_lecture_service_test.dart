@@ -90,6 +90,109 @@ void main() {
     await sub.cancel();
     await service.dispose();
   });
+
+  test('does not send pause_detected when session changed', () async {
+    final channels = <_FakeWebSocketChannel>[];
+    final service = LiveLectureService(
+      audioPlayer: _NoopAudioPlayer(),
+      webSocketConnector: (uri) {
+        final channel = _FakeWebSocketChannel();
+        channels.add(channel);
+        return channel;
+      },
+    );
+
+    await service.connectAndStart(
+      sessionId: 'sess-current',
+      sectionId: 'pep-g8-down-s16-3',
+      questionId: 'q-s16-3-001',
+      questionPrompt: r'\sqrt{12}',
+    );
+    channels.single.sent.clear();
+
+    final staleSent = service.sendPauseDetected(
+      silenceMs: 0,
+      expectedSessionId: 'sess-old',
+    );
+    final currentSent = service.sendPauseDetected(
+      silenceMs: 0,
+      expectedSessionId: 'sess-current',
+    );
+
+    expect(staleSent, isFalse);
+    expect(currentSent, isTrue);
+    expect(channels.single.sent, hasLength(1));
+    final payload =
+        jsonDecode(channels.single.sent.single) as Map<String, dynamic>;
+    expect(payload['type'], 'pause_detected');
+    expect(payload['sessionId'], 'sess-current');
+
+    await service.dispose();
+  });
+
+  test('sends empty ink_snapshot so backend can clear board', () async {
+    final channels = <_FakeWebSocketChannel>[];
+    final service = LiveLectureService(
+      audioPlayer: _NoopAudioPlayer(),
+      webSocketConnector: (uri) {
+        final channel = _FakeWebSocketChannel();
+        channels.add(channel);
+        return channel;
+      },
+    );
+
+    await service.connectAndStart(
+      sessionId: 'sess-board',
+      sectionId: 'pep-g8-down-s16-3',
+      questionId: 'q-s16-3-001',
+      questionPrompt: r'\sqrt{12}',
+    );
+    channels.single.sent.clear();
+
+    await service.sendInkSnapshot(const <Map<String, dynamic>>[]);
+
+    expect(channels.single.sent, hasLength(1));
+    final payload =
+        jsonDecode(channels.single.sent.single) as Map<String, dynamic>;
+    expect(payload['type'], 'ink_snapshot');
+    expect(payload['sessionId'], 'sess-board');
+    expect(payload['steps'], isEmpty);
+
+    await service.dispose();
+  });
+
+  test('does not send request_hint when session changed', () async {
+    final channels = <_FakeWebSocketChannel>[];
+    final service = LiveLectureService(
+      audioPlayer: _NoopAudioPlayer(),
+      webSocketConnector: (uri) {
+        final channel = _FakeWebSocketChannel();
+        channels.add(channel);
+        return channel;
+      },
+    );
+
+    await service.connectAndStart(
+      sessionId: 'sess-hint',
+      sectionId: 'pep-g8-down-s16-3',
+      questionId: 'q-s16-3-001',
+      questionPrompt: r'\sqrt{12}',
+    );
+    channels.single.sent.clear();
+
+    final staleSent = service.sendRequestHint(expectedSessionId: 'sess-old');
+    final currentSent = service.sendRequestHint(expectedSessionId: 'sess-hint');
+
+    expect(staleSent, isFalse);
+    expect(currentSent, isTrue);
+    expect(channels.single.sent, hasLength(1));
+    final payload =
+        jsonDecode(channels.single.sent.single) as Map<String, dynamic>;
+    expect(payload['type'], 'request_hint');
+    expect(payload['sessionId'], 'sess-hint');
+
+    await service.dispose();
+  });
 }
 
 class _FakeWebSocketChannel extends StreamChannelMixin

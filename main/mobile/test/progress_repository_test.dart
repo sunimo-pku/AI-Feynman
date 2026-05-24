@@ -35,12 +35,21 @@ void main() {
         'lastPracticedAt': 'not-a-date',
       });
       expect(restored.sectionId, 'pep-g8-down-s16-1');
-      expect(restored.masteryScore, 0,
-          reason: 'negative score must be clamped to 0');
-      expect(restored.completedRounds, 0,
-          reason: 'negative rounds must be clamped to 0');
-      expect(restored.lastPracticedAt, isNull,
-          reason: 'unparsable date should fall back to null');
+      expect(
+        restored.masteryScore,
+        0,
+        reason: 'negative score must be clamped to 0',
+      );
+      expect(
+        restored.completedRounds,
+        0,
+        reason: 'negative rounds must be clamped to 0',
+      );
+      expect(
+        restored.lastPracticedAt,
+        isNull,
+        reason: 'unparsable date should fall back to null',
+      );
       expect(restored.lastSummary, '');
     });
 
@@ -69,23 +78,25 @@ void main() {
       expect(result.next.lastSummary, '本题已讲清。');
     });
 
-    test('completion with delta<=0 still grants at least 8', () {
+    test('completion with delta<=0 does not change progress', () {
       final empty = SectionProgress.empty('pep-g8-down-s16-3');
       final result = empty.applyCompleted(
         masteryDelta: 0,
         summary: 'fallback',
         when: DateTime(2026, 5, 21),
       );
-      expect(result.gained, 8);
-      expect(result.next.masteryScore, 8);
+      expect(result.gained, 0);
+      expect(result.next.masteryScore, 0);
+      expect(result.next.completedRounds, 0);
 
       final neg = empty.applyCompleted(
         masteryDelta: -2,
         summary: 'fallback',
         when: DateTime(2026, 5, 21),
       );
-      expect(neg.gained, 8);
-      expect(neg.next.masteryScore, 8);
+      expect(neg.gained, 0);
+      expect(neg.next.masteryScore, 0);
+      expect(neg.next.completedRounds, 0);
     });
 
     test('masteryScore caps at 100 and gained reports actual delta', () {
@@ -100,8 +111,11 @@ void main() {
         when: DateTime(2026, 5, 21),
       );
       expect(result.next.masteryScore, 100);
-      expect(result.gained, 5,
-          reason: 'gained must reflect post-cap delta, not raw +10');
+      expect(
+        result.gained,
+        5,
+        reason: 'gained must reflect post-cap delta, not raw +10',
+      );
       expect(result.next.completedRounds, 10);
     });
 
@@ -141,39 +155,47 @@ void main() {
       return repo;
     }
 
-    test('load with empty prefs yields empty progress for any sectionId',
-        () async {
-      final repo = await freshRepo();
-      final p = repo.progressFor('pep-g8-down-s16-3');
-      expect(p.completedRounds, 0);
-      expect(p.masteryScore, 0);
-      expect(p.hasAnyCompletion, isFalse);
-    });
+    test(
+      'load with empty prefs yields empty progress for any sectionId',
+      () async {
+        final repo = await freshRepo();
+        final p = repo.progressFor('pep-g8-down-s16-3');
+        expect(p.completedRounds, 0);
+        expect(p.masteryScore, 0);
+        expect(p.hasAnyCompletion, isFalse);
+      },
+    );
 
-    test('applyCompleted persists JSON and is read back on next load',
-        () async {
-      final repo = await freshRepo();
-      await repo.applyCompleted(
-        sectionId: 'pep-g8-down-s16-3',
-        masteryDelta: 1,
-        summary: 'round-1 done',
-      );
-      final raw = (await SharedPreferences.getInstance())
-          .getString('ai_feynman.section_progress.v1.guest');
-      expect(raw, isNotNull,
-          reason: 'applyCompleted must write the storage key');
-      final decoded = jsonDecode(raw!) as Map<String, dynamic>;
-      expect(decoded.containsKey('pep-g8-down-s16-3'), isTrue);
+    test(
+      'applyCompleted persists JSON and is read back on next load',
+      () async {
+        final repo = await freshRepo();
+        await repo.applyCompleted(
+          sectionId: 'pep-g8-down-s16-3',
+          masteryDelta: 1,
+          summary: 'round-1 done',
+        );
+        final raw = (await SharedPreferences.getInstance()).getString(
+          'ai_feynman.section_progress.v1.guest',
+        );
+        expect(
+          raw,
+          isNotNull,
+          reason: 'applyCompleted must write the storage key',
+        );
+        final decoded = jsonDecode(raw!) as Map<String, dynamic>;
+        expect(decoded.containsKey('pep-g8-down-s16-3'), isTrue);
 
-      // 模拟「App 重启」：只清掉内存缓存（**保留** prefs 持久化数据），
-      // 下一次 load() 应当从持久化层重新读出之前的进度。
-      repo.resetCacheOnlyForTesting();
-      await repo.load();
-      final p = repo.progressFor('pep-g8-down-s16-3');
-      expect(p.masteryScore, 10);
-      expect(p.completedRounds, 1);
-      expect(p.lastSummary, 'round-1 done');
-    });
+        // 模拟「App 重启」：只清掉内存缓存（**保留** prefs 持久化数据），
+        // 下一次 load() 应当从持久化层重新读出之前的进度。
+        repo.resetCacheOnlyForTesting();
+        await repo.load();
+        final p = repo.progressFor('pep-g8-down-s16-3');
+        expect(p.masteryScore, 10);
+        expect(p.completedRounds, 1);
+        expect(p.lastSummary, 'round-1 done');
+      },
+    );
 
     test('multiple completions accumulate and cap at 100', () async {
       final repo = await freshRepo();
@@ -186,8 +208,11 @@ void main() {
       }
       final p = repo.progressFor('pep-g8-down-s16-3');
       expect(p.completedRounds, 12);
-      expect(p.masteryScore, 100,
-          reason: '12 * 10 = 120 must be clamped to 100');
+      expect(
+        p.masteryScore,
+        100,
+        reason: '12 * 10 = 120 must be clamped to 100',
+      );
     });
 
     test('different sectionIds are tracked independently', () async {
@@ -208,9 +233,11 @@ void main() {
     });
 
     test('load tolerates corrupt JSON and treats as empty', () async {
-      final repo = await freshRepo(initial: <String, Object>{
-        'ai_feynman.section_progress.v1': '{this is not json',
-      });
+      final repo = await freshRepo(
+        initial: <String, Object>{
+          'ai_feynman.section_progress.v1': '{this is not json',
+        },
+      );
       // freshRepo already called load(); just assert it didn't throw and
       // cache is empty.
       expect(repo.isLoaded, isTrue);

@@ -25,6 +25,7 @@ from app.services.assignment_service import (
     section_label,
 )
 from app.services.qwen_vision import recognize_question_image
+from app.services.section_grade import section_in_student_grade
 
 logger = logging.getLogger(__name__)
 
@@ -95,15 +96,25 @@ def _validate_due_at(due_at: datetime) -> None:
         )
 
 
+def _child_grade(profile) -> str:
+    return (getattr(profile, "grade", None) or "八年级").strip() or "八年级"
+
+
 def _create_assignment_row(
     *,
     db: Session,
     parent_user: User,
     student_id: int,
+    student_grade: str,
     req: AssignmentCreateRequest,
 ) -> ParentAssignment:
     _validate_due_at(req.due_at)
     sid = req.section_id.strip()
+    if not section_in_student_grade(sid, student_grade):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="sectionId does not belong to the linked child's grade.",
+        )
     label = section_label(sid)
 
     if req.source_type == "catalog":
@@ -213,6 +224,7 @@ async def parent_assignment_recommendations(
     items = build_assignment_recommendations(
         db,
         student_id=profile.id,
+        student_grade=_child_grade(profile),
         limit=limit,
     )
     return {
@@ -235,6 +247,7 @@ async def create_parent_assignment(
         db=db,
         parent_user=user,
         student_id=profile.id,
+        student_grade=_child_grade(profile),
         req=req,
     )
     return assignment_to_public(row)

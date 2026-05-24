@@ -84,6 +84,11 @@ class LiveLectureService {
   String _lastQuestionId = '';
   String _lastQuestionPrompt = '';
   String _lastStandardAnswer = '';
+  int _lastCompletedRoundIndex = 0;
+  List<Map<String, dynamic>> _lastHistoryPayload =
+      const <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _lastRoundBoardPayload =
+      const <Map<String, dynamic>>[];
 
   /// 第十轮：TTS 淡出相关。
   ///
@@ -137,6 +142,10 @@ class LiveLectureService {
     required String questionPrompt,
     String standardAnswer = '',
     List<String> referenceSteps = const <String>[],
+    int completedRoundIndex = 0,
+    List<Map<String, dynamic>> history = const <Map<String, dynamic>>[],
+    List<Map<String, dynamic>> roundBoardSnapshots =
+        const <Map<String, dynamic>>[],
     bool isAutoRetry = false,
   }) async {
     if (_disposed) return false;
@@ -154,6 +163,11 @@ class LiveLectureService {
     _lastQuestionId = questionId;
     _lastQuestionPrompt = questionPrompt;
     _lastStandardAnswer = standardAnswer;
+    _lastCompletedRoundIndex = completedRoundIndex;
+    _lastHistoryPayload = List<Map<String, dynamic>>.unmodifiable(history);
+    _lastRoundBoardPayload = List<Map<String, dynamic>>.unmodifiable(
+      roundBoardSnapshots,
+    );
     if (_isConnected) {
       // 已连接：发送 session_start 切换到新会话。
       _sessionId = sessionId;
@@ -165,6 +179,9 @@ class LiveLectureService {
           questionId: questionId,
           questionPrompt: questionPrompt,
           standardAnswer: standardAnswer,
+          completedRoundIndex: completedRoundIndex,
+          history: history,
+          roundBoardSnapshots: roundBoardSnapshots,
         ),
       );
       return true;
@@ -208,6 +225,9 @@ class LiveLectureService {
           questionId: questionId,
           questionPrompt: questionPrompt,
           standardAnswer: standardAnswer,
+          completedRoundIndex: completedRoundIndex,
+          history: history,
+          roundBoardSnapshots: roundBoardSnapshots,
         ),
       );
       _startAppPing();
@@ -294,6 +314,9 @@ class LiveLectureService {
         questionPrompt: _lastQuestionPrompt,
         standardAnswer: _lastStandardAnswer,
         referenceSteps: _currentReferenceSteps,
+        completedRoundIndex: _lastCompletedRoundIndex,
+        history: _lastHistoryPayload,
+        roundBoardSnapshots: _lastRoundBoardPayload,
         isAutoRetry: true,
       );
     });
@@ -389,10 +412,7 @@ class LiveLectureService {
         )
         .toList(growable: false);
     _sendJson(
-      LiveClientEvent.inkSnapshot(
-        sessionId: sessionId,
-        steps: payloadSteps,
-      ),
+      LiveClientEvent.inkSnapshot(sessionId: sessionId, steps: payloadSteps),
     );
   }
 
@@ -468,19 +488,31 @@ class LiveLectureService {
     );
   }
 
-  void sendPauseDetected({required int silenceMs}) {
-    if (!_isConnected || _sessionId.isEmpty) return;
+  bool sendPauseDetected({required int silenceMs, String? expectedSessionId}) {
+    if (!_isConnected || _sessionId.isEmpty) return false;
+    if (expectedSessionId != null &&
+        expectedSessionId.isNotEmpty &&
+        expectedSessionId != _sessionId) {
+      return false;
+    }
     _sendJson(
       LiveClientEvent.pauseDetected(
         sessionId: _sessionId,
         silenceMs: silenceMs,
       ),
     );
+    return true;
   }
 
-  void sendRequestHint() {
-    if (!_isConnected || _sessionId.isEmpty) return;
+  bool sendRequestHint({String? expectedSessionId}) {
+    if (!_isConnected || _sessionId.isEmpty) return false;
+    if (expectedSessionId != null &&
+        expectedSessionId.isNotEmpty &&
+        expectedSessionId != _sessionId) {
+      return false;
+    }
     _sendJson(LiveClientEvent.requestHint(sessionId: _sessionId));
+    return true;
   }
 
   void sendStudentInterrupt({String reason = 'voice'}) {

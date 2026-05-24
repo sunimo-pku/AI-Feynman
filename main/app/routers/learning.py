@@ -414,6 +414,11 @@ async def sync_progress(
             db.add(row)
             accepted_reviews += 1
             continue
+        if existing.student_id != profile.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Review belongs to another student.",
+            )
         # 同 client_id 已存在：把字段补齐（容忍学生端在新增字段后重新上传）。
         existing.summary = incoming.summary or existing.summary
         existing.tags_json = dump_json(incoming.tags or load_json(existing.tags_json, []))

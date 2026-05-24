@@ -110,12 +110,24 @@ void main() {
         sectionId: 'pep-g8-down-s16-3',
         questionId: 'q-s16-3-001',
         questionPrompt: r'\sqrt{12}-\sqrt{27}',
+        standardAnswer: r'\sqrt{12}=2\sqrt{3}',
+        completedRoundIndex: 2,
+        history: const [
+          {'role': 'student', 'text': '上一轮回答'},
+        ],
+        roundBoardSnapshots: const [
+          {'roundIndex': 1, 'boardLatex': r'x=1'},
+        ],
       );
       expect(p['type'], 'session_start');
       expect(p['sessionId'], 'sess-1');
       expect(p['sectionId'], 'pep-g8-down-s16-3');
       expect(p['questionId'], 'q-s16-3-001');
       expect(p['questionPrompt'], r'\sqrt{12}-\sqrt{27}');
+      expect(p['standardAnswer'], r'\sqrt{12}=2\sqrt{3}');
+      expect(p['completedRoundIndex'], 2);
+      expect(p['history'], isNotEmpty);
+      expect(p['roundBoardSnapshots'], isNotEmpty);
     });
 
     test('audioChunk preserves seq and base64', () {

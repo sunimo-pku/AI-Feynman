@@ -142,7 +142,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                 onSelected: (key) async {
                   if (key == 'logout') {
                     await AuthService.instance.logout();
-                    if (!mounted) return;
+                    if (!innerCtx.mounted) return;
                     if (!widget.embedded) {
                       Navigator.of(innerCtx).pop();
                     }

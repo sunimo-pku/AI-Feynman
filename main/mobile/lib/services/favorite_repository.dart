@@ -36,7 +36,8 @@ class FavoriteRepository extends ChangeNotifier {
     return SharedPreferences.getInstance();
   }
 
-  bool isFavorite(String questionId) => _favoriteQuestionIds.contains(questionId);
+  bool isFavorite(String questionId) =>
+      _favoriteQuestionIds.contains(questionId);
 
   List<QuestionFavoriteItem> get favorites {
     final items = _byQuestionId.values.toList(growable: false);
@@ -101,6 +102,16 @@ class FavoriteRepository extends ChangeNotifier {
     _favoriteQuestionIds.clear();
     _byQuestionId.clear();
     await load();
+  }
+
+  void clearActiveUser() {
+    _namespace = 'guest';
+    _loaded = true;
+    _pendingLoad = null;
+    _writeQueue = Future<void>.value();
+    _favoriteQuestionIds.clear();
+    _byQuestionId.clear();
+    notifyListeners();
   }
 
   Future<void> toggleFavorite({
@@ -205,13 +216,15 @@ class FavoriteRepository extends ChangeNotifier {
             ...AuthService.instance.authHeaders(),
             'Content-Type': 'application/json',
           },
-          body: utf8.encode(jsonEncode({
-            'questionId': questionId,
-            'sectionId': sectionId,
-            'questionPrompt': questionPrompt,
-            'difficulty': difficulty,
-            'favorited': true,
-          })),
+          body: utf8.encode(
+            jsonEncode({
+              'questionId': questionId,
+              'sectionId': sectionId,
+              'questionPrompt': questionPrompt,
+              'difficulty': difficulty,
+              'favorited': true,
+            }),
+          ),
         )
         .timeout(const Duration(seconds: 12));
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
@@ -241,8 +254,8 @@ class FavoriteRepository extends ChangeNotifier {
 /// 向家长反馈题目（仅服务端，失败抛异常由 UI 提示）。
 class QuestionEngagementService {
   QuestionEngagementService({http.Client? client, Duration? timeout})
-      : _client = client ?? http.Client(),
-        _timeout = timeout ?? const Duration(seconds: 12);
+    : _client = client ?? http.Client(),
+      _timeout = timeout ?? const Duration(seconds: 12);
 
   final http.Client _client;
   final Duration _timeout;
@@ -265,13 +278,15 @@ class QuestionEngagementService {
             ...AuthService.instance.authHeaders(),
             'Content-Type': 'application/json',
           },
-          body: utf8.encode(jsonEncode({
-            'questionId': questionId,
-            'sectionId': sectionId,
-            'questionPrompt': questionPrompt,
-            'note': note.trim(),
-            'difficulty': difficulty,
-          })),
+          body: utf8.encode(
+            jsonEncode({
+              'questionId': questionId,
+              'sectionId': sectionId,
+              'questionPrompt': questionPrompt,
+              'note': note.trim(),
+              'difficulty': difficulty,
+            }),
+          ),
         )
         .timeout(_timeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {

@@ -179,6 +179,58 @@ def test_learning_sync_merges_and_is_idempotent(client: TestClient) -> None:
     assert body3["progress"][0]["completedRounds"] == 3
 
 
+def test_learning_sync_rejects_cross_student_review_client_id(
+    client: TestClient,
+) -> None:
+    token_a = _register_and_login(client)
+    token_b = _register_and_login(client)
+    review_payload = {
+        "progress": [],
+        "reviews": [
+            {
+                "id": f"shared-review-{uuid.uuid4().hex[:8]}",
+                "sectionId": "pep-g8-down-s16-3",
+                "questionId": "q-s16-3-001",
+                "questionPrompt": "化简 √12",
+                "difficulty": 1,
+                "tags": [],
+                "completedAt": "2026-05-22T01:00:05",
+                "summary": "student A summary",
+                "agentHighlights": [],
+                "cautionPoints": [],
+            }
+        ],
+    }
+    resp_a = client.post(
+        "/learning/progress/sync",
+        headers={"Authorization": f"Bearer {token_a}"},
+        json=review_payload,
+    )
+    assert resp_a.status_code == 200, resp_a.text
+
+    resp_b = client.post(
+        "/learning/progress/sync",
+        headers={"Authorization": f"Bearer {token_b}"},
+        json={
+            **review_payload,
+            "reviews": [
+                {
+                    **review_payload["reviews"][0],
+                    "summary": "student B should not overwrite",
+                }
+            ],
+        },
+    )
+    assert resp_b.status_code == 403
+
+    rows_b = client.get(
+        "/learning/reviews",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert rows_b.status_code == 200
+    assert rows_b.json() == []
+
+
 def test_learning_reviews_can_filter_by_section(client: TestClient) -> None:
     token = _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}
@@ -604,6 +656,7 @@ def test_lecture_submit_with_auth_persists_progress(client: TestClient, monkeypa
             "display_name": "李老师",
             "text": "这次解释清楚了。",
             "highlight_step_ids": ["step_1"],
+            "approved": True,
         },
     )
     token = _register_and_login(client)
@@ -657,10 +710,127 @@ def test_lecture_submit_with_auth_persists_progress(client: TestClient, monkeypa
     rows = resp_p.json()
     section_ids = [r["sectionId"] for r in rows]
     assert "pep-g8-down-s16-3" in section_ids
+    progress = next(r for r in rows if r["sectionId"] == "pep-g8-down-s16-3")
+    assert progress["completedRounds"] == 1
+    assert progress["masteryScore"] == 10
+
+    retry = client.post(
+        "/lecture/submit",
+        headers=headers,
+        json={
+            "sectionId": "pep-g8-down-s16-3",
+            "questionId": "q-s16-3-001",
+            "questionPrompt": "化简 √12 - √27",
+            "studentSpeechText": "我把 12 拆成 4×3，27 拆成 9×3",
+            "steps": [
+                {
+                    "stepId": "step_1",
+                    "latex": r"\sqrt{12} = 2\sqrt{3}",
+                    "plainText": "根号12=2根号3",
+                    "strokeCount": 5,
+                    "boundingBox": {"x": 0, "y": 0, "width": 10, "height": 10},
+                }
+            ],
+            "roundIndex": 2,
+            "history": [],
+        },
+    )
+    assert retry.status_code == 200, retry.text
+    rows_after_retry = client.get("/learning/progress", headers=headers).json()
+    progress_after_retry = next(
+        r for r in rows_after_retry if r["sectionId"] == "pep-g8-down-s16-3"
+    )
+    assert progress_after_retry["completedRounds"] == 1
+    assert progress_after_retry["masteryScore"] == 10
+
+
+def test_lecture_submit_completed_zero_delta_does_not_increment_progress(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.routers.lecture.generate_peer_assessments",
+        lambda **_kwargs: {
+            "status": "completed",
+            "mastery_delta": 0,
+            "all_understood": True,
+            "assessments": [
+                {
+                    "role": "xiaoming",
+                    "display_name": "小明",
+                    "understood": True,
+                    "reason": "听懂了",
+                    "highlight_step_ids": ["step_1"],
+                },
+                {
+                    "role": "daxiong",
+                    "display_name": "大雄",
+                    "understood": True,
+                    "reason": "听懂了",
+                    "highlight_step_ids": ["step_1"],
+                },
+                {
+                    "role": "monitor",
+                    "display_name": "班长",
+                    "understood": True,
+                    "reason": "听懂了",
+                    "highlight_step_ids": ["step_1"],
+                },
+            ],
+            "source": "llm",
+        },
+    )
+    monkeypatch.setattr(
+        "app.routers.lecture.generate_teacher_summary",
+        lambda **_kwargs: {
+            "turn_id": "summary_1",
+            "role": "teacher",
+            "display_name": "李老师",
+            "text": "还需要再补充。",
+            "highlight_step_ids": ["step_1"],
+            "approved": True,
+        },
+    )
+    token = _register_and_login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = client.post(
+        "/lecture/submit",
+        headers=headers,
+        json={
+            "sectionId": "pep-g8-down-s16-3",
+            "questionId": "q-s16-3-002",
+            "questionPrompt": "化简 √12",
+            "studentSpeechText": "我说了过程",
+            "steps": [
+                {
+                    "stepId": "step_1",
+                    "latex": r"\sqrt{12} = 2\sqrt{3}",
+                    "plainText": "根号12=2根号3",
+                    "strokeCount": 5,
+                    "boundingBox": {"x": 0, "y": 0, "width": 10, "height": 10},
+                }
+            ],
+            "roundIndex": 1,
+            "history": [],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["masteryDelta"] == 0
+    resp_p = client.get("/learning/progress", headers=headers)
+    assert resp_p.status_code == 200
+    assert resp_p.json() == []
 
 
 def test_lecture_submit_without_llm_key_returns_502(client: TestClient, monkeypatch) -> None:
-    monkeypatch.setattr("app.services.peer_assessment_agent.Config.DEEPSEEK_API_KEY", "")
+    from app.services.lecture_agent import LectureAgentError
+
+    def fail_peer_assessment(**_kwargs):
+        raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
+
+    monkeypatch.setattr(
+        "app.routers.lecture.generate_peer_assessments",
+        fail_peer_assessment,
+    )
     resp = client.post(
         "/lecture/submit",
         json={

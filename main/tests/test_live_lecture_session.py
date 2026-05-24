@@ -273,6 +273,209 @@ async def test_audio_chunk_buffers_without_streaming_asr_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stale_client_events_do_not_pollute_current_session() -> None:
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-current",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    sent.clear()
+
+    await session.handle_event(
+        {"type": "audio_chunk", "sessionId": "sess-old",
+         "seq": 0, "base64": _b64_pcm(0.2)},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    await session.handle_event(
+        {"type": "ink_snapshot", "sessionId": "sess-old",
+         "steps": [{"stepId": "step_1", "strokeCount": 8}],
+         "boardLatex": r"x=1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    await session.handle_event(
+        {"type": "pause_detected", "sessionId": "sess-old", "silenceMs": 0},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert sent == []
+    assert not session.asr_buffer.has_pending
+    assert session.latest_steps == []
+    assert session.board_latex == ""
+    assert session.round_index == 0
+
+
+@pytest.mark.asyncio
+async def test_same_question_session_start_resets_current_round_board_only() -> None:
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-1",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    await session.handle_event(
+        {"type": "ink_snapshot", "sessionId": "sess-1",
+         "steps": [{"stepId": "step_1", "strokeCount": 4}],
+         "boardLatex": r"x=1", "boardImageBase64": "img"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    session.history.append({"role": "student", "displayName": "我", "text": "上一轮"})
+    session.round_index = 1
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-2",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert session.round_index == 1
+    assert session.history
+    assert session.latest_steps == []
+    assert session.board_latex == ""
+    assert session.board_plain_text == ""
+    assert session.pending_board_image_b64 == ""
+
+
+@pytest.mark.asyncio
+async def test_empty_ink_snapshot_clears_current_board_state() -> None:
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-board",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    await session.handle_event(
+        {"type": "ink_snapshot", "sessionId": "sess-board",
+         "steps": [{"stepId": "step_1", "strokeCount": 4}],
+         "boardLatex": r"x=1", "boardPlainText": "x 等于 1",
+         "boardImageBase64": "img"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    assert session.latest_steps
+    assert session.board_latex
+    assert session.pending_board_image_b64 == "img"
+
+    await session.handle_event(
+        {"type": "ink_snapshot", "sessionId": "sess-board", "steps": []},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert session.latest_steps == []
+    assert session.board_latex == ""
+    assert session.board_plain_text == ""
+    assert session.pending_board_image_b64 == ""
+
+
+@pytest.mark.asyncio
+async def test_new_connection_session_start_restores_live_context() -> None:
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {
+            "type": "session_start",
+            "sessionId": "sess-restored",
+            "sectionId": "pep-g8-down-s16-3",
+            "questionId": "q1",
+            "completedRoundIndex": 2,
+            "history": [
+                {
+                    "role": "student",
+                    "displayName": "我",
+                    "text": "上一轮回答",
+                    "highlightStepIds": ["board"],
+                }
+            ],
+            "roundBoardSnapshots": [
+                {
+                    "roundIndex": 1,
+                    "boardLatex": r"x=1",
+                    "boardPlainText": "x 等于 1",
+                    "strokeCount": 5,
+                    "boardImageBase64": "ignored-in-prompt",
+                }
+            ],
+        },
+        send=send,
+        recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert session.round_index == 2
+    assert session.history[-1]["text"] == "上一轮回答"
+    assert len(session.round_board_snapshots) == 1
+    assert session.round_board_snapshots[0].board_latex == r"x=1"
+    assert session.latest_steps == []
+
+
+@pytest.mark.asyncio
+async def test_pause_without_current_round_input_ignores_old_transcript() -> None:
+    called = False
+
+    def fail_if_peer_called(**_kwargs: Any) -> dict[str, Any]:
+        nonlocal called
+        called = True
+        raise AssertionError("peer assessment should not run without current input")
+
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-current-input",
+         "sectionId": "pep-g8-down-s16-3", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=fail_if_peer_called,
+    )
+    session.transcript_segments.append("上一轮语音")
+    session._mark_transcript_round_consumed()
+    sent.clear()
+
+    await session.handle_event(
+        {"type": "pause_detected", "sessionId": "sess-current-input", "silenceMs": 0},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=fail_if_peer_called,
+    )
+
+    assert called is False
+    assert any(
+        s["type"] == EVT_WARNING and s.get("message") == "no_steps_yet"
+        for s in sent
+    )
+    assert session.round_index == 0
+
+
+@pytest.mark.asyncio
 async def test_pause_stops_pipeline_when_asr_flush_fails(monkeypatch) -> None:
     called = False
 
@@ -689,8 +892,13 @@ class _FakeQuery:
 
 
 class _FakeDb:
-    def __init__(self, existing_progress: Any = None) -> None:
+    def __init__(
+        self,
+        existing_progress: Any = None,
+        existing_session: Any = None,
+    ) -> None:
         self.existing_progress = existing_progress
+        self.existing_session = existing_session
         self.added: list[Any] = []
         self.committed = False
         self.closed = False
@@ -699,6 +907,8 @@ class _FakeDb:
         self.added.append(row)
 
     def query(self, model: Any) -> _FakeQuery:
+        if model is LectureSessionRecord:
+            return _FakeQuery(self.existing_session)
         if model is LearningProgress:
             return _FakeQuery(self.existing_progress)
         return _FakeQuery()
@@ -772,7 +982,7 @@ def test_persist_live_session_updates_progress_only_for_completed_positive_delta
     ]
     assert len(progress_rows) == 1
     assert progress_rows[0].completed_rounds == 1
-    assert progress_rows[0].mastery_score == 8
+    assert progress_rows[0].mastery_score == 10
     assert marked == [{
         "student_id": 42,
         "section_id": "pep-g8-down-s16-3",
@@ -781,6 +991,59 @@ def test_persist_live_session_updates_progress_only_for_completed_positive_delta
         "mastery_delta": 1,
         "round_count": 2,
     }]
+
+
+def test_persist_live_session_is_idempotent_for_existing_completed_session(
+    monkeypatch,
+) -> None:
+    existing_session = LectureSessionRecord(
+        student_id=42,
+        session_id="sess-progress-1",
+        section_id="pep-g8-down-s16-3",
+        question_id="q1",
+        status="completed",
+        mastery_delta=1,
+        round_count=2,
+        mastery_after=10,
+    )
+    existing_progress = LearningProgress(
+        student_id=42,
+        section_id="pep-g8-down-s16-3",
+        completed_rounds=1,
+        mastery_score=10,
+    )
+    fake_db = _FakeDb(
+        existing_progress=existing_progress,
+        existing_session=existing_session,
+    )
+    marked: list[dict[str, Any]] = []
+    monkeypatch.setattr("app.routers.lecture_live.SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(
+        "app.routers.lecture_live.ensure_student_profile",
+        lambda _db, _user: SimpleNamespace(id=42),
+    )
+    monkeypatch.setattr(
+        "app.services.assignment_service.mark_assignments_completed",
+        lambda *args, **kwargs: marked.append(kwargs),
+    )
+    session = LiveLectureSession(
+        session_id="sess-progress-1",
+        section_id="pep-g8-down-s16-3",
+        question_id="q1",
+        question_prompt="题目",
+        round_index=2,
+        last_status="completed",
+        last_mastery_delta=1,
+    )
+    session.transcript_segments.append("重复断线保存")
+
+    _persist_live_session_if_needed(SimpleNamespace(username="student"), session)
+
+    assert fake_db.committed is True
+    assert fake_db.added == []
+    assert existing_progress.completed_rounds == 1
+    assert existing_progress.mastery_score == 10
+    assert marked == []
 
 
 @pytest.mark.asyncio

@@ -571,6 +571,12 @@ def _persist_lecture_submission(
         )
         .first()
     )
+    previous_completed_with_gain = bool(
+        existing
+        and existing.status == "completed"
+        and int(existing.mastery_delta or 0) > 0
+    )
+
     if existing is None:
         existing = LectureSessionRecord(
             student_id=profile.id,
@@ -594,14 +600,22 @@ def _persist_lecture_submission(
         existing.steps_json = dump_json(steps_payload)
         existing.turns_json = dump_json(turns_payload)
         existing.mastery_delta = mastery_delta
-        existing.round_count = max(existing.round_count or 1, int(req.round_index or 1))
+        existing.round_count = max(
+            existing.round_count or 1,
+            int(req.round_index or 1),
+        )
         if status_value == "completed":
             existing.completed_at = datetime.utcnow()
 
     # completed → 更新 LearningProgress：累加一轮 + 加分（与前端
     # `SectionProgress.applyCompleted` 同口径，避免登录后家长端看到的
     # 分数与学生端本地分数差太多）。
-    if status_value == "completed":
+    should_update_progress = (
+        status_value == "completed"
+        and mastery_delta > 0
+        and not previous_completed_with_gain
+    )
+    if should_update_progress:
         progress = (
             db.query(LearningProgress)
             .filter(

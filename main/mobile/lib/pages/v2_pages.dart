@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/curriculum_repository.dart';
+import '../data/lecture_models.dart';
+import '../data/mock_lecture_repository.dart';
 import '../data/round12_models.dart';
 import '../services/auth_service.dart';
 import '../services/round12_service.dart';
@@ -758,7 +760,7 @@ class _ShopPageState extends State<ShopPage> {
                     value: '${catalog.balance} 颗',
                     icon: Icons.diamond_outlined,
                   ),
-                  StudyStatPill(
+                  const StudyStatPill(
                     label: '兑换说明',
                     value: '实物占位',
                     icon: Icons.inventory_2_outlined,
@@ -904,20 +906,68 @@ class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
     }
   }
 
-  void _startLecture() {
-    final sectionId = _result?['sectionId'] as String? ?? 'pep-g8-down-s16-3';
+  Future<void> _startLecture() async {
+    final result = _result;
+    final prompt = (result?['questionPrompt'] as String? ?? '').trim();
+    if (result == null || prompt.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('还没有识别到题面，请重新拍照或从相册选择。')));
+      return;
+    }
+    await MockLectureRepository.instance.loadAssetBank();
+    if (!mounted) return;
+    final grade =
+        StudentGradeStore.instance.gradeLabel ?? StudentGradeStore.defaultGrade;
+    final rawSectionId = (result['sectionId'] as String? ?? '').trim();
+    final sectionId =
+        sectionMatchesGrade(rawSectionId, grade)
+            ? rawSectionId
+            : _defaultSectionIdForGrade(grade);
+    if (sectionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂时无法匹配到当前年级的小节，请先到课程页选题讲解。')),
+      );
+      return;
+    }
     final section = CurriculumSection(
       id: sectionId,
-      number: '16.x',
+      number: '识题',
       title: '拍照识题推荐',
       label: '拍照识题推荐章节',
       type: 'lesson',
       contentStatus: 'available',
       v1Launch: true,
+      practiceAvailable: true,
     );
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => LecturePage(section: section)));
+    final question = LectureQuestion(
+      questionId: 'q-photo-${DateTime.now().millisecondsSinceEpoch}',
+      sectionId: sectionId,
+      sectionLabel: section.label,
+      prompt: prompt,
+      hint: '请按你拍到的题面，讲清已知条件、关键步骤和容易出错的地方。',
+      referenceSteps: const [],
+      tags: const ['拍照识题'],
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => LecturePage(section: section, questionOverride: question),
+      ),
+    );
+  }
+
+  String? _defaultSectionIdForGrade(String grade) {
+    switch (grade.trim()) {
+      case '七年级':
+        return 'pep-g7-up-s1-1';
+      case '八年级':
+        return 'pep-g8-down-s16-1';
+      case '九年级':
+        return 'pep-g9-up-s21-1';
+      default:
+        return null;
+    }
   }
 
   @override

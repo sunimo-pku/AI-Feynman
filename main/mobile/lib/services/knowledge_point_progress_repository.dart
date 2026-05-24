@@ -98,6 +98,15 @@ class KnowledgePointProgressRepository extends ChangeNotifier {
     await load();
   }
 
+  void clearActiveUser() {
+    _namespace = 'guest';
+    _cache.clear();
+    _loaded = true;
+    _pendingLoad = null;
+    _writeQueue = Future<void>.value();
+    notifyListeners();
+  }
+
   Future<({KnowledgePointProgress next, int starGain})> applyRound({
     required String knowledgePointId,
     required String status,
@@ -107,10 +116,7 @@ class KnowledgePointProgressRepository extends ChangeNotifier {
     DateTime? when,
   }) async {
     if (knowledgePointId.isEmpty) {
-      return (
-        next: KnowledgePointProgress.empty(''),
-        starGain: 0,
-      );
+      return (next: KnowledgePointProgress.empty(''), starGain: 0);
     }
     final completer =
         Completer<({KnowledgePointProgress next, int starGain})>();

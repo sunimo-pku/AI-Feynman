@@ -116,10 +116,7 @@ class LiveAgentTurnStartPayload extends LiveServerPayload {
 }
 
 class LiveAgentTurnDeltaPayload extends LiveServerPayload {
-  const LiveAgentTurnDeltaPayload({
-    required this.turnId,
-    required this.delta,
-  });
+  const LiveAgentTurnDeltaPayload({required this.turnId, required this.delta});
 
   final String turnId;
   final String delta;
@@ -239,7 +236,8 @@ class LiveServerEvent {
           turnId: (json['turnId'] as String?) ?? '',
           role: (json['role'] as String?) ?? 'system',
           displayName: (json['displayName'] as String?) ?? '',
-          highlightStepIds: (json['highlightStepIds'] as List<dynamic>? ?? const [])
+          highlightStepIds: (json['highlightStepIds'] as List<dynamic>? ??
+                  const [])
               .map((e) => e.toString())
               .toList(growable: false),
         );
@@ -322,6 +320,10 @@ class LiveClientEvent {
     required String questionId,
     required String questionPrompt,
     String standardAnswer = '',
+    int completedRoundIndex = 0,
+    List<Map<String, dynamic>> history = const <Map<String, dynamic>>[],
+    List<Map<String, dynamic>> roundBoardSnapshots =
+        const <Map<String, dynamic>>[],
   }) {
     return {
       'type': LiveClientEventType.sessionStart.wire,
@@ -331,6 +333,10 @@ class LiveClientEvent {
       'questionPrompt': questionPrompt,
       if (standardAnswer.trim().isNotEmpty)
         'standardAnswer': standardAnswer.trim(),
+      if (completedRoundIndex > 0) 'completedRoundIndex': completedRoundIndex,
+      if (history.isNotEmpty) 'history': history,
+      if (roundBoardSnapshots.isNotEmpty)
+        'roundBoardSnapshots': roundBoardSnapshots,
     };
   }
 
@@ -405,9 +411,6 @@ class LiveClientEvent {
   }
 
   static Map<String, dynamic> ping({required String sessionId}) {
-    return {
-      'type': LiveClientEventType.ping.wire,
-      'sessionId': sessionId,
-    };
+    return {'type': LiveClientEventType.ping.wire, 'sessionId': sessionId};
   }
 }

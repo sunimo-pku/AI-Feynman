@@ -27,6 +27,26 @@ def _register_student(client: TestClient, username: str | None = None) -> tuple[
     return username, password
 
 
+def _register_student_with_grade(
+    client: TestClient,
+    grade: str,
+    username: str | None = None,
+) -> tuple[str, str]:
+    username = username or f"stu{uuid.uuid4().hex[:10]}"
+    password = "secret-pass-12345"
+    resp = client.post(
+        "/auth/register",
+        json={
+            "username": username,
+            "password": password,
+            "parentPassword": DEFAULT_PARENT_PASSWORD,
+            "grade": grade,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return username, password
+
+
 def _login(
     client: TestClient,
     username: str,
@@ -168,6 +188,36 @@ def test_parent_custom_assignment(client: TestClient) -> None:
     )
     assert student_list.status_code == 200
     assert any(item["sourceType"] == "custom" for item in student_list.json()["active"])
+
+
+def test_parent_assignment_rejects_cross_grade_section(client: TestClient) -> None:
+    child_user, _ = _register_student_with_grade(client, "七年级")
+    parent_token, _ = _register_parent(client, child_user)
+
+    due_at = (datetime.utcnow() + timedelta(hours=6)).replace(microsecond=0).isoformat() + "Z"
+    create = client.post(
+        "/parent/assignments",
+        headers={"Authorization": f"Bearer {parent_token}"},
+        json={
+            "sourceType": "catalog",
+            "sectionId": "pep-g8-down-s16-1",
+            "difficulty": 1,
+            "dueAt": due_at,
+        },
+    )
+    assert create.status_code == 400, create.text
+    assert "linked child's grade" in create.json()["detail"]
+
+    rec = client.get(
+        "/parent/assignments/recommendations",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert rec.status_code == 200, rec.text
+    assert rec.json()["recommendations"]
+    assert all(
+        item["sectionId"].startswith("pep-g7-")
+        for item in rec.json()["recommendations"]
+    )
 
 
 def test_parent_assignment_recommendations(client: TestClient) -> None:

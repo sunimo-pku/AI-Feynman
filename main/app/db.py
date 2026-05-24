@@ -173,6 +173,9 @@ class LectureSessionRecord(Base):
     """
 
     __tablename__ = "lecture_session_records"
+    __table_args__ = (
+        UniqueConstraint("student_id", "session_id", name="uq_lecture_session_student_session"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=True, index=True)
@@ -575,6 +578,27 @@ def _run_lightweight_migrations() -> None:
                 conn.execute(text(sql))
             except Exception as e:  # noqa: BLE001
                 logger.warning("[db-migrate] parent link index failed: %s", e)
+
+        try:
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_lecture_session_student_session "
+                    "ON lecture_session_records (student_id, session_id)"
+                )
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[db-migrate] lecture session index failed: %s", e)
+
+        try:
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_crystal_ledger_bounty_ref "
+                    "ON crystal_ledgers (student_id, reason, ref_id) "
+                    "WHERE reason = 'bounty' AND ref_id <> ''"
+                )
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[db-migrate] crystal ledger index failed: %s", e)
 
         try:
             conn.commit()

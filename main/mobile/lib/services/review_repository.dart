@@ -134,8 +134,7 @@ class ReviewRepository extends ChangeNotifier {
   bool get isLoaded => _loaded;
 
   /// 全部记录的不可变快照（已按倒序排好）。
-  List<LectureReviewRecord> get allRecords =>
-      List.unmodifiable(_cache);
+  List<LectureReviewRecord> get allRecords => List.unmodifiable(_cache);
 
   Future<void> switchUser(String namespace) async {
     final next = namespace.trim().isEmpty ? 'guest' : namespace.trim();
@@ -145,6 +144,15 @@ class ReviewRepository extends ChangeNotifier {
     _loaded = false;
     _pendingLoad = null;
     await load();
+  }
+
+  void clearActiveUser() {
+    _namespace = 'guest';
+    _cache.clear();
+    _loaded = true;
+    _pendingLoad = null;
+    _writeQueue = Future<void>.value();
+    notifyListeners();
   }
 
   /// 取某小节最近的回顾记录（默认 [sectionPageLimit] 条）。

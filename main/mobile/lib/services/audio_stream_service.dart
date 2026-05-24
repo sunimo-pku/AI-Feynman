@@ -33,13 +33,13 @@ class AudioStreamService {
     AudioRecorder? recorder,
     int? voiceThreshold,
     int? pauseSilenceMs,
-  })  : _recorder = recorder ?? AudioRecorder(),
-        _voiceThreshold = voiceThreshold ?? 600,
-        // 第十二轮：1500ms 太保守，端到端体感 3.5-4s 像微信语音条而不是对话。
-        // 700ms 是 OpenAI Realtime / Whisper Realtime 等同类系统的典型阈值。
-        // 副作用：学生「嗯…然后…」的犹豫间歇会被判成结束；可以靠 wrapUp 阶段
-        // 的 voice 重新触发恢复 listening 来缓解（见 _onAudioVoice）。
-        _pauseSilenceMs = pauseSilenceMs ?? 700;
+  }) : _recorder = recorder ?? AudioRecorder(),
+       _voiceThreshold = voiceThreshold ?? 600,
+       // 第十二轮：1500ms 太保守，端到端体感 3.5-4s 像微信语音条而不是对话。
+       // 700ms 是 OpenAI Realtime / Whisper Realtime 等同类系统的典型阈值。
+       // 副作用：学生「嗯…然后…」的犹豫间歇会被判成结束；可以靠 wrapUp 阶段
+       // 的 voice 重新触发恢复 listening 来缓解（见 _onAudioVoice）。
+       _pauseSilenceMs = pauseSilenceMs ?? 700;
 
   final AudioRecorder _recorder;
   final int _voiceThreshold;
@@ -76,6 +76,10 @@ class AudioStreamService {
 
   Future<bool> start() async {
     if (_disposed) return false;
+    if (_status == AudioStreamStatus.listening ||
+        _status == AudioStreamStatus.paused) {
+      return true;
+    }
     _failureReason = null;
     try {
       final granted = await _ensureMicrophonePermission();

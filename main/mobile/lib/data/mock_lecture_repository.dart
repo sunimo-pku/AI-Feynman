@@ -32,6 +32,8 @@ class MockLectureRepository {
       <String, List<LectureQuestion>>{};
   bool _assetLoaded = false;
 
+  bool get isAssetBankLoaded => _assetLoaded;
+
   Future<void> loadAssetBank() async {
     if (_assetLoaded) return;
     final raw = await rootBundle.loadString(questionBankAssetPath);
@@ -52,7 +54,9 @@ class MockLectureRepository {
         next.putIfAbsent(q.sectionId, () => <LectureQuestion>[]).add(q);
       }
       if (q.knowledgePointId.isNotEmpty) {
-        kpNext.putIfAbsent(q.knowledgePointId, () => <LectureQuestion>[]).add(q);
+        kpNext
+            .putIfAbsent(q.knowledgePointId, () => <LectureQuestion>[])
+            .add(q);
       }
     }
     for (final entry in kpNext.entries) {
@@ -85,7 +89,9 @@ class MockLectureRepository {
   /// 返回值是不可变视图，调用方不要尝试 mutate。
   List<LectureQuestion> questionsForSection(String sectionId) {
     final list =
-        _assetBank[sectionId] ?? _bank[sectionId] ?? [_stubQuestionForSection(sectionId)];
+        _assetBank[sectionId] ??
+        _bank[sectionId] ??
+        [_stubQuestionForSection(sectionId)];
     return List.unmodifiable(list);
   }
 
@@ -98,7 +104,9 @@ class MockLectureRepository {
   /// - 未知 `sectionId` 返回该章节自己的通用模板题，不串用任何具体章节。
   LectureQuestion questionForSection(String sectionId, {int index = 0}) {
     final list =
-        _assetBank[sectionId] ?? _bank[sectionId] ?? [_stubQuestionForSection(sectionId)];
+        _assetBank[sectionId] ??
+        _bank[sectionId] ??
+        [_stubQuestionForSection(sectionId)];
     if (list.isEmpty) {
       // 题库被误清空时仍给当前章节一题通用模板，不回退到固定章节。
       return _stubQuestionForSection(sectionId);
@@ -112,7 +120,7 @@ class MockLectureRepository {
   /// 未知章节返回 0：首页据此**不**展示题量徽标，避免对未上线章节误标。
   int questionCountForSection(String sectionId) {
     final list = _assetBank[sectionId] ?? _bank[sectionId];
-    return list?.length ?? 1;
+    return list?.length ?? 0;
   }
 
   /// 某知识点下的题目（通常 1 道 seed 题）。
@@ -146,7 +154,9 @@ class MockLectureRepository {
     if (current.knowledgePointId.isNotEmpty) {
       final kpList = questionsForKnowledgePoint(current.knowledgePointId);
       if (kpList.length > 1) {
-        final idx = kpList.indexWhere((q) => q.questionId == current.questionId);
+        final idx = kpList.indexWhere(
+          (q) => q.questionId == current.questionId,
+        );
         return kpList[(idx + 1) % kpList.length];
       }
     }
@@ -185,11 +195,7 @@ class MockLectureRepository {
       sectionLabel: '教研中小节',
       prompt: '教研中模板题：请结合本节标题，讲清一个核心概念、一个例题步骤和一个容易出错的地方。',
       hint: '提示：先说定义，再写一步例题，最后总结易错点。',
-      referenceSteps: const [
-        '写出本节核心概念',
-        '列出一个代表性步骤',
-        '总结易错点',
-      ],
+      referenceSteps: const ['写出本节核心概念', '列出一个代表性步骤', '总结易错点'],
       difficulty: 1,
       tags: const ['教研中', '全册题库'],
       standardAnswer: '（教研占位）本题标准答案与完整步骤将于后续版本填入。',

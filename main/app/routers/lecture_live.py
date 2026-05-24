@@ -221,28 +221,59 @@ def _persist_live_session_if_needed(
         ]
         transcript = " ".join(session.transcript_segments).strip()
 
-        row = LectureSessionRecord(
-            student_id=profile.id,
-            session_id=session.session_id,
-            section_id=session.section_id or "",
-            question_id=session.question_id or "",
-            question_prompt=session.question_prompt or "",
-            status=session.last_status or "needs_explanation",
-            transcript_text=transcript,
-            steps_json=dump_json(steps_payload),
-            turns_json=dump_json(turns_payload),
-            mastery_delta=int(session.last_mastery_delta or 0),
-            round_count=session.round_index,
-            started_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
+        row = (
+            db.query(LectureSessionRecord)
+            .filter(
+                LectureSessionRecord.student_id == profile.id,
+                LectureSessionRecord.session_id == session.session_id,
+            )
+            .first()
         )
-        db.add(row)
+        previous_completed_with_gain = bool(
+            row
+            and row.status == "completed"
+            and int(row.mastery_delta or 0) > 0
+        )
+        if row is None:
+            row = LectureSessionRecord(
+                student_id=profile.id,
+                session_id=session.session_id,
+                section_id=session.section_id or "",
+                question_id=session.question_id or "",
+                question_prompt=session.question_prompt or "",
+                status=session.last_status or "needs_explanation",
+                transcript_text=transcript,
+                steps_json=dump_json(steps_payload),
+                turns_json=dump_json(turns_payload),
+                mastery_delta=int(session.last_mastery_delta or 0),
+                round_count=session.round_index,
+                started_at=datetime.utcnow(),
+                completed_at=(
+                    datetime.utcnow()
+                    if (session.last_status or "") == "completed"
+                    else None
+                ),
+            )
+            db.add(row)
+        else:
+            row.section_id = session.section_id or row.section_id or ""
+            row.question_id = session.question_id or row.question_id or ""
+            row.question_prompt = session.question_prompt or row.question_prompt or ""
+            row.status = session.last_status or "needs_explanation"
+            row.transcript_text = transcript
+            row.steps_json = dump_json(steps_payload)
+            row.turns_json = dump_json(turns_payload)
+            row.mastery_delta = int(session.last_mastery_delta or 0)
+            row.round_count = max(int(row.round_count or 0), session.round_index)
+            if row.status == "completed":
+                row.completed_at = datetime.utcnow()
 
         progress_delta = int(session.last_mastery_delta or 0)
         should_update_progress = (
             (session.last_status or "") == "completed"
             and progress_delta > 0
             and bool(session.section_id)
+            and not previous_completed_with_gain
         )
         if should_update_progress:
             progress = (
@@ -253,7 +284,7 @@ def _persist_live_session_if_needed(
                 )
                 .first()
             )
-            score_gain = progress_delta * 8
+            score_gain = max(8, progress_delta * 10)
             if progress is None:
                 progress = LearningProgress(
                     student_id=profile.id,
@@ -280,7 +311,11 @@ def _persist_live_session_if_needed(
         if should_update_progress and session.question_id:
             from app.services.assignment_service import mark_assignments_completed
 
-            summary_text = turns_payload[-1].get("text", "") if turns_payload else transcript[:200]
+            summary_text = (
+                turns_payload[-1].get("text", "")
+                if turns_payload
+                else transcript[:200]
+            )
             mark_assignments_completed(
                 db,
                 student_id=profile.id,

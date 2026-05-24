@@ -882,6 +882,24 @@ git push origin main
   不能在当前轮已收到某同伴 assessment 且 `understood=true` 时，再 fallback 到
   `_turns` 里上一轮的 `reason_*` 发言；否则上一轮没懂、下一轮已懂后，头像旁
   仍残留「有话要说」。全懂时也要清 `_expandedPeerBubble` 和 reason queue。
+- **讲题多轮输入必须按 session 隔离**：服务端 `LiveLectureSession.handle_event`
+  对 `audio_chunk` / `ink_snapshot` / `pause_detected` / `request_hint` 必须校验
+  客户端 `sessionId == self.session_id`，旧 session 的迟到事件直接丢弃。每次
+  `session_start` 都要清空当前轮 `latest_steps / board_latex / board_plain_text /
+  pending_board_image_b64`，只保留同题 `history / round_board_snapshots` 作为跨轮上下文。
+- **白板清空也要发空 snapshot**：`LecturePage._pushInkSnapshotNow` 在
+  `collectStepInfos()` 为空时不能 early-return，必须发送 `ink_snapshot steps=[]`，
+  让后端清掉旧白板状态；否则学生擦掉白板后只讲语音，伙伴仍会看到上一轮白板。
+- **本轮语音判断只看本轮 ASR**：`pause_detected` 的 no-input guard 必须使用
+  `_current_round_speech()`，不能用全局 `transcript_segments`。否则上一轮有语音、
+  本轮无输入时，会绕过 `no_steps_yet` 并把旧白板/空语音送去同伴评估。
+- **讲题结束后不要立刻清 PCM buffer**：前端发 `pause_detected` 是 fire-and-forget，
+  录音 buffer 只能在收到 `peer_assessments` 或 `round_done` 后清。发送失败、断连或
+  session 切换时要保留 buffer 供重连补传；`request_hint` 也要绑定发起时的 session。
+- **自动重连要恢复同题上下文**：断线后新 WebSocket 对应新的后端
+  `LiveLectureSession`，只补传 PCM 不够；`session_start` 必须带
+  `completedRoundIndex / history / roundBoardSnapshots`，后端仅在空 session
+  恢复这些上下文。否则同题多轮重连后同伴会忘掉上一轮追问。
 
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 

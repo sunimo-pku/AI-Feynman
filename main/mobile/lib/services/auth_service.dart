@@ -42,6 +42,15 @@ class AuthService extends ChangeNotifier {
     return SharedPreferences.getInstance();
   }
 
+  @visibleForTesting
+  void resetCacheOnlyForTesting() {
+    _token = '';
+    _username = '';
+    _role = 'student';
+    _loaded = false;
+    _pendingLoad = null;
+  }
+
   String get currentToken => _token;
   String get currentUsername => _username;
   String get currentRole => _role;
@@ -55,7 +64,19 @@ class AuthService extends ChangeNotifier {
     if (name.isEmpty) {
       throw StateError('storageNamespace requires a logged-in user');
     }
-    return name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return _namespaceForUsername(name);
+  }
+
+  @visibleForTesting
+  static String storageNamespaceForTesting(String username) =>
+      _namespaceForUsername(username);
+
+  static String _namespaceForUsername(String username) {
+    final normalized = username.trim();
+    if (normalized.isEmpty) {
+      throw StateError('storage namespace requires a non-empty username');
+    }
+    return 'u_${base64Url.encode(utf8.encode(normalized)).replaceAll('=', '')}';
   }
 
   Future<void> load() async {
@@ -77,6 +98,12 @@ class AuthService extends ChangeNotifier {
       _username = prefs.getString(_usernameKey) ?? '';
       _role = prefs.getString(_roleKey) ?? 'student';
       if (_token.isNotEmpty) {
+        if (_isTokenExpired(_token)) {
+          await _clearPersistedSession(prefs);
+          _token = '';
+          _username = '';
+          _role = 'student';
+        }
         final jwtRole = _sessionRoleFromToken(_token);
         if (jwtRole == 'parent' || jwtRole == 'student') {
           _role = jwtRole!;
@@ -95,18 +122,22 @@ class AuthService extends ChangeNotifier {
     } finally {
       _loaded = true;
       _pendingLoad = null;
-      if (isLoggedIn) {
+      if (isLoggedIn && isStudent) {
         await ProgressRepository.instance.switchUser(storageNamespace);
         await ReviewRepository.instance.switchUser(storageNamespace);
-        await KnowledgePointProgressRepository.instance.switchUser(storageNamespace);
+        await KnowledgePointProgressRepository.instance.switchUser(
+          storageNamespace,
+        );
         await FavoriteRepository.instance.switchUser(storageNamespace);
         await StudentGradeStore.instance.load();
+      } else {
+        _clearScopedCaches();
       }
       notifyListeners();
     }
   }
 
-  String? _sessionRoleFromToken(String token) {
+  Map<String, dynamic>? _payloadFromToken(String token) {
     if (token.isEmpty) return null;
     try {
       final parts = token.split('.');
@@ -114,12 +145,32 @@ class AuthService extends ChangeNotifier {
       final normalized = base64Url.normalize(parts[1]);
       final decoded = jsonDecode(utf8.decode(base64Url.decode(normalized)));
       if (decoded is Map<String, dynamic>) {
-        final role = (decoded['role'] as String?)?.trim();
-        if (role == 'parent' || role == 'student') return role;
+        return decoded;
       }
     } catch (_) {
       /* 解析失败时走 prefs / loginAs 兜底 */
     }
+    return null;
+  }
+
+  bool _isTokenExpired(String token) {
+    final payload = _payloadFromToken(token);
+    final exp = payload?['exp'];
+    int? seconds;
+    if (exp is num) {
+      seconds = exp.toInt();
+    } else if (exp is String) {
+      seconds = int.tryParse(exp);
+    }
+    if (seconds == null) return false;
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return seconds <= nowSeconds;
+  }
+
+  String? _sessionRoleFromToken(String token) {
+    final payload = _payloadFromToken(token);
+    final role = (payload?['role'] as String?)?.trim();
+    if (role == 'parent' || role == 'student') return role;
     return null;
   }
 
@@ -220,11 +271,17 @@ class AuthService extends ChangeNotifier {
         stackTrace: st,
       );
     }
-    await ProgressRepository.instance.switchUser(storageNamespace);
-    await ReviewRepository.instance.switchUser(storageNamespace);
-    await KnowledgePointProgressRepository.instance.switchUser(storageNamespace);
-    await FavoriteRepository.instance.switchUser(storageNamespace);
-    await StudentGradeStore.instance.load();
+    if (_role == 'student') {
+      await ProgressRepository.instance.switchUser(storageNamespace);
+      await ReviewRepository.instance.switchUser(storageNamespace);
+      await KnowledgePointProgressRepository.instance.switchUser(
+        storageNamespace,
+      );
+      await FavoriteRepository.instance.switchUser(storageNamespace);
+      await StudentGradeStore.instance.load();
+    } else {
+      _clearScopedCaches();
+    }
     notifyListeners();
     return AuthResult.success(_username, role: _role);
   }
@@ -296,9 +353,13 @@ class AuthService extends ChangeNotifier {
     if (_role == 'student') {
       await ProgressRepository.instance.switchUser(storageNamespace);
       await ReviewRepository.instance.switchUser(storageNamespace);
-      await KnowledgePointProgressRepository.instance.switchUser(storageNamespace);
+      await KnowledgePointProgressRepository.instance.switchUser(
+        storageNamespace,
+      );
       await FavoriteRepository.instance.switchUser(storageNamespace);
       await StudentGradeStore.instance.load();
+    } else {
+      _clearScopedCaches();
     }
     if (notify) notifyListeners();
     return AuthResult.success(_username, role: _role);
@@ -308,16 +369,30 @@ class AuthService extends ChangeNotifier {
     _token = '';
     _username = '';
     _role = 'student';
-    StudentGradeStore.instance.clear();
+    _pendingLoad = null;
+    _loaded = true;
+    _clearScopedCaches();
     try {
       final prefs = await _obtainPrefs();
-      await prefs.remove(_tokenKey);
-      await prefs.remove(_usernameKey);
-      await prefs.remove(_roleKey);
+      await _clearPersistedSession(prefs);
     } catch (_) {
       /* swallow */
     }
     notifyListeners();
+  }
+
+  Future<void> _clearPersistedSession(SharedPreferences prefs) async {
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_usernameKey);
+    await prefs.remove(_roleKey);
+  }
+
+  void _clearScopedCaches() {
+    ProgressRepository.instance.clearActiveUser();
+    ReviewRepository.instance.clearActiveUser();
+    KnowledgePointProgressRepository.instance.clearActiveUser();
+    FavoriteRepository.instance.clearActiveUser();
+    StudentGradeStore.instance.clear();
   }
 
   Future<_ApiOutcome> _post(
@@ -431,7 +506,10 @@ class AuthResult {
     : ok = true,
       message = '';
 
-  const AuthResult.failure(this.message) : ok = false, username = '', role = 'student';
+  const AuthResult.failure(this.message)
+    : ok = false,
+      username = '',
+      role = 'student';
 
   final bool ok;
   final String username;

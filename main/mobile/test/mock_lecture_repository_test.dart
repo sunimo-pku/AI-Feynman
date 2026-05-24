@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 ///   * `index` 任意整数都能 modulo 循环到合法题目，不抛异常；
 ///   * `difficultyLabel` 把 1/2/3 翻译成「基础/巩固/挑战」，未知值兜底「基础」；
 ///   * 未知 sectionId 生成该 section 自己的通用模板题；
-///   * `questionCountForSection` 对未知 section 返回 1 个通用模板题。
+///   * `questionCountForSection` 对未知 section 返回 0，避免目录误标可练。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -31,11 +31,7 @@ void main() {
   group('MockLectureRepository · 题库结构', () {
     test('每个 V1 章节恰好 3 道题', () {
       for (final s in sections) {
-        expect(
-          repo.questionCountForSection(s),
-          3,
-          reason: '$s 应当有 3 道题',
-        );
+        expect(repo.questionCountForSection(s), 3, reason: '$s 应当有 3 道题');
         expect(
           repo.questionsForSection(s).length,
           3,
@@ -47,8 +43,11 @@ void main() {
     test('每节难度按 1 / 2 / 3 升序排列', () {
       for (final s in sections) {
         final qs = repo.questionsForSection(s);
-        expect(qs.map((q) => q.difficulty).toList(), [1, 2, 3],
-            reason: '$s 难度应按基础→巩固→挑战排列');
+        expect(qs.map((q) => q.difficulty).toList(), [
+          1,
+          2,
+          3,
+        ], reason: '$s 难度应按基础→巩固→挑战排列');
       }
     });
 
@@ -61,8 +60,11 @@ void main() {
           expect(q.prompt, isNotEmpty);
           expect(q.hint, isNotEmpty);
           expect(q.referenceSteps, isNotEmpty);
-          expect(q.tags.length, inInclusiveRange(1, 3),
-              reason: '${q.questionId} 标签数量应在 1-3 之间');
+          expect(
+            q.tags.length,
+            inInclusiveRange(1, 3),
+            reason: '${q.questionId} 标签数量应在 1-3 之间',
+          );
           expect(q.difficulty, inInclusiveRange(1, 3));
         }
       }
@@ -74,8 +76,7 @@ void main() {
         all.addAll(repo.questionsForSection(s).map((q) => q.questionId));
       }
       final unique = all.toSet();
-      expect(unique.length, all.length,
-          reason: 'questionId 应当全局唯一');
+      expect(unique.length, all.length, reason: 'questionId 应当全局唯一');
     });
   });
 
@@ -85,8 +86,7 @@ void main() {
         final defaultQ = repo.questionForSection(s);
         final firstQ = repo.questionForSection(s, index: 0);
         expect(defaultQ.questionId, firstQ.questionId);
-        expect(defaultQ.difficulty, 1,
-            reason: '默认 / index=0 应取基础题');
+        expect(defaultQ.difficulty, 1, reason: '默认 / index=0 应取基础题');
       }
     });
 
@@ -95,8 +95,11 @@ void main() {
         final list = repo.questionsForSection(s);
         for (var i = 0; i < 10; i++) {
           final q = repo.questionForSection(s, index: i);
-          expect(q.questionId, list[i % list.length].questionId,
-              reason: '$s index=$i 应循环到第 ${i % list.length} 题');
+          expect(
+            q.questionId,
+            list[i % list.length].questionId,
+            reason: '$s index=$i 应循环到第 ${i % list.length} 题',
+          );
         }
       }
     });
@@ -118,8 +121,8 @@ void main() {
       expect(fallback.tags, contains('全册题库'));
     });
 
-    test('questionCountForSection 对未知 section 返回 1 个模板题', () {
-      expect(repo.questionCountForSection('not-a-real-section'), 1);
+    test('questionCountForSection 对未知 section 返回 0', () {
+      expect(repo.questionCountForSection('not-a-real-section'), 0);
     });
   });
 
@@ -191,7 +194,8 @@ void main() {
     });
 
     test('initialIndexForKnowledgePoint 随星级升高选题难度', () {
-      final kpId = repo.questionsForSection('pep-g8-down-s16-1').first.knowledgePointId;
+      final kpId =
+          repo.questionsForSection('pep-g8-down-s16-1').first.knowledgePointId;
       final list = repo.questionsForKnowledgePoint(kpId);
       expect(repo.initialIndexForKnowledgePoint(list, 0), 0);
       expect(list[repo.initialIndexForKnowledgePoint(list, 0)].difficulty, 1);
@@ -217,15 +221,22 @@ void main() {
 
     test('几何章节题库含 SVG 配图元数据', () {
       var withImage = 0;
-      for (final s in ['pep-g7-up-s4-1', 'pep-g7-up-s4-2', 'pep-g8-down-s20-1']) {
+      for (final s in [
+        'pep-g7-up-s4-1',
+        'pep-g7-up-s4-2',
+        'pep-g8-down-s20-1',
+      ]) {
         for (final q in repo.questionsForSection(s)) {
           if (q.image != null && q.image!.asset.endsWith('.svg')) {
             withImage++;
           }
         }
       }
-      expect(withImage, greaterThanOrEqualTo(4),
-          reason: '带图题应能从 asset JSON 解析出 image.asset');
+      expect(
+        withImage,
+        greaterThanOrEqualTo(4),
+        reason: '带图题应能从 asset JSON 解析出 image.asset',
+      );
     });
 
     test('fromJson 可解析可选 SVG 题图', () {

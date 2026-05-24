@@ -15,6 +15,7 @@ import '../services/review_repository.dart';
 import '../services/round12_service.dart';
 import '../services/student_grade_store.dart';
 import '../theme/app_theme.dart';
+import '../widgets/curriculum_catalog.dart';
 import '../widgets/study_layout.dart';
 import 'curriculum_tab_page.dart';
 import 'home_dashboard_tab.dart';
@@ -45,6 +46,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
 
   int _tabIndex = 0;
   int _pendingAssignments = 0;
+  bool _questionBankLoaded = false;
 
   static const _tabTitles = ['今日', '课程', '讲题广场', '排行榜', '我的'];
 
@@ -53,9 +55,12 @@ class _StudentMainShellState extends State<StudentMainShell> {
     super.initState();
     ProgressRepository.instance.load();
     KnowledgePointProgressRepository.instance.load();
-    MockLectureRepository.instance.loadAssetBank().then((_) {
-      if (mounted) setState(() {});
-    });
+    MockLectureRepository.instance
+        .loadAssetBank()
+        .catchError((_) {})
+        .whenComplete(() {
+          if (mounted) setState(() => _questionBankLoaded = true);
+        });
     ReviewRepository.instance.load();
     AuthService.instance.load().then((_) async {
       if (AuthService.instance.isLoggedIn) {
@@ -103,9 +108,13 @@ class _StudentMainShellState extends State<StudentMainShell> {
   }
 
   Future<void> _onSectionTap(CurriculumSection section) async {
-    final hasQuestion =
-        MockLectureRepository.instance.questionCountForSection(section.id) > 0;
-    if (!section.isAvailable && !hasQuestion) {
+    if (!_questionBankLoaded) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('题库正在加载，请稍等一下。')));
+      return;
+    }
+    if (!sectionPracticeAvailable(section)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('这一节正在整理练习内容，先选一个可练习小节开始吧。')),
       );
@@ -144,9 +153,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
   }
 
   Future<void> _onSectionReview(CurriculumSection section) async {
-    if (!section.isAvailable &&
-        MockLectureRepository.instance.questionCountForSection(section.id) <=
-            0) {
+    if (!sectionPracticeAvailable(section)) {
       return;
     }
     await Navigator.of(
@@ -199,9 +206,10 @@ class _StudentMainShellState extends State<StudentMainShell> {
         animation: StudentGradeStore.instance,
         builder: (context, _) {
           final gradeLabel = StudentGradeStore.instance.gradeLabel;
-          if (!StudentGradeStore.instance.isLoaded || gradeLabel == null) {
+          if (!StudentGradeStore.instance.isLoaded) {
             return const Center(child: CircularProgressIndicator());
           }
+          final safeGradeLabel = gradeLabel ?? StudentGradeStore.defaultGrade;
 
           return FutureBuilder<MathCurriculum>(
             future: _curriculumFuture,
@@ -212,8 +220,11 @@ class _StudentMainShellState extends State<StudentMainShell> {
               if (snapshot.hasError) {
                 return Center(child: Text('目录加载失败：${snapshot.error}'));
               }
+              if (!_questionBankLoaded) {
+                return const Center(child: CircularProgressIndicator());
+              }
               final curriculum = snapshot.data!;
-              final visibleBooks = _booksForGrade(curriculum, gradeLabel);
+              final visibleBooks = _booksForGrade(curriculum, safeGradeLabel);
 
               return IndexedStack(
                 index: _tabIndex,
@@ -232,7 +243,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
                     onOpenReview: _onOpenReviewBySectionId,
                   ),
                   CurriculumTabPage(
-                    studentGradeLabel: gradeLabel,
+                    studentGradeLabel: safeGradeLabel,
                     books: visibleBooks,
                     onSectionTap: _onSectionTap,
                     onSectionReview: _onSectionReview,

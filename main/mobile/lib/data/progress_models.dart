@@ -32,7 +32,7 @@ class SectionProgress {
 
   /// 本节当前掌握度，范围 `[0, 100]`。第六轮算法：
   ///   * 初始 0；
-  ///   * 每次 completed：`+= max(8, masteryDelta * 10)`，上限 100；
+  ///   * 每次 positive completed：`+= max(8, masteryDelta * 10)`，上限 100；
   ///   * 不倒扣，不衰减。
   final int masteryScore;
 
@@ -73,9 +73,9 @@ class SectionProgress {
   /// 应用一次 `/lecture/submit` 返回的 completed 结果。
   ///
   /// 按 brief 第 5 节：
-  ///   * `completedRounds += 1`
+  ///   * `masteryDelta <= 0` 时不计入本地进度；
+  ///   * positive delta 时 `completedRounds += 1`
   ///   * `masteryScore += max(8, masteryDelta * 10)`，上限 100
-  ///   * `masteryDelta <= 0` 但仍 completed 时，至少加 8 分
   ///
   /// 返回 `(next, gained)`：`gained` 是本次真正加的分数（已考虑 100 上限），
   /// UI 可以拿来显示「本节掌握度 +X」。
@@ -84,6 +84,9 @@ class SectionProgress {
     required String summary,
     required DateTime when,
   }) {
+    if (masteryDelta <= 0) {
+      return (next: this, gained: 0);
+    }
     final rawGain = masteryDelta * 10;
     final gainCandidate = rawGain >= 8 ? rawGain : 8;
     final nextScoreRaw = masteryScore + gainCandidate;
@@ -102,20 +105,18 @@ class SectionProgress {
   }
 
   Map<String, dynamic> toJson() => {
-        'sectionId': sectionId,
-        'completedRounds': completedRounds,
-        'masteryScore': masteryScore,
-        'lastPracticedAt': lastPracticedAt?.toIso8601String(),
-        'lastSummary': lastSummary,
-      };
+    'sectionId': sectionId,
+    'completedRounds': completedRounds,
+    'masteryScore': masteryScore,
+    'lastPracticedAt': lastPracticedAt?.toIso8601String(),
+    'lastSummary': lastSummary,
+  };
 
   /// 容错解析：任意字段缺失 / 类型不符都回落到默认值，不抛异常。
   /// 老用户本地 JSON 哪怕半残也能继续用，避免「升级后所有进度清零」的体感。
   factory SectionProgress.fromJson(Map<String, dynamic> json) {
     final rawScore = (json['masteryScore'] as num?)?.toInt() ?? 0;
-    final clampedScore = rawScore < 0
-        ? 0
-        : (rawScore > 100 ? 100 : rawScore);
+    final clampedScore = rawScore < 0 ? 0 : (rawScore > 100 ? 100 : rawScore);
     final rawRounds = (json['completedRounds'] as num?)?.toInt() ?? 0;
     final rounds = rawRounds < 0 ? 0 : rawRounds;
     DateTime? lastAt;

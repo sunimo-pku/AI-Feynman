@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -16,6 +17,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import (
@@ -63,6 +65,12 @@ _QUESTIONS_FILE = _PROJECT_ROOT / "data" / "questions" / "pep-junior-math-questi
 _BOUNTY_FILE = _PROJECT_ROOT / "data" / "bounty" / "challenges.json"
 
 _SECTION_LABELS: dict[str, str] = {}
+_REPLAY_SESSION_ID_RE = re.compile(
+    r"^(?:sess-)?(?:[0-9a-f]{32}|"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+    re.IGNORECASE,
+)
+_LEGACY_REPLAY_SESSION_ID_RE = re.compile(r"^sess-\d{10,}-", re.IGNORECASE)
 
 
 def _load_section_labels() -> dict[str, str]:
@@ -195,11 +203,37 @@ def _change_crystals(
     *,
     reason: str,
     ref_id: str,
+    idempotent: bool = False,
 ) -> CrystalWallet:
     wallet = _wallet(db, profile)
+    if idempotent and ref_id:
+        existing = db.query(CrystalLedger).filter(
+            CrystalLedger.student_id == profile.id,
+            CrystalLedger.reason == reason,
+            CrystalLedger.ref_id == ref_id,
+        ).first()
+        if existing is not None:
+            return wallet
     if wallet.balance + amount < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Crystal balance is not enough.")
-    wallet.balance += amount
+    if amount < 0:
+        result = db.execute(
+            text(
+                "UPDATE crystal_wallets "
+                "SET balance = balance + :amount "
+                "WHERE student_id = :student_id AND balance + :amount >= 0"
+            ),
+            {"amount": amount, "student_id": profile.id},
+        )
+        if result.rowcount != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Crystal balance is not enough.",
+            )
+        db.refresh(wallet)
+    else:
+        wallet.balance += amount
+        db.add(wallet)
     db.add(CrystalLedger(
         student_id=profile.id,
         amount=amount,
@@ -436,6 +470,15 @@ def _step_quizzes_for_challenge(challenge: dict[str, Any]) -> list[dict[str, Any
     return quizzes
 
 
+def _public_step_quizzes_for_challenge(challenge: dict[str, Any]) -> list[dict[str, Any]]:
+    public: list[dict[str, Any]] = []
+    for quiz in _step_quizzes_for_challenge(challenge):
+        item = dict(quiz)
+        item.pop("correctOptionId", None)
+        public.append(item)
+    return public
+
+
 def _score_step_answers(
     challenge: dict[str, Any],
     step_answers: list[dict[str, str]],
@@ -498,11 +541,25 @@ def _score_explanation(challenge: dict[str, Any], text_value: str) -> tuple[int,
     normalized = text_value.lower().replace(" ", "")
     keywords = [str(k) for k in challenge.get("rubricKeywords", []) if str(k).strip()]
     hits = [kw for kw in keywords if kw.lower().replace(" ", "") in normalized]
+    if not hits:
+        return 0, []
     length = len(text_value.strip())
-    length_score = 65 if length >= 24 else (35 if length >= 12 else 0)
-    hit_score = min(60, len(hits) * 30)
-    structure_score = 5 if any(mark in text_value for mark in ("所以", "因为", "应该", "正确")) else 0
+    length_score = 20 if length >= 24 else (10 if length >= 12 else 0)
+    hit_score = min(70, len(hits) * 35)
+    structure_score = 10 if any(mark in text_value for mark in ("所以", "因为", "应该", "正确")) else 0
     return min(100, length_score + hit_score + structure_score), hits
+
+
+def _validate_replay_session_id(session_id: str) -> str:
+    value = session_id.strip()
+    if not value:
+        return uuid.uuid4().hex
+    if _LEGACY_REPLAY_SESSION_ID_RE.match(value) or not _REPLAY_SESSION_ID_RE.fullmatch(value):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Replay sessionId must be a high-entropy UUID value.",
+        )
+    return value
 
 
 def _bounty_status(attempt: BountyAttempt | None) -> str:
@@ -571,7 +628,7 @@ def _bounty_public(challenge: dict[str, Any], attempt: BountyAttempt | None) -> 
         "explanationScore": int(attempt.explanation_score or 0) if attempt else 0,
         "feedback": feedback,
         "rewardGranted": bool(attempt and (attempt.reward_granted_at is not None or int(attempt.crystal_reward or 0) > 0)),
-        "stepQuizzes": _step_quizzes_for_challenge(challenge),
+        "stepQuizzes": _public_step_quizzes_for_challenge(challenge),
     }
 
 
@@ -593,17 +650,10 @@ async def gamification_me(user: User = Depends(require_student_user), db: Sessio
 
 @router.post("/gamification/power/adjust")
 async def adjust_power(req: PowerAdjustRequest, user: User = Depends(require_student_user), db: Session = Depends(get_db)):
-    profile = ensure_student_profile(db, user)
-    target = req.mastery_score * 10 + req.completed_rounds * 5 + req.bounty_wins * 15
-    current = db.query(SectionPower).filter(
-        SectionPower.student_id == profile.id,
-        SectionPower.section_id == req.section_id,
-    ).first()
-    delta = max(0, target - int(current.power_score or 0)) if current else target
-    row = _adjust_power(db, profile, req.section_id, delta, reason=req.reason, ref_id=req.ref_id)
-    db.commit()
-    db.refresh(row)
-    return _power_payload(row)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Client-side power adjustment is disabled.",
+    )
 
 
 @router.get("/leaderboard")
@@ -787,13 +837,21 @@ async def bounty_submit(req: BountySubmitRequest, user: User = Depends(require_s
     attempt.transcript_text = req.transcript_text
     already_rewarded = attempt.reward_granted_at is not None or int(attempt.crystal_reward or 0) > 0
     granted_now = bool(completed and not already_rewarded)
+    reward_ref_id = _attempt_key(date_key, req.challenge_id)
     if granted_now:
         attempt.crystal_reward = reward_crystals
         attempt.power_reward = reward_power
         attempt.reward_granted_at = datetime.utcnow()
         attempt.completed_at = datetime.utcnow()
-        _change_crystals(db, profile, reward_crystals, reason="bounty", ref_id=req.challenge_id)
-        _adjust_power(db, profile, challenge["sectionId"], reward_power, reason="bounty", ref_id=req.challenge_id)
+        _change_crystals(
+            db,
+            profile,
+            reward_crystals,
+            reason="bounty",
+            ref_id=reward_ref_id,
+            idempotent=True,
+        )
+        _adjust_power(db, profile, challenge["sectionId"], reward_power, reason="bounty", ref_id=reward_ref_id)
     elif completed and attempt.completed_at is None:
         attempt.completed_at = datetime.utcnow()
     db.commit()
@@ -910,10 +968,16 @@ async def shop_ledger(user: User = Depends(require_student_user), db: Session = 
 @router.post("/replays")
 async def create_replay(req: ReplayRequest, user: User = Depends(require_student_user), db: Session = Depends(get_db)):
     profile = ensure_student_profile(db, user)
-    row = db.query(LectureReplayRecord).filter(LectureReplayRecord.session_id == req.session_id).first()
+    session_id = _validate_replay_session_id(req.session_id)
+    row = db.query(LectureReplayRecord).filter(LectureReplayRecord.session_id == session_id).first()
     if row is None:
-        row = LectureReplayRecord(student_id=profile.id, session_id=req.session_id, section_id=req.section_id, question_id=req.question_id)
+        row = LectureReplayRecord(student_id=profile.id, session_id=session_id, section_id=req.section_id, question_id=req.question_id)
         db.add(row)
+    elif row.student_id != profile.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Replay session belongs to another student.",
+        )
     row.question_prompt = req.question_prompt
     row.audio_base64_chunks_json = dump_json(req.audio_base64_chunks)
     row.ink_timeline_json = dump_json(req.ink_timeline)

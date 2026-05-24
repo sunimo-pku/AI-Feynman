@@ -141,6 +141,15 @@ class ProgressRepository extends ChangeNotifier {
     await load();
   }
 
+  void clearActiveUser() {
+    _namespace = 'guest';
+    _cache.clear();
+    _loaded = true;
+    _pendingLoad = null;
+    _writeQueue = Future<void>.value();
+    notifyListeners();
+  }
+
   /// 应用一次「老师说 completed」：算出新的 SectionProgress、写盘、通知 UI。
   ///
   /// 返回 `(next, gained)`：UI 拿 `gained` 直接显示「本节掌握度 +X」。
@@ -210,13 +219,43 @@ class ProgressRepository extends ChangeNotifier {
         await _loadInternal();
       }
       final local = _cache[progress.sectionId];
-      final shouldReplace = local == null ||
+      final shouldReplace =
+          local == null ||
           progress.masteryScore > local.masteryScore ||
           progress.completedRounds > local.completedRounds ||
+          (progress.lastSummary.isNotEmpty &&
+              progress.lastSummary != local.lastSummary) ||
           ((progress.lastPracticedAt ?? DateTime.fromMillisecondsSinceEpoch(0))
-              .isAfter(local.lastPracticedAt ?? DateTime.fromMillisecondsSinceEpoch(0)));
+              .isAfter(
+                local.lastPracticedAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+              ));
       if (shouldReplace) {
-        _cache[progress.sectionId] = progress;
+        _cache[progress.sectionId] =
+            local == null
+                ? progress
+                : local.copyWith(
+                  completedRounds:
+                      progress.completedRounds > local.completedRounds
+                          ? progress.completedRounds
+                          : local.completedRounds,
+                  masteryScore:
+                      progress.masteryScore > local.masteryScore
+                          ? progress.masteryScore
+                          : local.masteryScore,
+                  lastSummary:
+                      progress.lastSummary.isNotEmpty
+                          ? progress.lastSummary
+                          : local.lastSummary,
+                  lastPracticedAt:
+                      (progress.lastPracticedAt ??
+                                  DateTime.fromMillisecondsSinceEpoch(0))
+                              .isAfter(
+                                local.lastPracticedAt ??
+                                    DateTime.fromMillisecondsSinceEpoch(0),
+                              )
+                          ? progress.lastPracticedAt
+                          : local.lastPracticedAt,
+                );
         await _save();
         notifyListeners();
       }

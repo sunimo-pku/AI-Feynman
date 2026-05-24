@@ -42,7 +42,8 @@ class _FavoriteQuestionsPageState extends State<FavoriteQuestionsPage> {
       }
       if (section != null) break;
     }
-    if (section == null || !mounted) {
+    if (!mounted) return;
+    if (section == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('找不到该题所属小节，可能目录已更新。')),
       );

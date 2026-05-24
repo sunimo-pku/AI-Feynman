@@ -69,6 +69,7 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
         type: 'lesson',
         contentStatus: 'available',
         v1Launch: true,
+        practiceAvailable: true,
       );
       final override = LectureQuestion(
         questionId: opened.questionId,
@@ -82,18 +83,21 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
       );
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => LecturePage(
-            section: section,
-            initialQuestionId: opened.questionId,
-            questionOverride: override,
-            assignmentId: opened.assignmentId,
-          ),
+          builder:
+              (_) => LecturePage(
+                section: section,
+                initialQuestionId: opened.questionId,
+                questionOverride: override,
+                assignmentId: opened.assignmentId,
+              ),
         ),
       );
       await _load();
     } on AssignmentApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.userMessage)));
     }
   }
 
@@ -102,7 +106,10 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
     return StudyShell(
       title: '我的作业',
       actions: [
-        IconButton(icon: const Icon(Icons.refresh), onPressed: _loading ? null : _load),
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: _loading ? null : _load,
+        ),
       ],
       child: _buildBody(),
     );
@@ -113,7 +120,9 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null && _active.isEmpty && _completed.isEmpty) {
-      return Center(child: Text(_error!, style: const TextStyle(color: AppPalette.error)));
+      return Center(
+        child: Text(_error!, style: const TextStyle(color: AppPalette.error)),
+      );
     }
 
     return RefreshIndicator(
@@ -154,7 +163,11 @@ class _StudentAssignmentsPageState extends State<StudentAssignmentsPage> {
 }
 
 class _AssignmentTile extends StatelessWidget {
-  const _AssignmentTile({required this.item, this.onStart, this.completed = false});
+  const _AssignmentTile({
+    required this.item,
+    this.onStart,
+    this.completed = false,
+  });
 
   final AssignmentItem item;
   final VoidCallback? onStart;
@@ -174,14 +187,22 @@ class _AssignmentTile extends StatelessWidget {
           const SizedBox(height: 4),
           Text(item.sectionLabel, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 8),
-          FormulaText(item.questionPrompt, style: Theme.of(context).textTheme.bodyMedium),
+          FormulaText(
+            item.questionPrompt,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
           if (item.note.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text('家长说：${item.note}', style: Theme.of(context).textTheme.bodySmall),
+            Text(
+              '家长说：${item.note}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
           const SizedBox(height: 8),
           Text(
-            overdue ? '已逾期 · 截止 ${_fmt(item.dueAt)}' : '请在 ${_fmt(item.dueAt)} 前完成',
+            overdue
+                ? '已逾期 · 截止 ${_fmt(item.dueAt)}'
+                : '请在 ${_fmt(item.dueAt)} 前完成',
             style: TextStyle(
               color: overdue ? AppPalette.error : AppPalette.textSecondary,
               fontSize: 13,

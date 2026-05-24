@@ -10,11 +10,12 @@ class StudentGradeStore extends ChangeNotifier {
   static final StudentGradeStore instance = StudentGradeStore._();
 
   static const List<String> validGrades = ['七年级', '八年级', '九年级'];
+  static const String defaultGrade = '八年级';
 
   String? _grade;
   bool _loaded = false;
 
-  /// 未加载完成前为 null；加载后必有合法年级（默认八年级仅作冷启动兜底）。
+  /// 未加载完成前为 null；登录后加载完成必有合法年级（默认八年级仅作冷启动兜底）。
   String? get gradeLabel => _grade;
 
   bool get isLoaded => _loaded;
@@ -36,9 +37,12 @@ class StudentGradeStore extends ChangeNotifier {
       final saved = (prefs.getString(_prefsKey()) ?? '').trim();
       if (validGrades.contains(saved)) {
         _grade = saved;
+      } else {
+        _grade = defaultGrade;
       }
     } catch (_) {
       /* 读盘失败不阻塞 UI */
+      _grade = defaultGrade;
     }
     _loaded = true;
     notifyListeners();

@@ -81,8 +81,7 @@ class LiveAsrBuffer:
     ) -> None:
         """追加一条来自客户端的 audio_chunk。
 
-        - 仅做最基础校验：base64 非空、长度上限、seq 单调（允许补传
-          但不接受倒退）。
+        - 仅做最基础校验：base64 非空、长度上限、seq 严格单调。
         - 不做 decode：失败的 base64 字符串会在 ``flush_to_text`` 阶段被
           ``volc_asr.recognize`` 拒绝并打 warning，不让客户端打错单条
           chunk 就把整条 session 杀掉。
@@ -98,9 +97,9 @@ class LiveAsrBuffer:
                 _MAX_SINGLE_CHUNK_BYTES,
             )
             return
-        if seq < self._last_seq:
+        if seq <= self._last_seq:
             logger.warning(
-                "[asr-buffer] 丢弃倒退 seq=%d (last=%d)", seq, self._last_seq
+                "[asr-buffer] 丢弃重复或倒退 seq=%d (last=%d)", seq, self._last_seq
             )
             return
         sr = sample_rate or self.sample_rate

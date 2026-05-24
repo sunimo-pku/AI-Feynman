@@ -8,6 +8,11 @@ import '../services/review_repository.dart';
 import '../theme/app_theme.dart';
 
 /// 课程目录通用组件：小节 pill、回顾按钮、状态徽标、章块。
+bool sectionPracticeAvailable(CurriculumSection section) {
+  return section.practiceAvailable ||
+      MockLectureRepository.instance.questionCountForSection(section.id) > 0;
+}
+
 class CurriculumChapterBlock extends StatelessWidget {
   const CurriculumChapterBlock({
     super.key,
@@ -22,11 +27,7 @@ class CurriculumChapterBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chapterAvailable = chapter.sections.any(
-      (s) =>
-          s.isAvailable ||
-          MockLectureRepository.instance.questionCountForSection(s.id) > 0,
-    );
+    final chapterAvailable = chapter.sections.any(sectionPracticeAvailable);
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Column(
@@ -88,9 +89,7 @@ class CurriculumSectionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final available =
-        section.isAvailable ||
-        MockLectureRepository.instance.questionCountForSection(section.id) > 0;
+    final available = sectionPracticeAvailable(section);
     if (!available) {
       return _buildPill(context, progress: null);
     }
@@ -106,17 +105,17 @@ class CurriculumSectionPill extends StatelessWidget {
     );
   }
 
-  Widget _buildPill(BuildContext context, {required SectionProgress? progress}) {
-    final available =
-        section.isAvailable ||
-        MockLectureRepository.instance.questionCountForSection(section.id) > 0;
+  Widget _buildPill(
+    BuildContext context, {
+    required SectionProgress? progress,
+  }) {
+    final available = sectionPracticeAvailable(section);
     final hasProgress = progress != null && progress.hasAnyCompletion;
     final bg =
         available
             ? AppPalette.primary.withValues(alpha: 0.06)
             : AppPalette.comingSoon.withValues(alpha: 0.06);
-    final spineColor =
-        available ? AppPalette.primary : AppPalette.comingSoon;
+    final spineColor = available ? AppPalette.primary : AppPalette.comingSoon;
     final textColor = available ? AppPalette.primary : AppPalette.comingSoon;
 
     final hasReview =
@@ -317,9 +316,7 @@ int countPracticableSections(CurriculumBook book) {
   var n = 0;
   for (final chapter in book.chapters) {
     for (final section in chapter.sections) {
-      if (section.isAvailable ||
-          MockLectureRepository.instance.questionCountForSection(section.id) >
-              0) {
+      if (sectionPracticeAvailable(section)) {
         n++;
       }
     }

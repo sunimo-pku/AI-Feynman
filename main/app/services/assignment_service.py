@@ -19,6 +19,7 @@ from app.db import (
     dump_json,
     load_json,
 )
+from app.services.section_grade import section_in_student_grade
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,7 @@ def build_assignment_recommendations(
     db: Session,
     *,
     student_id: int,
+    student_grade: str = "八年级",
     limit: int = 6,
 ) -> list[dict[str, Any]]:
     """根据弱项小节、易错回顾与未完成讲题，推荐可布置的题库题目。"""
@@ -182,10 +184,17 @@ def build_assignment_recommendations(
 
     scored: list[tuple[int, dict[str, Any]]] = []
     seen_question_ids: set[str] = set()
+    grade = (student_grade or "八年级").strip() or "八年级"
 
     def _try_add(priority: int, payload: dict[str, Any]) -> None:
         qid = str(payload.get("questionId") or "")
-        if not qid or qid in seen_question_ids or qid in pending_question_ids:
+        sid = str(payload.get("sectionId") or "")
+        if (
+            not qid
+            or qid in seen_question_ids
+            or qid in pending_question_ids
+            or not section_in_student_grade(sid, grade)
+        ):
             return
         seen_question_ids.add(qid)
         scored.append((priority, payload))
@@ -295,7 +304,15 @@ def build_assignment_recommendations(
     scored.sort(key=lambda item: -item[0])
 
     if not scored:
-        for sid in ("pep-g8-down-s16-1", "pep-g8-down-s16-2", "pep-g8-down-s16-3"):
+        starter_sections: list[str] = []
+        for question in _load_question_bank():
+            sid = str(question.get("sectionId") or "")
+            if sid in starter_sections or not section_in_student_grade(sid, grade):
+                continue
+            starter_sections.append(sid)
+            if len(starter_sections) >= limit:
+                break
+        for sid in starter_sections:
             try:
                 question = resolve_catalog_question(sid, 1)
             except ValueError:

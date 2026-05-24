@@ -31,3 +31,12 @@ def client() -> Iterator[TestClient]:
             os.remove(real_db)
         if os.path.exists(backup_path):
             os.replace(backup_path, real_db)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter_between_tests() -> Iterator[None]:
+    from app.middleware.rate_limit import reset_limiter  # noqa: WPS433
+
+    reset_limiter()
+    yield
+    reset_limiter()

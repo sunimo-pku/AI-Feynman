@@ -30,6 +30,7 @@ class CurriculumSection {
     required this.type,
     required this.contentStatus,
     this.v1Launch = false,
+    this.practiceAvailable = false,
     this.knowledgePoints = const [],
   });
 
@@ -40,6 +41,7 @@ class CurriculumSection {
   final String type;
   final String contentStatus;
   final bool v1Launch;
+  final bool practiceAvailable;
   final List<CurriculumKnowledgePoint> knowledgePoints;
 
   bool get isAvailable => contentStatus == 'available';
@@ -64,6 +66,7 @@ class CurriculumSection {
       type: json['type'] as String,
       contentStatus: json['contentStatus'] as String? ?? 'coming_soon',
       v1Launch: json['v1Launch'] as bool? ?? false,
+      practiceAvailable: json['practiceAvailable'] as bool? ?? false,
       knowledgePoints: kps,
     );
   }
@@ -90,9 +93,10 @@ class CurriculumChapter {
       number: json['number'] as int,
       title: json['title'] as String,
       label: json['label'] as String,
-      sections: (json['sections'] as List<dynamic>)
-          .map((e) => CurriculumSection.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      sections:
+          (json['sections'] as List<dynamic>)
+              .map((e) => CurriculumSection.fromJson(e as Map<String, dynamic>))
+              .toList(),
     );
   }
 }
@@ -126,9 +130,10 @@ class CurriculumBook {
       semesterLabel: json['semesterLabel'] as String,
       label: json['label'] as String,
       bookType: json['bookType'] as String? ?? '',
-      chapters: (json['chapters'] as List<dynamic>)
-          .map((e) => CurriculumChapter.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      chapters:
+          (json['chapters'] as List<dynamic>)
+              .map((e) => CurriculumChapter.fromJson(e as Map<String, dynamic>))
+              .toList(),
     );
   }
 }
@@ -151,9 +156,10 @@ class MathCurriculum {
       subjectLabel: json['subjectLabel'] as String,
       stageLabel: json['stageLabel'] as String,
       publisher: json['publisher'] as String,
-      books: (json['books'] as List<dynamic>)
-          .map((e) => CurriculumBook.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      books:
+          (json['books'] as List<dynamic>)
+              .map((e) => CurriculumBook.fromJson(e as Map<String, dynamic>))
+              .toList(),
     );
   }
 }

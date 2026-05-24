@@ -98,11 +98,12 @@ def test_force_flush_with_partial_window() -> None:
     assert buf.should_flush(force=True)
 
 
-def test_seq_regression_is_dropped() -> None:
+def test_seq_regression_or_duplicate_is_dropped() -> None:
     buf = _buffer()
     buf.push(seq=10, base64_data=_b64_pcm(1.0))
+    buf.push(seq=10, base64_data=_b64_pcm(1.0))  # 重复，被丢弃
     buf.push(seq=5, base64_data=_b64_pcm(1.0))  # 倒退，被丢弃
-    assert buf.pending_seconds < 1.5  # 第二条没进来
+    assert buf.pending_seconds < 1.5  # 后两条没进来
 
 
 def test_oversize_chunk_is_dropped() -> None:

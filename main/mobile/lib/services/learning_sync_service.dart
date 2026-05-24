@@ -23,7 +23,7 @@ import 'review_repository.dart';
 ///   * 不在主线程长期 hold；单次 timeout 12s，超时即标记失败。
 class LearningSyncService extends ChangeNotifier {
   LearningSyncService._({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   static final LearningSyncService instance = LearningSyncService._();
 
@@ -36,6 +36,10 @@ class LearningSyncService extends ChangeNotifier {
   DateTime? get lastSyncedAt => _lastSyncedAt;
   String? get lastError => _lastError;
   bool get isSyncing => _inFlight;
+
+  @visibleForTesting
+  Future<void> applyServerPayloadForTesting(Map<String, dynamic> body) =>
+      _applyServerPayload(body);
 
   /// 立即把本地进度 + 回顾推到后端。返回 true 表示同步成功。
   ///
@@ -67,18 +71,20 @@ class LearningSyncService extends ChangeNotifier {
           .post(
             ApiConfig.uri('/learning/reviews'),
             headers: auth.authHeaders(),
-            body: utf8.encode(jsonEncode({
-              'id': record.id,
-              'sectionId': record.sectionId,
-              'questionId': record.questionId,
-              'questionPrompt': record.questionPrompt,
-              'difficulty': record.difficulty,
-              'tags': record.tags,
-              'completedAt': record.completedAt.toIso8601String(),
-              'summary': record.summary,
-              'agentHighlights': record.agentHighlights,
-              'cautionPoints': record.cautionPoints,
-            })),
+            body: utf8.encode(
+              jsonEncode({
+                'id': record.id,
+                'sectionId': record.sectionId,
+                'questionId': record.questionId,
+                'questionPrompt': record.questionPrompt,
+                'difficulty': record.difficulty,
+                'tags': record.tags,
+                'completedAt': record.completedAt.toIso8601String(),
+                'summary': record.summary,
+                'agentHighlights': record.agentHighlights,
+                'cautionPoints': record.cautionPoints,
+              }),
+            ),
           )
           .timeout(const Duration(seconds: 8));
       return resp.statusCode >= 200 && resp.statusCode < 300;
@@ -219,18 +225,20 @@ class LearningSyncService extends ChangeNotifier {
   List<Map<String, dynamic>> _collectLocalReviews() {
     final repo = ReviewRepository.instance;
     return repo.allRecords
-        .map((r) => {
-              'id': r.id,
-              'sectionId': r.sectionId,
-              'questionId': r.questionId,
-              'questionPrompt': r.questionPrompt,
-              'difficulty': r.difficulty,
-              'tags': r.tags,
-              'completedAt': r.completedAt.toIso8601String(),
-              'summary': r.summary,
-              'agentHighlights': r.agentHighlights,
-              'cautionPoints': r.cautionPoints,
-            })
+        .map(
+          (r) => {
+            'id': r.id,
+            'sectionId': r.sectionId,
+            'questionId': r.questionId,
+            'questionPrompt': r.questionPrompt,
+            'difficulty': r.difficulty,
+            'tags': r.tags,
+            'completedAt': r.completedAt.toIso8601String(),
+            'summary': r.summary,
+            'agentHighlights': r.agentHighlights,
+            'cautionPoints': r.cautionPoints,
+          },
+        )
         .toList(growable: false);
   }
 
@@ -250,18 +258,37 @@ class LearningSyncService extends ChangeNotifier {
         final sectionId = item['sectionId'] as String? ?? '';
         if (sectionId.isEmpty) continue;
         final local = progressRepo.progressFor(sectionId);
+        final serverPracticedAt = DateTime.tryParse(
+          item['lastPracticedAt'] as String? ?? '',
+        );
+        final serverSummary = item['lastSummary'] as String? ?? '';
+        final serverIsNewer = (serverPracticedAt ??
+                DateTime.fromMillisecondsSinceEpoch(0))
+            .isAfter(
+              local.lastPracticedAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+            );
+        final summaryChanged =
+            serverSummary.isNotEmpty && serverSummary != local.lastSummary;
         if (serverScore <= local.masteryScore &&
-            serverRounds <= local.completedRounds) {
+            serverRounds <= local.completedRounds &&
+            !serverIsNewer &&
+            !summaryChanged) {
           continue;
         }
         await progressRepo.applyFromServer(
           local.copyWith(
-            completedRounds: serverRounds,
-            masteryScore: serverScore,
-            lastSummary: item['lastSummary'] as String? ?? '',
-            lastPracticedAt: DateTime.tryParse(
-              item['lastPracticedAt'] as String? ?? '',
-            ),
+            completedRounds:
+                serverRounds > local.completedRounds
+                    ? serverRounds
+                    : local.completedRounds,
+            masteryScore:
+                serverScore > local.masteryScore
+                    ? serverScore
+                    : local.masteryScore,
+            lastSummary:
+                serverSummary.isNotEmpty ? serverSummary : local.lastSummary,
+            lastPracticedAt:
+                serverIsNewer ? serverPracticedAt : local.lastPracticedAt,
           ),
         );
       }
