@@ -870,6 +870,78 @@ async def test_request_hint_emits_teacher_turn() -> None:
     assert any(s["type"] == EVT_LISTENING for s in sent)
 
 
+@pytest.mark.asyncio
+async def test_request_hint_flushes_current_audio_before_prompt() -> None:
+    session = LiveLectureSession()
+    session.asr_buffer.stream_client.enabled = True
+    session.asr_buffer.stream_client.recognize_window = (  # type: ignore[method-assign]
+        lambda **_kwargs: StreamAsrResult(
+            text="我刚才口述了第一步",
+            is_final=True,
+            mode="stream",
+        )
+    )
+    captured: dict[str, Any] = {}
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    def teacher_hint(**kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return _fake_teacher_hint(**kwargs)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-hint-audio",
+         "sectionId": "pep-g8-down-s16-1", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+        teacher_hint_fn=teacher_hint,
+    )
+    await session.handle_event(
+        {"type": "audio_chunk", "seq": 0,
+         "format": "pcm16", "sampleRate": 16000,
+         "base64": _b64_pcm(2.6)},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+        teacher_hint_fn=teacher_hint,
+    )
+    await session.handle_event(
+        {"type": "request_hint", "sessionId": "sess-hint-audio"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+        teacher_hint_fn=teacher_hint,
+    )
+
+    assert captured["student_speech_text"] == "我刚才口述了第一步"
+    assert any(s["type"] == "asr_segment" for s in sent)
+
+
+@pytest.mark.asyncio
+async def test_student_interrupt_clears_thinking_state() -> None:
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {"type": "session_start", "sessionId": "sess-interrupt",
+         "sectionId": "pep-g8-down-s16-1", "questionId": "q1"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    session.is_thinking = True
+    await session.handle_event(
+        {"type": "student_interrupt", "sessionId": "sess-interrupt"},
+        send=send, recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert session.is_thinking is False
+    assert sent[-1]["type"] == EVT_LISTENING
+
+
 def test_split_text_into_deltas_basic() -> None:
     out = _split_text_into_deltas("abcdefghij", chunk_chars=3)
     assert out == ["abc", "def", "ghi", "j"]

@@ -58,6 +58,36 @@ def test_drain_and_recognize_success() -> None:
     assert not buf.has_pending
 
 
+def test_long_force_flush_is_split_into_multiple_asr_windows() -> None:
+    client = VolcStreamingAsrClient(api_key="k", resource_id="r", url="ws://asr")
+    calls = 0
+
+    def recognize_window(**_kwargs) -> StreamAsrResult:
+        nonlocal calls
+        calls += 1
+        return StreamAsrResult(
+            text=f"第{calls}段",
+            is_final=True,
+            mode="stream",
+        )
+
+    client.recognize_window = recognize_window  # type: ignore[method-assign]
+    buf = LiveAsrBuffer(stream_client=client, max_window_seconds=6.0)
+    buf.push(seq=0, base64_data=_b64_pcm(4.0))
+    buf.push(seq=1, base64_data=_b64_pcm(4.0))
+    buf.push(seq=2, base64_data=_b64_pcm(4.0))
+
+    def fake(audio_b64: str, fmt: str) -> dict:
+        raise AssertionError("window ASR must not be used")
+
+    out = buf.flush_to_text(fake, force=True)
+    assert out is not None
+    assert calls == 3
+    assert out["text"] == "第1段 第2段 第3段"
+    assert out["seconds"] > 11.5
+    assert out["error"] is None
+
+
 def test_drain_stream_error_is_reported() -> None:
     buf = _stream_buffer(StreamAsrResult(
         text="",

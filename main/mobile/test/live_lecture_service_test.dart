@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:ai_feynman/services/live_lecture_service.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -190,6 +191,95 @@ void main() {
         jsonDecode(channels.single.sent.single) as Map<String, dynamic>;
     expect(payload['type'], 'request_hint');
     expect(payload['sessionId'], 'sess-hint');
+
+    await service.dispose();
+  });
+
+  test('replays full buffered audio again for each new websocket session', () async {
+    final channels = <_FakeWebSocketChannel>[];
+    final service = LiveLectureService(
+      audioPlayer: _NoopAudioPlayer(),
+      webSocketConnector: (uri) {
+        final channel = _FakeWebSocketChannel();
+        channels.add(channel);
+        return channel;
+      },
+    );
+
+    await service.connectAndStart(
+      sessionId: 'sess-audio-1',
+      sectionId: 'pep-g8-down-s16-3',
+      questionId: 'q-s16-3-001',
+      questionPrompt: r'\sqrt{12}',
+    );
+    channels.single.sent.clear();
+
+    service.ingestAudioBytes(Uint8List.fromList([1]));
+    service.ingestAudioBytes(Uint8List.fromList([2]));
+    await service.replaySegmentAudio();
+    var audioMessages =
+        channels.single.sent
+            .map((raw) => jsonDecode(raw) as Map<String, dynamic>)
+            .where((payload) => payload['type'] == 'audio_chunk')
+            .toList();
+    expect(audioMessages, hasLength(4));
+    channels.single.sent.clear();
+
+    await service.connectAndStart(
+      sessionId: 'sess-audio-2',
+      sectionId: 'pep-g8-down-s16-3',
+      questionId: 'q-s16-3-001',
+      questionPrompt: r'\sqrt{12}',
+    );
+    await service.replaySegmentAudio();
+    audioMessages =
+        channels.single.sent
+            .map((raw) => jsonDecode(raw) as Map<String, dynamic>)
+            .where((payload) => payload['type'] == 'audio_chunk')
+            .toList();
+    expect(audioMessages, hasLength(2));
+    expect(audioMessages.map((payload) => payload['sessionId']).toSet(), {
+      'sess-audio-2',
+    });
+
+    await service.dispose();
+  });
+
+  test('watchdog recovery reconnects without clearing buffered audio', () async {
+    final channels = <_FakeWebSocketChannel>[];
+    final service = LiveLectureService(
+      audioPlayer: _NoopAudioPlayer(),
+      webSocketConnector: (uri) {
+        final channel = _FakeWebSocketChannel();
+        channels.add(channel);
+        return channel;
+      },
+    );
+
+    await service.connectAndStart(
+      sessionId: 'sess-watchdog-1',
+      sectionId: 'pep-g8-down-s16-3',
+      questionId: 'q-s16-3-001',
+      questionPrompt: r'\sqrt{12}',
+    );
+    service.ingestAudioBytes(Uint8List.fromList([1]));
+    service.ingestAudioBytes(Uint8List.fromList([2]));
+
+    await service.reconnectPreservingSegment();
+    await Future<void>.delayed(const Duration(milliseconds: 1100));
+
+    expect(channels, hasLength(2));
+    expect(service.hasSegmentAudio, isTrue);
+    await service.replaySegmentAudio();
+    final latestMessages =
+        channels.last.sent
+            .map((raw) => jsonDecode(raw) as Map<String, dynamic>)
+            .toList();
+    final audioMessages =
+        latestMessages
+            .where((payload) => payload['type'] == 'audio_chunk')
+            .toList();
+    expect(audioMessages, hasLength(2));
 
     await service.dispose();
   });

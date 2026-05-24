@@ -828,6 +828,21 @@ git push origin main
   `connected` 后 `replaySegmentAudio()` 按序补发 `audio_chunk` 到新 session。
   点「讲题结束」或 `endSession` / 下一题时才 `clearSegmentAudio()`。补传完成
   前禁止提交（`_segmentReplayInProgress`）。勿在 `_markDisconnected` 里清 buffer。
+- **每条新 WS session 都要从头补发未提交语音段**：后端新
+  `LiveLectureSession` 的 ASR buffer 是空的，`SegmentAudioBuffer` 的 replay
+  cursor 只能防止**同一连接内**重复补发；一旦 `connectAndStart()` 建立新
+  session（自动重连或手动重连），必须 `resetReplayCursor()`，否则第二次断连后
+  再恢复只会补发上次 cursor 之后的新 chunk，前半段口述会丢。
+- **长语音 ASR 必须后端分窗**：V2 手动收束可能一次提交 20-60s PCM；不要把整段
+  合成一个火山 `recognize_window`，否则会被服务端/客户端超时截短。`LiveAsrBuffer`
+  drain 时按 `max_window_seconds` 切成多个窗口，逐窗识别再拼文本。
+- **「需要提示」也要先 flush 本轮 ASR**：提示路径同样会把
+  `student_speech_text` 喂给李老师；只推白板 OCR 不 flush pending PCM，会造成
+  “老师只看白板、没听见口述”的错位。
+- **thinking watchdog 必须重建 WS 而不是只回滚 UI**：后端在 LLM/同伴评估时
+  `is_thinking=True`，同一 WS receive loop 可能暂时无法处理新的 pause/interrupt。
+  前端 watchdog 超时应关闭旧连接、保留 segment buffer 并自动重连，让新 session
+  重新接收完整未提交语音；只把 UI 切回 idle 会让学生下一次提交继续撞旧 thinking。
 - **断连后自动续录**：断连时若 `_liveStatus` 为 listening/paused/connecting，
   置 `_resumeRecordingAfterReconnect`；自动重连 `connected` 且非用户手动
   `connecting` 态时，补传 segment 后 `AudioStreamService.start()` 恢复录音。

@@ -144,30 +144,43 @@ class LiveAsrBuffer:
             return True
         return False
 
-    def _drain(self) -> tuple[str, float]:
-        """拼接所有 pending chunk 的 base64 字符串并清空缓冲。"""
+    def _drain_windows(self) -> list[tuple[str, float]]:
+        """按时长切分 pending chunk，返回多个 base64 音频窗口并清空缓冲。"""
 
         if not self._pending:
-            return "", 0.0
+            return []
         # base64 是按 4 字符 1 组的；多个独立 base64 字符串**不能**直接拼接，
         # 必须先 decode 成 bytes 再合并、再 encode。否则中间会出现非法
         # padding，火山 ASR 直接 400。
-        merged_bytes = b""
+        windows: list[tuple[bytes, float]] = []
+        merged_bytes = bytearray()
+        merged_seconds = 0.0
         for chunk in self._pending:
+            if (
+                merged_bytes
+                and merged_seconds + chunk.seconds > self.max_window_seconds
+            ):
+                windows.append((bytes(merged_bytes), merged_seconds))
+                merged_bytes = bytearray()
+                merged_seconds = 0.0
             try:
-                merged_bytes += base64.b64decode(chunk.base64_data)
+                merged_bytes.extend(base64.b64decode(chunk.base64_data))
+                merged_seconds += chunk.seconds
             except Exception as e:  # noqa: BLE001
                 logger.warning(
                     "[asr-buffer] base64 decode 失败 seq=%d err=%s; 跳过本 chunk",
                     chunk.seq,
                     e,
                 )
-        seconds = self._pending_seconds
+        if merged_bytes:
+            windows.append((bytes(merged_bytes), merged_seconds))
         self._pending.clear()
         self._pending_seconds = 0.0
-        if not merged_bytes:
-            return "", seconds
-        return base64.b64encode(merged_bytes).decode("ascii"), seconds
+        return [
+            (base64.b64encode(raw).decode("ascii"), seconds)
+            for raw, seconds in windows
+            if raw
+        ]
 
     def flush_to_text(
         self,
@@ -189,52 +202,64 @@ class LiveAsrBuffer:
 
         if not self.should_flush(force=force):
             return None
-        b64, seconds = self._drain()
-        if not b64:
+        windows = self._drain_windows()
+        if not windows:
             return None
-        logger.info(
-            "[asr-buffer] flush window seconds=%.2f b64_len=%d force=%s",
-            seconds,
-            len(b64),
-            force,
-        )
+        total_seconds = sum(seconds for _, seconds in windows)
+        texts: list[str] = []
+        mode = "stream"
+        is_final = True
         try:
-            stream_result = self.stream_client.recognize_window(
-                audio_base64=b64,
-                audio_format=self.audio_format,
-                recognize_fallback=recognize_fn,
-            )
-            if stream_result is not None:
+            for idx, (b64, seconds) in enumerate(windows, start=1):
+                logger.info(
+                    "[asr-buffer] flush window part=%d/%d seconds=%.2f b64_len=%d force=%s",
+                    idx,
+                    len(windows),
+                    seconds,
+                    len(b64),
+                    force,
+                )
+                stream_result = self.stream_client.recognize_window(
+                    audio_base64=b64,
+                    audio_format=self.audio_format,
+                    recognize_fallback=recognize_fn,
+                )
+                if stream_result is None:
+                    return {
+                        "text": "",
+                        "seconds": total_seconds,
+                        "error": "streaming_asr_not_configured",
+                    }
+                mode = stream_result.mode
+                is_final = is_final and stream_result.is_final
                 if stream_result.error:
                     return {
                         "text": "",
-                        "seconds": seconds,
+                        "seconds": total_seconds,
                         "error": stream_result.error,
                         "mode": stream_result.mode,
                         "isFinal": stream_result.is_final,
                     }
-                text = stream_result.text.strip()
-                preview = text if len(text) <= 120 else f"{text[:120]}…"
-                logger.info(
-                    "[asr-buffer] flush result text_len=%d preview=%r",
-                    len(text),
-                    preview,
-                )
-                return {
-                    "text": text,
-                    "seconds": seconds,
-                    "error": None,
-                    "mode": stream_result.mode,
-                    "isFinal": stream_result.is_final,
-                }
+                text_part = stream_result.text.strip()
+                if text_part:
+                    texts.append(text_part)
+            text = " ".join(texts).strip()
+            preview = text if len(text) <= 120 else f"{text[:120]}…"
+            logger.info(
+                "[asr-buffer] flush result text_len=%d preview=%r",
+                len(text),
+                preview,
+            )
             return {
-                "text": "",
-                "seconds": seconds,
-                "error": "streaming_asr_not_configured",
+                "text": text,
+                "seconds": total_seconds,
+                "error": None,
+                "mode": mode,
+                "isFinal": is_final,
             }
         except Exception as e:  # noqa: BLE001
             logger.exception("[asr-buffer] recognize_fn 抛异常：%s", e)
-            return {"text": "", "seconds": seconds, "error": f"asr_exception:{e}"}
+            return {"text": "", "seconds": total_seconds, "error": f"asr_exception:{e}"}
         if not isinstance(result, dict):
             return {"text": "", "seconds": seconds, "error": "asr_result_not_dict"}
         if result.get("error"):

@@ -168,6 +168,11 @@ class LiveLectureService {
     _lastRoundBoardPayload = List<Map<String, dynamic>>.unmodifiable(
       roundBoardSnapshots,
     );
+    if (_segmentAudio.isNotEmpty) {
+      // 每条新 WS session 的后端 ASR buffer 都是空的；未提交语音必须从头补传。
+      // 同一连接内补传完成后 replay cursor 会前移，避免重复发送。
+      _segmentAudio.resetReplayCursor();
+    }
     if (_isConnected) {
       // 已连接：发送 session_start 切换到新会话。
       _sessionId = sessionId;
@@ -545,6 +550,24 @@ class LiveLectureService {
     }
     _channel = null;
     _markDisconnected();
+  }
+
+  Future<void> reconnectPreservingSegment() async {
+    ++_connectionEpoch;
+    try {
+      await _channelSub?.cancel();
+    } catch (_) {
+      /* swallow */
+    }
+    _channelSub = null;
+    try {
+      await _channel?.sink.close(ws_status.goingAway);
+    } catch (_) {
+      /* swallow */
+    }
+    _channel = null;
+    _markDisconnected();
+    _scheduleReconnectIfPossible();
   }
 
   /// 清空待播 TTS 队列并停止当前播放（新一轮评估 / 提示前调用）。

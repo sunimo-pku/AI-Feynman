@@ -18,6 +18,10 @@ class SegmentAudioBuffer {
     _chunks.add(Uint8List.fromList(data));
   }
 
+  void resetReplayCursor() {
+    _replayCursor = 0;
+  }
+
   void markReplaySent(int count) {
     if (count <= 0) return;
     _replayCursor = (_replayCursor + count).clamp(0, _chunks.length);

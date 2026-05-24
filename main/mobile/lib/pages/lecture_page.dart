@@ -2249,20 +2249,19 @@ class _LecturePageState extends State<LecturePage> {
   /// 启动 thinking 看门狗。重复调用幂等：每次调用都会 cancel 旧定时器。
   ///
   /// 看门狗超时后做的事：
-  ///   * 切回 idle（保留 WS / 已识别 ASR，录音段已在「讲题结束」时停止）；
+  ///   * 重建 WS（保留未提交 PCM），避免旧后端 session 卡在 thinking；
   ///   * 设一句 `_liveFailureReason` 友好提示，不切到 failed 态以免
   ///     学生觉得整次会话挂了；
-  ///   * 不主动断 WS，因为后端可能还在生成、只是慢；如果 WS 真的断了，
-  ///     `_onLiveConnection(disconnected)` 会单独把状态切到 disconnected。
   void _armThinkingWatchdog() {
     _thinkingWatchdogTimer?.cancel();
     _thinkingWatchdogTimer = Timer(_thinkingWatchdogTimeout, () {
       if (!mounted) return;
       if (_liveStatus != _LiveStatus.thinking) return;
+      unawaited(_liveService.reconnectPreservingSegment());
       setState(() {
         _rollbackPendingLiveRound();
-        _liveStatus = _LiveStatus.idle;
-        _liveFailureReason = '后端暂时没回，请再讲两句或重新点「讲题结束」';
+        _liveStatus = _LiveStatus.disconnected;
+        _liveFailureReason = '后端暂时没回，正在重连并保留刚才这段讲解。';
       });
     });
   }

@@ -36,4 +36,16 @@ void main() {
     expect(buffer.replayPendingCount, 1);
     expect(buffer.replayPendingChunks.single, Uint8List.fromList([3]));
   });
+
+  test('SegmentAudioBuffer can replay full segment for a new websocket session', () {
+    final buffer = SegmentAudioBuffer();
+
+    buffer.add(Uint8List.fromList([1]));
+    buffer.add(Uint8List.fromList([2]));
+    buffer.markReplaySent(2);
+    expect(buffer.replayPendingChunks, isEmpty);
+
+    buffer.resetReplayCursor();
+    expect(buffer.replayPendingChunks.map((c) => c.first), [1, 2]);
+  });
 }

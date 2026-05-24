@@ -323,6 +323,8 @@ class LiveLectureSession:
             return True
         if evt_type == EVT_STUDENT_INTERRUPT:
             self._interrupt_event.set()
+            self.is_thinking = False
+            self._cancel_tts_tasks()
             await self._safe_send(send, {
                 "type": EVT_LISTENING,
                 "sessionId": self.session_id,
@@ -331,6 +333,7 @@ class LiveLectureSession:
         if evt_type == EVT_REQUEST_HINT:
             await self._on_request_hint(
                 send=send,
+                recognize_fn=recognize_fn,
                 teacher_hint_fn=teacher_hint_fn,
             )
             return True
@@ -1135,6 +1138,7 @@ class LiveLectureSession:
         self,
         *,
         send: Callable[[dict[str, Any]], Awaitable[None]],
+        recognize_fn: Callable[[str, str], dict],
         teacher_hint_fn: Callable[..., dict[str, Any]] | None,
     ) -> None:
         if teacher_hint_fn is None:
@@ -1145,6 +1149,18 @@ class LiveLectureSession:
                 "type": EVT_WARNING,
                 "sessionId": self.session_id,
                 "message": "thinking_in_progress",
+            })
+            return
+
+        asr_ok = await self._maybe_flush_asr(
+            send=send,
+            recognize_fn=recognize_fn,
+            force=True,
+        )
+        if not asr_ok:
+            await self._safe_send(send, {
+                "type": EVT_LISTENING,
+                "sessionId": self.session_id,
             })
             return
 
