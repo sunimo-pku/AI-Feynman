@@ -9,6 +9,7 @@ import '../data/mock_lecture_repository.dart';
 import '../services/assignment_service.dart';
 import '../services/auth_service.dart';
 import '../services/learning_sync_service.dart';
+import '../services/knowledge_point_progress_repository.dart';
 import '../services/progress_repository.dart';
 import '../services/review_repository.dart';
 import '../services/round12_service.dart';

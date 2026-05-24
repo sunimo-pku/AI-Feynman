@@ -365,6 +365,38 @@ class ParentAssignment(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class QuestionFavorite(Base):
+    """学生收藏的题目（讲题页星标）。"""
+
+    __tablename__ = "question_favorites"
+    __table_args__ = (
+        UniqueConstraint("student_id", "question_id", name="uq_fav_student_question"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    question_id = Column(String(64), nullable=False, index=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    question_prompt = Column(Text, default="")
+    difficulty = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class QuestionFeedback(Base):
+    """学生向家长反馈某道题（可多次提交）。"""
+
+    __tablename__ = "question_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    question_id = Column(String(64), nullable=False, index=True)
+    section_id = Column(String(64), nullable=False, index=True)
+    question_prompt = Column(Text, default="")
+    note = Column(Text, default="")
+    difficulty = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ---------------------------------------------------------------------------
 # 启动初始化 + 轻量迁移
 # ---------------------------------------------------------------------------

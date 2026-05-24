@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../config/app_branding.dart';
 import '../data/parent_models.dart';
+import '../data/question_engagement_models.dart';
 import '../data/round12_models.dart';
 import '../services/auth_service.dart';
 import '../services/learning_sync_service.dart';
@@ -50,6 +51,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   String? _error;
   ParentDashboardPayload? _payload;
   List<ReplaySummary> _replays = const <ReplaySummary>[];
+  List<ParentQuestionFeedbackItem> _questionFeedback =
+      const <ParentQuestionFeedbackItem>[];
 
   @override
   void initState() {
@@ -82,10 +85,12 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     try {
       final payload = await _parentService.fetchDashboard();
       final replays = await _replayService.fetchParentReplays();
+      final feedback = await _parentService.fetchQuestionFeedback();
       if (!mounted) return;
       setState(() {
         _payload = payload;
         _replays = replays;
+        _questionFeedback = feedback;
         _loading = false;
       });
     } on ParentApiException catch (e) {
@@ -283,6 +288,8 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
           ),
           const SizedBox(height: AppSpacing.moduleGap),
           _ReplayListCard(replays: _replays),
+          const SizedBox(height: AppSpacing.moduleGap),
+          _QuestionFeedbackCard(items: _questionFeedback),
           const SizedBox(height: AppSpacing.moduleGap),
           _RecentReviewsCard(reviews: p.recentReviews),
           const SizedBox(height: AppSpacing.moduleGap),
@@ -710,6 +717,99 @@ class _SectionRow extends StatelessWidget {
           if (info.recentScores.length >= 2) ...[
             const SizedBox(height: 6),
             _MiniTrendLine(scores: info.recentScores, color: accent),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _QuestionFeedbackCard extends StatelessWidget {
+  const _QuestionFeedbackCard({required this.items});
+
+  final List<ParentQuestionFeedbackItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return StudyPanel(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionHeader(
+            title: '题目反馈',
+            subtitle: '孩子在讲题时发给您的备注',
+          ),
+          const SizedBox(height: 12),
+          if (items.isEmpty)
+            const StudyEmptyHint('还没有题目反馈，孩子可在讲题页点反馈按钮')
+          else
+            ...items.map((item) => _QuestionFeedbackItem(item: item)),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuestionFeedbackItem extends StatelessWidget {
+  const _QuestionFeedbackItem({required this.item});
+
+  final ParentQuestionFeedbackItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.feedback_outlined,
+                size: 18,
+                color: AppPalette.primaryAccent,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  item.sectionLabel.isEmpty ? item.sectionId : item.sectionLabel,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              if (item.createdAt != null)
+                Text(
+                  _formatTime(item.createdAt!),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+            ],
+          ),
+          if (item.questionPrompt.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            FormulaText(
+              item.questionPrompt,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+          if (item.note.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppPalette.primaryAccent.withValues(alpha: 0.06),
+                borderRadius: AppRadius.buttonR,
+                border: Border.all(
+                  color: AppPalette.primaryAccent.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Text(
+                item.note,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  height: 1.45,
+                ),
+              ),
+            ),
           ],
         ],
       ),

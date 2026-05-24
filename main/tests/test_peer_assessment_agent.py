@@ -8,6 +8,7 @@ from app.services.lecture_agent import LectureAgentError
 
 def test_generate_peer_assessments_requires_key(monkeypatch) -> None:
     monkeypatch.setattr("app.services.peer_assessment_agent.Config.DEEPSEEK_API_KEY", "")
+    monkeypatch.setattr("app.services.peer_assessment_agent.Config.ALIYUN_API_KEY", "")
     with pytest.raises(LectureAgentError):
         peer_assessment_agent.generate_peer_assessments(
             section_id="pep-g8-down-s16-1",

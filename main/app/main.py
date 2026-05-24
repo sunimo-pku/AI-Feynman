@@ -15,6 +15,7 @@ from app.routers import (
     lecture_live,
     ocr,
     parent,
+    question_engagement,
     round11,
     sessions,
     tts,
@@ -65,7 +66,9 @@ app.include_router(lecture.router)
 app.include_router(lecture_live.router)
 # 第十轮：学习同步、家长端、OCR 兜底
 app.include_router(learning.router)
+app.include_router(question_engagement.student_router)
 app.include_router(parent.router)
+app.include_router(question_engagement.parent_router)
 app.include_router(assignments.router)
 app.include_router(ocr.router)
 app.include_router(round11.router)

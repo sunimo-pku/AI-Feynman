@@ -9,6 +9,7 @@ import '../services/asr_service.dart';
 import '../services/audio_stream_service.dart';
 import '../services/round12_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/device_form_factor.dart';
 import '../widgets/bounty_step_quiz_bar.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
@@ -36,18 +37,26 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   int _selectedIndex = 0;
   bool _submitting = false;
   bool _listening = false;
+  bool _heardVoiceThisAttempt = false;
   CanvasDrawMode _canvasDrawMode = CanvasDrawMode.pen;
   final List<Uint8List> _pcmBuffer = <Uint8List>[];
+  StreamSubscription<Uint8List>? _audioChunksSub;
+  StreamSubscription<AudioStreamStatus>? _audioStatusSub;
+  StreamSubscription<bool>? _voiceSub;
 
   @override
   void initState() {
     super.initState();
-    _audio.chunks.listen(_onPcmChunk);
-    _audio.statusStream.listen(_onAudioStatus);
+    _audioChunksSub = _audio.chunks.listen(_onPcmChunk);
+    _audioStatusSub = _audio.statusStream.listen(_onAudioStatus);
+    _voiceSub = _audio.voiceActivity.listen(_onVoiceActivity);
   }
 
   @override
   void dispose() {
+    unawaited(_audioChunksSub?.cancel());
+    unawaited(_audioStatusSub?.cancel());
+    unawaited(_voiceSub?.cancel());
     _canvas.dispose();
     unawaited(_audio.stop());
     _audio.dispose();
@@ -59,6 +68,11 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   void _onPcmChunk(Uint8List chunk) {
     if (!_listening || chunk.isEmpty) return;
     _pcmBuffer.add(Uint8List.fromList(chunk));
+  }
+
+  void _onVoiceActivity(bool active) {
+    if (!_listening || !active || _heardVoiceThisAttempt || !mounted) return;
+    setState(() => _heardVoiceThisAttempt = true);
   }
 
   void _onAudioStatus(AudioStreamStatus status) {
@@ -102,7 +116,10 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   }
 
   Future<void> _startVoice() async {
-    _pcmBuffer.clear();
+    setState(() {
+      _pcmBuffer.clear();
+      _heardVoiceThisAttempt = false;
+    });
     final ok = await _audio.start();
     if (!mounted) return;
     if (!ok) {
@@ -120,6 +137,12 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
 
     if (!_allStepsAnswered(challenge)) {
       _showMessage('请先完成上方每一步的选择题。');
+      return;
+    }
+    if (_pcmBuffer.isEmpty || !_heardVoiceThisAttempt) {
+      _pcmBuffer.clear();
+      _heardVoiceThisAttempt = false;
+      _showMessage('请先点「开始讲错因」，并讲一段错因分析后再提交。');
       return;
     }
 
@@ -161,7 +184,13 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
     } catch (e) {
       if (mounted) _showMessage('提交失败：$e');
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      _pcmBuffer.clear();
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _heardVoiceThisAttempt = false;
+        });
+      }
     }
   }
 
@@ -315,11 +344,13 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                               : null,
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 6, 16, 4),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
                     child: Text(
-                      '点「开始讲错因」后用电容笔书写；双指可平移白板',
-                      style: TextStyle(
+                      handCanvasStylusOnly(context)
+                          ? '点「开始讲错因」后用电容笔书写；双指可平移白板'
+                          : '点「开始讲错因」后可用手指或电容笔书写；双指可平移白板',
+                      style: const TextStyle(
                         fontSize: 12,
                         color: AppPalette.textSecondary,
                         fontWeight: FontWeight.w600,
@@ -332,7 +363,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                       edgeToEdge: true,
                       backgroundColor: AppPalette.surface,
                       drawingEnabled: _canDrawOnCanvas,
-                      stylusOnly: true,
+                      stylusOnly: handCanvasStylusOnly(context),
                       drawMode: _canvasDrawMode,
                       twoFingerPanEnabled: true,
                     ),
@@ -389,6 +420,8 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
                 _selectedIndex = i;
                 _canvas.clear();
                 _canvasDrawMode = CanvasDrawMode.pen;
+                _pcmBuffer.clear();
+                _heardVoiceThisAttempt = false;
               }),
               child: Container(
                 width: 36,
@@ -459,7 +492,9 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
   Widget _buildOrbToolbar(BountyChallenge challenge, BountySubmitResult? result) {
     final canSubmit = _allStepsAnswered(challenge);
     final canvasToolsEnabled = _canDrawOnCanvas;
-    final canEndVoice = _listening || canSubmit;
+    final hasVoiceForCurrentAttempt =
+        _heardVoiceThisAttempt && _pcmBuffer.isNotEmpty;
+    final canEndVoice = _listening || hasVoiceForCurrentAttempt;
     final orbs = <Widget>[
       if (!_listening)
         LectureOrbButton(
@@ -484,7 +519,7 @@ class _DailyChallengePageState extends State<DailyChallengePage> {
         filled: true,
         loading: _submitting,
         onPressed:
-            _submitting || !canEndVoice
+            _submitting || !canSubmit || !canEndVoice
                 ? null
                 : () => unawaited(_stopVoiceAndSubmit(challenge)),
       ),

@@ -10,11 +10,12 @@ import logging
 from typing import Any
 
 from app.config import Config
-from app.services.kimi import DEEPSEEK_THINKING_DISABLED, deepseek_client
+from app.services.kimi import deepseek_api_key_configured, deepseek_client, deepseek_thinking_disabled_extra_body
 from app.services.lecture_agent import (
     LectureAgentError,
     _build_user_prompt,
     _sanitize_history,
+    _sanitize_round_board_snapshots,
     _strip_markdown_fence,
 )
 from app.services.question_bank import resolve_standard_answer
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 _TEACHER_MODEL = Config.DEEPSEEK_MODEL
 _TEACHER_TEMPERATURE = 0.3
-_TEACHER_EXTRA_BODY: dict[str, Any] = DEEPSEEK_THINKING_DISABLED
+_TEACHER_EXTRA_BODY: dict[str, Any] = {}  # 见 deepseek_thinking_disabled_extra_body()
 _LLM_TIMEOUT_SECONDS = 6.0
 _MAX_TEXT_LEN = 220
 _MAX_SUMMARY_TEXT_LEN = 140
@@ -63,6 +64,7 @@ def generate_teacher_hint(
     steps: list[dict[str, Any]],
     round_index: int = 1,
     history: list[dict[str, Any]] | None = None,
+    round_board_snapshots: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """生成一条李老师提示 turn。"""
 
@@ -73,8 +75,12 @@ def generate_teacher_hint(
 
     cleaned_history = _sanitize_history(history)
     safe_round = max(1, int(round_index or 1))
+    prior_boards = _sanitize_round_board_snapshots(
+        round_board_snapshots,
+        current_round=safe_round,
+    )
 
-    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+    if not deepseek_api_key_configured():
         raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
 
     context_prompt = _build_user_prompt(
@@ -87,6 +93,7 @@ def generate_teacher_hint(
         round_index=safe_round,
         history=cleaned_history,
         purpose="teacher",
+        round_board_snapshots=prior_boards,
     )
     user_prompt = (
         "【学生请求】学生刚刚主动点击了「需要提示」。请给出一条脚手架式提示，"
@@ -108,7 +115,7 @@ def generate_teacher_hint(
             max_tokens=600,
             response_format={"type": "json_object"},
             timeout=_LLM_TIMEOUT_SECONDS,
-            extra_body=_TEACHER_EXTRA_BODY,
+            extra_body=deepseek_thinking_disabled_extra_body(),
         )
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
     except Exception as e:  # noqa: BLE001
@@ -259,6 +266,7 @@ def generate_teacher_summary(
     history: list[dict[str, Any]] | None = None,
     peer_assessments: list[dict[str, Any]] | None = None,
     standard_answer: str = "",
+    round_board_snapshots: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """三名同伴都听懂时，李老师收束小结。"""
 
@@ -268,8 +276,12 @@ def generate_teacher_summary(
     allowed_step_ids = [sid for sid in allowed_step_ids if sid]
     cleaned_history = _sanitize_history(history)
     safe_round = max(1, int(round_index or 1))
+    prior_boards = _sanitize_round_board_snapshots(
+        round_board_snapshots,
+        current_round=safe_round,
+    )
 
-    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+    if not deepseek_api_key_configured():
         raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
 
     std = resolve_standard_answer(
@@ -287,6 +299,7 @@ def generate_teacher_summary(
         history=cleaned_history,
         purpose="teacher_summary",
         standard_answer=std,
+        round_board_snapshots=prior_boards,
     )
     peer_ack = _peer_understood_ack(peer_assessments)
 
@@ -309,7 +322,7 @@ def generate_teacher_summary(
             max_tokens=700,
             response_format={"type": "json_object"},
             timeout=_LLM_TIMEOUT_SECONDS,
-            extra_body=_TEACHER_EXTRA_BODY,
+            extra_body=deepseek_thinking_disabled_extra_body(),
         )
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
     except Exception as e:  # noqa: BLE001

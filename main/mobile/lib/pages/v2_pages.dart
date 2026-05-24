@@ -15,6 +15,7 @@ import '../widgets/formula_text.dart';
 import '../widgets/study_layout.dart';
 import 'lecture_page.dart';
 import 'privacy_notice_page.dart';
+import 'favorite_questions_page.dart';
 
 const List<String> _gradeOptions = <String>['七年级', '八年级', '九年级'];
 
@@ -164,6 +165,21 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                             )
                             .toList(),
                   ),
+                const SizedBox(height: 20),
+                const StudySectionTitle(title: '我的收藏'),
+                StudyGroupedPanel(
+                  children: [
+                    StudyListRow(
+                      title: '收藏的题目',
+                      subtitle: '讲题页点星星收藏，方便回头再练',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const FavoriteQuestionsPage(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 20),
                 const StudySectionTitle(title: '资料与隐私'),
                 StudyGroupedPanel(

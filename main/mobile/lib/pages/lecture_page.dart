@@ -15,6 +15,7 @@ import '../data/progress_models.dart';
 import '../data/review_models.dart';
 import '../services/audio_stream_service.dart';
 import '../services/auth_service.dart';
+import '../services/favorite_repository.dart';
 import '../services/learning_sync_service.dart';
 import '../services/lecture_service.dart';
 import '../services/live_lecture_service.dart';
@@ -26,6 +27,7 @@ import '../services/replay_service.dart';
 import '../services/review_repository.dart';
 import '../services/user_cosmetics_prefs.dart';
 import '../theme/app_theme.dart';
+import '../utils/device_form_factor.dart';
 import '../widgets/knowledge_point_stars.dart';
 import '../widgets/formula_text.dart';
 import '../widgets/hand_canvas.dart';
@@ -161,6 +163,9 @@ class _LecturePageState extends State<LecturePage> {
   /// 每次提交时按「最近 6 条」截尾后塞进请求体；后端再做一次清洗与硬上限。
   final List<LectureHistoryItem> _history = <LectureHistoryItem>[];
 
+  /// 已完成各轮白板 OCR 摘要（`/lecture/submit` 与提示路径上送后端）。
+  final List<RoundBoardSnapshot> _roundBoardSnapshots = <RoundBoardSnapshot>[];
+
   _LectureStatus _status = _LectureStatus.idle;
   int _round = 0;
   String? _errorMessage;
@@ -281,6 +286,7 @@ class _LecturePageState extends State<LecturePage> {
     UserCosmeticsPrefs.instance.load();
     _questionsBootstrapFuture = _bootstrapQuestions();
     unawaited(_questionsBootstrapFuture);
+    unawaited(FavoriteRepository.instance.load());
   }
 
   /// 必须 await 全册 JSON，否则首帧拿到 stub 题（无 `image`）且配图永远不出现。
@@ -620,6 +626,57 @@ class _LecturePageState extends State<LecturePage> {
     return parts.join(' ');
   }
 
+  RoundBoardSnapshot _boardSnapshotFromRequest(
+    LectureSubmitRequest request, {
+    String boardImageBase64 = '',
+  }) {
+    for (final step in request.steps) {
+      if (step.stepId == 'board') {
+        return RoundBoardSnapshot(
+          roundIndex: request.roundIndex,
+          boardLatex: step.latex,
+          boardPlainText: step.plainText,
+          strokeCount: step.strokeCount,
+          boardImageBase64: boardImageBase64,
+        );
+      }
+    }
+    final strokes = request.steps.fold<int>(
+      0,
+      (sum, step) => sum + step.strokeCount,
+    );
+    return RoundBoardSnapshot(
+      roundIndex: request.roundIndex,
+      strokeCount: strokes,
+      boardImageBase64: boardImageBase64,
+    );
+  }
+
+  void _appendBoardSnapshotFromRequest(
+    LectureSubmitRequest request, {
+    String boardImageBase64 = '',
+  }) {
+    final snap = _boardSnapshotFromRequest(
+      request,
+      boardImageBase64: boardImageBase64,
+    );
+    if (snap.boardLatex.isEmpty &&
+        snap.boardPlainText.isEmpty &&
+        snap.strokeCount <= 0 &&
+        snap.boardImageBase64.isEmpty) {
+      return;
+    }
+    _roundBoardSnapshots.removeWhere((s) => s.roundIndex == snap.roundIndex);
+    _roundBoardSnapshots.add(snap);
+    const maxKeep = 8;
+    if (_roundBoardSnapshots.length > maxKeep) {
+      _roundBoardSnapshots.removeRange(
+        0,
+        _roundBoardSnapshots.length - maxKeep,
+      );
+    }
+  }
+
   /// 把后端返回的一条 [AgentTurn] 转成可上送的 [LectureHistoryItem]，
   /// 用于下一轮请求体里的 history 段。
   LectureHistoryItem _agentTurnToHistory(AgentTurn turn) {
@@ -687,6 +744,9 @@ class _LecturePageState extends State<LecturePage> {
       // 失败重试也复用同一个 _round + 1 数字，符合「这是第几次提交」的语义。
       roundIndex: _round + 1,
       history: historyForRequest,
+      roundBoardSnapshots: List<RoundBoardSnapshot>.unmodifiable(
+        _roundBoardSnapshots,
+      ),
     );
   }
 
@@ -827,9 +887,8 @@ class _LecturePageState extends State<LecturePage> {
     }
     for (final a in assessments) {
       // 只有"没听懂、当众追问"的同伴才写进 history；听懂状态由后端 prompt
-      // 的「你（{display}）上一轮的追问」自指段处理（找不到自指条目 = 上一轮
-      // 默认听懂），避免把 `(听懂了) reason` 这种内部状态标签喂给下一轮 LLM
-      // 当成同伴台词。
+      // 的「你（{display}）上一轮的追问」自指段处理，避免把内部状态标签
+      // 喂给下一轮 LLM 当成同伴台词。
       if (!a.understood) {
         _history.add(a.toHistoryItem());
       }
@@ -942,6 +1001,10 @@ class _LecturePageState extends State<LecturePage> {
       setState(() {
         _errorMessage = null;
         _lastFailedRequest = null;
+        _appendBoardSnapshotFromRequest(
+          enriched,
+          boardImageBase64: boardPng == null ? '' : base64Encode(boardPng),
+        );
         _applyPeerAssessmentRound(
           assessments: response.assessments,
           allUnderstood: response.allUnderstood,
@@ -1309,6 +1372,7 @@ class _LecturePageState extends State<LecturePage> {
     _errorMessage = null;
     _lastFailedRequest = null;
     _history.clear();
+    _roundBoardSnapshots.clear();
     _round = 0;
     _lastResponseStatus = 'needs_explanation';
     _sectionProgressAfterCompletion = null;
@@ -1540,6 +1604,113 @@ class _LecturePageState extends State<LecturePage> {
                 ),
           ),
     );
+  }
+
+  Future<void> _toggleFavorite() async {
+    try {
+      await FavoriteRepository.instance.toggleFavorite(
+        questionId: _question.questionId,
+        sectionId: widget.section.id,
+        questionPrompt: _question.prompt,
+        difficulty: _question.difficulty,
+      );
+      if (!mounted) return;
+      final starred = FavoriteRepository.instance.isFavorite(
+        _question.questionId,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(starred ? '已收藏此题' : '已取消收藏'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('收藏失败：$e')),
+      );
+    }
+  }
+
+  Future<void> _showParentFeedbackDialog() async {
+    final controller = TextEditingController();
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('反馈给家长'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '家长会在学习记录里看到这条反馈，可写下哪里不会、希望家长怎么帮。',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: AppPalette.textSecondary,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  maxLines: 4,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    hintText: '例如：根号化简总是忘记因式分解…',
+                    border: OutlineInputBorder(),
+                  ),
+                  autofocus: true,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('发送'),
+            ),
+          ],
+        );
+      },
+    );
+    if (submitted != true || !mounted) {
+      controller.dispose();
+      return;
+    }
+    final note = controller.text.trim();
+    controller.dispose();
+    if (note.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请写一点备注再发送')),
+      );
+      return;
+    }
+    final service = QuestionEngagementService();
+    try {
+      await service.submitQuestionFeedback(
+        questionId: _question.questionId,
+        sectionId: widget.section.id,
+        questionPrompt: _question.prompt,
+        note: note,
+        difficulty: _question.difficulty,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已发送给家长')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('发送失败：$e')),
+      );
+    } finally {
+      service.close();
+    }
   }
 
   /// 「再讲一遍」：保留**同一道题**，但清空多轮历史 / 画布 / 输入区,
@@ -2600,7 +2771,7 @@ class _LecturePageState extends State<LecturePage> {
                     backgroundColor: AppPalette.surface,
                     edgeToEdge: true,
                     drawingEnabled: _canDrawOnCanvas,
-                    stylusOnly: true,
+                    stylusOnly: handCanvasStylusOnly(context),
                     drawMode: _canvasDrawMode,
                     twoFingerPanEnabled: true,
                   ),
@@ -2639,7 +2810,10 @@ class _LecturePageState extends State<LecturePage> {
           Positioned(
             left: 12,
             bottom: MediaQuery.paddingOf(context).bottom + 12,
-            child: _buildOrbToolbar(),
+            child: AnimatedBuilder(
+              animation: _canvasController,
+              builder: (context, _) => _buildOrbToolbar(),
+            ),
           ),
           if (_canShowCompletionOrbs)
             Positioned(
@@ -2767,6 +2941,30 @@ class _LecturePageState extends State<LecturePage> {
               size: 40,
               accent: AppPalette.primaryAccent,
               onPressed: _showAnswerVideoSheet,
+            ),
+            const SizedBox(width: 6),
+            LectureOrbButton(
+              icon: Icons.feedback_outlined,
+              tooltip: '反馈给家长',
+              size: 40,
+              onPressed: _showParentFeedbackDialog,
+            ),
+            const SizedBox(width: 6),
+            AnimatedBuilder(
+              animation: FavoriteRepository.instance,
+              builder: (context, _) {
+                final starred = FavoriteRepository.instance.isFavorite(
+                  _question.questionId,
+                );
+                return LectureOrbButton(
+                  icon: starred ? Icons.star : Icons.star_border,
+                  tooltip: starred ? '取消收藏' : '收藏此题',
+                  size: 40,
+                  accent: AppPalette.primaryAccent,
+                  filled: starred,
+                  onPressed: _toggleFavorite,
+                );
+              },
             ),
             const SizedBox(width: 6),
             AnimatedBuilder(

@@ -9,16 +9,31 @@ from app.services.agent_tools import AVAILABLE_TOOLS, TOOL_SCHEMAS
 _CI_PLACEHOLDER_API_KEY = "ci-placeholder-key"
 
 
+_PLACEHOLDER_API_KEYS = frozenset({
+    "your_kimi_api_key_here",
+    "your_deepseek_api_key_here",
+    "your_aliyun_dashscope_api_key_here",
+})
+
+
 def _api_key_for_client(raw: str | None) -> str:
     key = (raw or "").strip()
-    if not key or key == "your_kimi_api_key_here":
+    if not key or key in _PLACEHOLDER_API_KEYS:
         return _CI_PLACEHOLDER_API_KEY
     return key
 
 
-def deepseek_api_key_configured() -> bool:
+def resolve_deepseek_api_key() -> str:
+    """DeepSeek 专用 key 优先；未配置时回落到 DashScope / Qwen-VL 同一 key。"""
     key = (Config.DEEPSEEK_API_KEY or "").strip()
-    return bool(key) and key != "your_kimi_api_key_here"
+    if key and key not in _PLACEHOLDER_API_KEYS:
+        return key
+    return (Config.ALIYUN_API_KEY or "").strip()
+
+
+def deepseek_api_key_configured() -> bool:
+    key = resolve_deepseek_api_key()
+    return bool(key) and key not in _PLACEHOLDER_API_KEYS
 
 
 def kimi_api_key_configured() -> bool:
@@ -31,11 +46,18 @@ kimi_client = OpenAI(
     base_url=Config.KIMI_BASE_URL,
 )
 deepseek_client = OpenAI(
-    api_key=_api_key_for_client(Config.DEEPSEEK_API_KEY),
+    api_key=_api_key_for_client(resolve_deepseek_api_key()),
     base_url=Config.DEEPSEEK_BASE_URL,
 )
 
-DEEPSEEK_THINKING_DISABLED: dict = {"thinking": {"type": "disabled"}}
+
+def deepseek_thinking_disabled_extra_body() -> dict:
+    """关思考：官方 DeepSeek 与 DashScope 兼容模式的 extra_body 字段不同。"""
+    base = (Config.DEEPSEEK_BASE_URL or "").lower()
+    if "dashscope.aliyuncs.com" in base:
+        return {"enable_thinking": False}
+    return {"thinking": {"type": "disabled"}}
+
 
 WEB_SEARCH_TOOL = {"type": "builtin_function", "function": {"name": "$web_search"}}
 
@@ -55,7 +77,7 @@ def _with_non_thinking(kwargs: dict, actual_model: str) -> dict:
     if not actual_model.startswith("kimi"):
         kwargs["extra_body"] = {
             **kwargs.get("extra_body", {}),
-            **DEEPSEEK_THINKING_DISABLED,
+            **deepseek_thinking_disabled_extra_body(),
         }
     return kwargs
 

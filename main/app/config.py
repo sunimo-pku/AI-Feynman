@@ -11,15 +11,16 @@ class Config:
     KIMI_BASE_URL = "https://api.moonshot.cn/v1"
     KIMI_MODEL = os.getenv("KIMI_MODEL", "kimi-k2.6")
 
-    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-    DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-
+    # DashScope 兼容 OpenAI SDK；DeepSeek 与 Qwen-VL 共用同一 base_url / key。
     ALIYUN_API_KEY = os.getenv("ALIYUN_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
     ALIYUN_BASE_URL = os.getenv(
         "ALIYUN_BASE_URL",
         "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
+
+    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", ALIYUN_API_KEY)
+    DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", ALIYUN_BASE_URL)
+    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
     QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen-vl-plus")
 
     VOLC_API_KEY = os.getenv("VOLC_API_KEY", "")

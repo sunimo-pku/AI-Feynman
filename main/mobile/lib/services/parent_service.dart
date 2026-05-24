@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../data/parent_models.dart';
+import '../data/question_engagement_models.dart';
 import 'auth_service.dart';
 
 /// 家长端 HTTP 客户端封装（第十轮）。
@@ -71,6 +72,24 @@ class ParentService {
     return raw
         .whereType<Map<String, dynamic>>()
         .map(ParentReviewCard.fromJson)
+        .toList(growable: false);
+  }
+
+  Future<List<ParentQuestionFeedbackItem>> fetchQuestionFeedback({
+    int limit = 30,
+  }) async {
+    final uri = ApiConfig.uri('/parent/question-feedback').replace(
+      queryParameters: {'limit': '$limit'},
+    );
+    final raw = await _getJson(uri);
+    if (raw is! List) {
+      throw const ParentApiException(
+        userMessage: '后端返回格式不符合契约（/parent/question-feedback）。',
+      );
+    }
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(ParentQuestionFeedbackItem.fromJson)
         .toList(growable: false);
   }
 

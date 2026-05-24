@@ -278,6 +278,32 @@ class LectureHistoryItem {
       };
 }
 
+/// 某一轮讲题结束时的白板 OCR 摘要（可选 PNG base64，供后端归档）。
+class RoundBoardSnapshot {
+  const RoundBoardSnapshot({
+    required this.roundIndex,
+    this.boardLatex = '',
+    this.boardPlainText = '',
+    this.strokeCount = 0,
+    this.boardImageBase64 = '',
+  });
+
+  final int roundIndex;
+  final String boardLatex;
+  final String boardPlainText;
+  final int strokeCount;
+  final String boardImageBase64;
+
+  Map<String, dynamic> toJson() => {
+        'roundIndex': roundIndex,
+        if (boardLatex.trim().isNotEmpty) 'boardLatex': boardLatex.trim(),
+        if (boardPlainText.trim().isNotEmpty)
+          'boardPlainText': boardPlainText.trim(),
+        if (strokeCount > 0) 'strokeCount': strokeCount,
+        if (boardImageBase64.isNotEmpty) 'boardImageBase64': boardImageBase64,
+      };
+}
+
 /// 调用 `POST /lecture/submit` 的请求体（驼峰命名，直接经 `jsonEncode` 上送）。
 class LectureSubmitRequest {
   const LectureSubmitRequest({
@@ -289,6 +315,7 @@ class LectureSubmitRequest {
     required this.steps,
     this.roundIndex = 1,
     this.history = const [],
+    this.roundBoardSnapshots = const [],
   });
 
   final String sectionId;
@@ -304,6 +331,9 @@ class LectureSubmitRequest {
   /// 当前题目内最近若干条对话历史（见 [LectureHistoryItem]）。
   final List<LectureHistoryItem> history;
 
+  /// 已完成各轮的白板 OCR 摘要（不含当前正在提交的轮次）。
+  final List<RoundBoardSnapshot> roundBoardSnapshots;
+
   Map<String, dynamic> toJson() => {
         'sectionId': sectionId,
         'questionId': questionId,
@@ -313,6 +343,9 @@ class LectureSubmitRequest {
         'studentSpeechText': studentSpeechText,
         'roundIndex': roundIndex,
         'history': history.map((h) => h.toJson()).toList(growable: false),
+        if (roundBoardSnapshots.isNotEmpty)
+          'roundBoardSnapshots':
+              roundBoardSnapshots.map((s) => s.toJson()).toList(growable: false),
         'steps': steps.map((s) => s.toJson()).toList(growable: false),
       };
 }

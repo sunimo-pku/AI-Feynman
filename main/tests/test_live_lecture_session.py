@@ -743,3 +743,76 @@ def test_persist_live_session_updates_progress_only_for_completed_positive_delta
         "mastery_delta": 1,
         "round_count": 2,
     }]
+
+
+@pytest.mark.asyncio
+async def test_pause_archives_round_board_snapshot() -> None:
+    session = LiveLectureSession()
+    sent: list[dict[str, Any]] = []
+    captured_kwargs: list[dict[str, Any]] = []
+
+    def capture_peer(*, role: str, **kwargs: Any) -> dict[str, Any]:
+        captured_kwargs.append(dict(kwargs))
+        return _assessment_dict_from_bulk(
+            role,
+            _fake_peer_assessment_not_all_understood(),
+        )
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {
+            "type": "session_start",
+            "sessionId": "sess-board",
+            "sectionId": "pep-g8-down-s16-3",
+            "questionId": "q1",
+            "questionPrompt": "化简",
+        },
+        send=send,
+        recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    sent.clear()
+
+    await session.handle_event(
+        {
+            "type": "ink_snapshot",
+            "steps": [
+                {
+                    "stepId": "step_1",
+                    "strokeCount": 2,
+                    "boundingBox": {"x": 0, "y": 0, "width": 10, "height": 10},
+                    "latex": "",
+                    "plainText": "",
+                }
+            ],
+            "boardLatex": r"\sqrt{12}",
+            "boardPlainText": "分解 twelve",
+            "boardImageBase64": "aGVsbG8=",
+        },
+        send=send,
+        recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+    import app.services.peer_assessment_agent as peer_mod
+
+    peer_mod.assess_one_peer = capture_peer  # type: ignore[method-assign]
+
+    await session.handle_event(
+        {"type": "pause_detected", "silenceMs": 800},
+        send=send,
+        recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert len(session.round_board_snapshots) == 1
+    snap = session.round_board_snapshots[0]
+    assert snap.round_index == 1
+    assert snap.board_latex == r"\sqrt{12}"
+    assert snap.board_plain_text == "分解 twelve"
+    assert snap.board_image_base64 == "aGVsbG8="
+    assert session.round_index == 1
+    assert captured_kwargs
+    assert captured_kwargs[0].get("round_board_snapshots") == []
+

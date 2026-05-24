@@ -8,6 +8,7 @@ from app.services import lecture_agent
 
 def test_stream_requires_deepseek_key(monkeypatch) -> None:
     monkeypatch.setattr("app.services.lecture_agent_stream.Config.DEEPSEEK_API_KEY", "")
+    monkeypatch.setattr("app.services.lecture_agent_stream.Config.ALIYUN_API_KEY", "")
     with pytest.raises(lecture_agent.LectureAgentError):
         list(lecture_agent_stream.generate_turn_events(
             section_id="pep-g8-down-s16-3",
@@ -45,6 +46,7 @@ def test_non_radical_empty_input_prompt_is_generic() -> None:
 
 def test_lecture_agent_requires_deepseek_key(monkeypatch) -> None:
     monkeypatch.setattr("app.services.lecture_agent.Config.DEEPSEEK_API_KEY", "")
+    monkeypatch.setattr("app.services.lecture_agent.Config.ALIYUN_API_KEY", "")
     with pytest.raises(lecture_agent.LectureAgentError):
         lecture_agent.generate_lecture_turns(
             section_id="pep-g8-down-s16-1",
@@ -98,7 +100,7 @@ def test_lecture_agent_uses_deepseek_non_thinking(monkeypatch) -> None:
 
     assert payload["source"] == "llm"
     assert captured["model"] == "deepseek-v4-flash"
-    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert captured["extra_body"] == {"enable_thinking": False}
 
 
 def test_stream_agent_uses_deepseek_non_thinking(monkeypatch) -> None:
@@ -142,4 +144,4 @@ def test_stream_agent_uses_deepseek_non_thinking(monkeypatch) -> None:
     assert captured["model"] == "deepseek-v4-flash"
     assert captured["stream"] is True
     assert captured["timeout"] == 2.0
-    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert captured["extra_body"] == {"enable_thinking": False}

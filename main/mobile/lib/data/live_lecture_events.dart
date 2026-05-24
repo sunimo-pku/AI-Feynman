@@ -356,6 +356,7 @@ class LiveClientEvent {
     required List<Map<String, dynamic>> steps,
     String boardLatex = '',
     String boardPlainText = '',
+    String boardImageBase64 = '',
   }) {
     return {
       'type': LiveClientEventType.inkSnapshot.wire,
@@ -363,6 +364,7 @@ class LiveClientEvent {
       'steps': steps,
       if (boardLatex.isNotEmpty) 'boardLatex': boardLatex,
       if (boardPlainText.isNotEmpty) 'boardPlainText': boardPlainText,
+      if (boardImageBase64.isNotEmpty) 'boardImageBase64': boardImageBase64,
     };
   }
 

@@ -107,6 +107,20 @@ class LectureHistoryItem(BaseModel):
     }
 
 
+class RoundBoardSnapshotItem(BaseModel):
+    """某一轮讲题结束时的白板 OCR 摘要（可选附带 PNG base64 供回放）。"""
+
+    round_index: int = Field(..., alias="roundIndex", ge=1, le=20)
+    board_latex: str = Field("", alias="boardLatex", max_length=4000)
+    board_plain_text: str = Field("", alias="boardPlainText", max_length=4000)
+    stroke_count: int = Field(0, alias="strokeCount", ge=0, le=10000)
+    board_image_base64: str = Field("", alias="boardImageBase64", max_length=2_000_000)
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
 class LectureSubmitRequest(BaseModel):
     section_id: str = Field(..., alias="sectionId", min_length=1, max_length=64)
     question_id: str = Field(..., alias="questionId", min_length=1, max_length=64)
@@ -121,6 +135,10 @@ class LectureSubmitRequest(BaseModel):
     # 「重新讲一遍」要求 LLM 输出风格完全不同。
     round_index: int = Field(1, alias="roundIndex", ge=1, le=20)
     history: list[LectureHistoryItem] = Field(default_factory=list)
+    round_board_snapshots: list[RoundBoardSnapshotItem] = Field(
+        default_factory=list,
+        alias="roundBoardSnapshots",
+    )
 
     model_config = {
         "populate_by_name": True,
@@ -345,6 +363,16 @@ async def submit_lecture(
         for h in req.history
     ]
 
+    round_board_payload = [
+        {
+            "roundIndex": s.round_index,
+            "boardLatex": s.board_latex,
+            "boardPlainText": s.board_plain_text,
+            "strokeCount": s.stroke_count,
+        }
+        for s in req.round_board_snapshots
+    ]
+
     try:
         result = generate_peer_assessments(
             section_id=req.section_id,
@@ -355,6 +383,7 @@ async def submit_lecture(
             round_index=req.round_index,
             history=history_payload,
             standard_answer=req.standard_answer,
+            round_board_snapshots=round_board_payload,
         )
         teacher_summary: dict[str, Any] | None = None
         if result.get("all_understood"):
@@ -368,6 +397,7 @@ async def submit_lecture(
                 history=history_payload,
                 peer_assessments=result.get("assessments"),
                 standard_answer=req.standard_answer,
+                round_board_snapshots=round_board_payload,
             )
             result = apply_teacher_completion_gate(result, teacher_summary)
     except LectureAgentError as e:
@@ -455,6 +485,15 @@ async def request_teacher_hint(
         }
         for h in req.history
     ]
+    round_board_payload = [
+        {
+            "roundIndex": s.round_index,
+            "boardLatex": s.board_latex,
+            "boardPlainText": s.board_plain_text,
+            "strokeCount": s.stroke_count,
+        }
+        for s in req.round_board_snapshots
+    ]
 
     try:
         result = generate_teacher_hint(
@@ -465,6 +504,7 @@ async def request_teacher_hint(
             steps=steps_payload,
             round_index=req.round_index,
             history=history_payload,
+            round_board_snapshots=round_board_payload,
         )
     except LectureAgentError as e:
         logger.exception(

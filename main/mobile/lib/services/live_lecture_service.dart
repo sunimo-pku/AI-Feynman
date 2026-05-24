@@ -463,6 +463,7 @@ class LiveLectureService {
         steps: payloadSteps,
         boardLatex: boardLatex,
         boardPlainText: boardPlain,
+        boardImageBase64: boardImageBase64,
       ),
     );
   }

@@ -12,7 +12,7 @@ from typing import Any, Iterator
 
 from app.config import Config
 from app.services import lecture_agent
-from app.services.kimi import DEEPSEEK_THINKING_DISABLED, deepseek_client
+from app.services.kimi import deepseek_api_key_configured, deepseek_client, deepseek_thinking_disabled_extra_body
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def generate_turn_events(
         for s in steps
         if str(s.get("stepId") or s.get("step_id") or "").strip()
     ]
-    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+    if not deepseek_api_key_configured():
         raise lecture_agent.LectureAgentError("DEEPSEEK_API_KEY is not configured")
 
     cleaned_history = lecture_agent._sanitize_history(history)  # noqa: SLF001
@@ -69,7 +69,7 @@ def generate_turn_events(
             max_tokens=700,
             stream=True,
             timeout=2.0,
-            extra_body=DEEPSEEK_THINKING_DISABLED,
+            extra_body=deepseek_thinking_disabled_extra_body(),
         )
         buf = ""
         saw_event = False
