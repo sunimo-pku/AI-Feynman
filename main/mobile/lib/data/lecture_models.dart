@@ -431,7 +431,7 @@ class PeerAssessment {
     return LectureHistoryItem(
       role: agentRoleWire(role),
       displayName: displayName,
-      text: understood ? '（听懂了）$reason' : reason,
+      text: reason,
       highlightStepIds: highlightStepIds,
     );
   }

@@ -202,7 +202,10 @@ class _LecturePageState extends State<LecturePage> {
   /// 讲题白板工具：画笔 / 橡皮擦。
   CanvasDrawMode _canvasDrawMode = CanvasDrawMode.pen;
 
-  static const int _maxHistoryItems = 6;
+  // 与后端 lecture_agent._HISTORY_KEEP_LAST 对齐（约 10 轮完整闭环）。
+  // 一轮闭环 ~5 条（学生快照 1 + 没听懂的同伴追问 0-3 + 可选 peerReply 1 +
+  // 可选 teacherSummary 1），60 条上限可以稳稳保留最近 ~10 轮的跨轮记忆。
+  static const int _maxHistoryItems = 60;
 
   // —— 第九轮：实时双工讲题相关状态 ————————————————————————————————————
   final AudioStreamService _audioService = AudioStreamService();
@@ -823,7 +826,13 @@ class _LecturePageState extends State<LecturePage> {
       _history.add(committedStudent);
     }
     for (final a in assessments) {
-      _history.add(a.toHistoryItem());
+      // 只有"没听懂、当众追问"的同伴才写进 history；听懂状态由后端 prompt
+      // 的「你（{display}）上一轮的追问」自指段处理（找不到自指条目 = 上一轮
+      // 默认听懂），避免把 `(听懂了) reason` 这种内部状态标签喂给下一轮 LLM
+      // 当成同伴台词。
+      if (!a.understood) {
+        _history.add(a.toHistoryItem());
+      }
     }
     for (final reply in peerReplies) {
       _history.add(_agentTurnToHistory(reply));
