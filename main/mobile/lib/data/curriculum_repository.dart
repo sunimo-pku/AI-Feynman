@@ -67,6 +67,21 @@ class CurriculumRepository {
     return Map<String, String>.unmodifiable(_chapterLabelById!);
   }
 
+  /// 按 sectionId 查找小节，供今日 Tab 画像推节跳转。
+  Future<CurriculumSection?> sectionById(String sectionId) async {
+    final trimmed = sectionId.trim();
+    if (trimmed.isEmpty) return null;
+    final curriculum = await load();
+    for (final book in curriculum.books) {
+      for (final chapter in book.chapters) {
+        for (final section in chapter.sections) {
+          if (section.id == trimmed) return section;
+        }
+      }
+    }
+    return null;
+  }
+
   Future<void> _ensureSectionLabelIndex() async {
     if (_sectionLabelById != null) return;
     final curriculum = await load();

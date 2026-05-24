@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/learning_profile_models.dart';
 import '../data/review_models.dart';
 import '../data/round12_models.dart';
 import '../services/auth_service.dart';
@@ -19,12 +20,14 @@ class HomeDashboardTab extends StatefulWidget {
     required this.onAssignmentsTap,
     required this.onOpenCurriculum,
     required this.onOpenReview,
+    required this.onOpenSection,
   });
 
   final int pendingAssignments;
   final VoidCallback onAssignmentsTap;
   final VoidCallback onOpenCurriculum;
   final void Function(String sectionId) onOpenReview;
+  final Future<void> Function(String sectionId) onOpenSection;
 
   @override
   State<HomeDashboardTab> createState() => _HomeDashboardTabState();
@@ -32,18 +35,23 @@ class HomeDashboardTab extends StatefulWidget {
 
 class _HomeDashboardTabState extends State<HomeDashboardTab> {
   final Round12Service _bountyService = Round12Service();
+  final Round12Service _profileService = Round12Service();
   BountyToday? _bountyToday;
+  LearningProfilePayload? _learningProfile;
   bool _loadingBounty = true;
+  bool _loadingProfile = true;
 
   @override
   void initState() {
     super.initState();
     _loadBountySummary();
+    _loadLearningProfile();
   }
 
   @override
   void dispose() {
     _bountyService.close();
+    _profileService.close();
     super.dispose();
   }
 
@@ -64,6 +72,35 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
       if (!mounted) return;
       setState(() => _loadingBounty = false);
     }
+  }
+
+  Future<void> _loadLearningProfile() async {
+    if (!AuthService.instance.isLoggedIn) {
+      if (mounted) setState(() => _loadingProfile = false);
+      return;
+    }
+    setState(() => _loadingProfile = true);
+    try {
+      final profile = await _profileService.fetchLearningProfile();
+      if (!mounted) return;
+      setState(() {
+        _learningProfile = profile;
+        _loadingProfile = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingProfile = false);
+    }
+  }
+
+  Future<void> _openRecommendedSection() async {
+    final sectionId = _learningProfile?.recommendedSectionId ?? '';
+    if (sectionId.isEmpty) {
+      widget.onOpenCurriculum();
+      return;
+    }
+    await widget.onOpenSection(sectionId);
+    if (mounted) await _loadLearningProfile();
   }
 
   Future<void> _openDailyChallenge() async {
@@ -102,6 +139,30 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
               _PendingAssignmentsBanner(
                 count: widget.pendingAssignments,
                 onTap: widget.onAssignmentsTap,
+              ),
+            ],
+            if (_loadingProfile)
+              const Padding(
+                padding: EdgeInsets.only(top: 14),
+                child: StudyPanel(
+                  padding: EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  child: StudyDenseTile(
+                    title: '今天建议练',
+                    subtitle: '正在读取学习画像…',
+                    icon: Icons.lightbulb_outline,
+                    accent: AppPalette.primary,
+                  ),
+                ),
+              )
+            else if (_learningProfile != null &&
+                _learningProfile!.primaryNextAction.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _TodayPracticeCard(
+                profile: _learningProfile!,
+                onTap:
+                    _learningProfile!.recommendedSectionId.isNotEmpty
+                        ? _openRecommendedSection
+                        : widget.onOpenCurriculum,
               ),
             ],
             const SizedBox(height: 14),
@@ -434,6 +495,87 @@ class _PendingAssignmentsBanner extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 今日 Tab：画像驱动的「今天建议练」卡片。
+class _TodayPracticeCard extends StatelessWidget {
+  const _TodayPracticeCard({required this.profile, required this.onTap});
+
+  final LearningProfilePayload profile;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final weakTitle =
+        profile.weakKnowledge.isNotEmpty
+            ? profile.weakKnowledge.first.title
+            : '';
+    final subtitle = profile.primaryNextAction;
+    final hasTarget = profile.recommendedSectionId.isNotEmpty;
+    return StudyPanel(
+      tone: StudyPanelTone.surface,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppPalette.primary.withValues(alpha: 0.10),
+              borderRadius: AppRadius.buttonR,
+            ),
+            child: const Icon(
+              Icons.lightbulb_outline,
+              color: AppPalette.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasTarget ? '今天建议练' : '学习建议',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (weakTitle.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    weakTitle,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: AppPalette.primaryAccent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppPalette.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              minimumSize: const Size(0, 40),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: onTap,
+            child: Text(hasTarget ? '去讲题' : '选课'),
+          ),
+        ],
       ),
     );
   }

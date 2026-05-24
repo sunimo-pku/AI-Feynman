@@ -36,7 +36,12 @@ from app.db import (
     load_json,
 )
 from app.middleware.auth import require_parent_user
-from app.services.learning_profile import LearningProfileOut, build_learning_profile
+from app.services.learning_profile import (
+    LearningProfileOut,
+    build_learning_profile,
+    poster_teacher_tip,
+    primary_next_action,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -439,11 +444,8 @@ async def parent_dashboard(
     strong_out = [_progress_to_weak(r, db, profile.id) for r in strong]
     review_out = [_review_to_card(r) for r in review_rows]
 
-    suggestion = _build_suggested_action(
-        weak_out,
-        review_out,
-        len(practiced),
-    )
+    learning_profile = build_learning_profile(db, profile)
+    suggestion = learning_profile.primary_next_action or primary_next_action(learning_profile)
 
     weekly = _build_weekly_activity(db, profile.id)
 
@@ -535,15 +537,8 @@ async def parent_poster(
         weakest_label = ""
         weakest_score = 0
 
-    if not practiced:
-        tip = "今天先开始 10 分钟讲题，从 16.1 起步。"
-    elif weakest_score < 60:
-        tip = (
-            f"建议本周再复讲一次「{weakest_label}」，"
-            f"重点把{_reason_for(weakest.section_id if practiced else '')}讲清楚。"
-        )
-    else:
-        tip = "整体状态不错，可以挑战同小节的巩固/挑战题，把规则讲给同伴听。"
+    learning_profile = build_learning_profile(db, profile)
+    tip = poster_teacher_tip(learning_profile)
 
     last_prompt = week_reviews[0].question_prompt if week_reviews else ""
     last_summary = week_reviews[0].summary if week_reviews else ""

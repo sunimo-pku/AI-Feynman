@@ -272,6 +272,9 @@ def test_parent_assignment_recommendations(client: TestClient) -> None:
     assert rec.status_code == 200, rec.text
     items = rec.json()["recommendations"]
     assert any(i.get("reasonType") == "mistake_review" for i in items)
+    weak_items = [i for i in items if i.get("reasonType") == "weak_section"]
+    if weak_items:
+        assert "掌握度" in weak_items[0]["reason"] or "画像" in weak_items[0]["reason"]
 
     due_at = (datetime.utcnow() + timedelta(days=1)).replace(microsecond=0).isoformat() + "Z"
     picked = next(i for i in items if i.get("questionId"))

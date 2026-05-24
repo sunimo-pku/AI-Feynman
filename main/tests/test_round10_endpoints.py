@@ -422,7 +422,14 @@ def test_parent_dashboard_basic_fields(client: TestClient) -> None:
     # 16.1 应在 strongSections
     strong_ids = [s["sectionId"] for s in body["strongSections"]]
     assert "pep-g8-down-s16-1" in strong_ids
-    # 教师建议应当点名弱项
+    # 教师建议应当与画像 primaryNextAction 一致
+    profile_resp = client.get(
+        "/parent/profile-insights",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert profile_resp.status_code == 200
+    profile_body = profile_resp.json()
+    assert body["suggestedNextAction"] == profile_body["primaryNextAction"]
     assert "16.2" in body["suggestedNextAction"] or "弱" in body["suggestedNextAction"]
 
 
@@ -479,6 +486,9 @@ def test_learning_profile_insights_explain_weakness_to_student_and_parent(
     assert body["weakKnowledge"][0]["evidence"]
     assert body["learningTraits"]
     assert body["nextActions"]
+    assert body["primaryNextAction"]
+    assert body["recommendedSectionId"] == "pep-g8-down-s16-2"
+    assert body["weakKnowledge"][0]["sectionId"] == "pep-g8-down-s16-2"
 
     _, _, parent_token = _register_parent(client, child_name)
     parent_resp = client.get(
@@ -545,6 +555,7 @@ def test_learning_profile_insights_can_apply_ai_refinement(
     assert "先套公式" in body["aiSummary"]
     assert body["learningTraits"][0]["title"] == "先算后补"
     assert body["nextActions"][0] == "下次讲根式乘除前，先说 a,b≥0。"
+    assert "先复讲" in body["primaryNextAction"]
 
 
 def test_parent_poster_includes_week_stats(client: TestClient) -> None:
@@ -590,6 +601,12 @@ def test_parent_poster_includes_week_stats(client: TestClient) -> None:
     assert body["weekCompletedRounds"] >= 1
     assert body["highestScore"] >= 0
     assert "teacherTip" in body
+    profile_resp = client.get(
+        "/parent/profile-insights",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert profile_resp.status_code == 200
+    assert body["teacherTip"] == profile_resp.json()["primaryNextAction"]
 
 
 # ------------------------------------------------------------------ #

@@ -90,6 +90,9 @@ class ProfileInsightOut(BaseModel):
     title: str
     description: str
     evidence: list[ProfileEvidenceOut] = Field(default_factory=list)
+    section_id: str = Field("", serialization_alias="sectionId")
+
+    model_config = {"populate_by_name": True}
 
 
 class LearningProfileOut(BaseModel):
@@ -107,11 +110,77 @@ class LearningProfileOut(BaseModel):
         default_factory=list, serialization_alias="learningTraits"
     )
     next_actions: list[str] = Field(default_factory=list, serialization_alias="nextActions")
+    primary_next_action: str = Field("", serialization_alias="primaryNextAction")
+    recommended_section_id: str = Field("", serialization_alias="recommendedSectionId")
     generated_at: datetime = Field(
         default_factory=datetime.utcnow, serialization_alias="generatedAt"
     )
 
     model_config = {"populate_by_name": True}
+
+
+def primary_next_action(profile: LearningProfileOut) -> str:
+    """画像统一「下一步建议」出口：优先 nextActions，其次 overview。"""
+    for action in profile.next_actions:
+        cleaned = _trim(action, 120)
+        if cleaned:
+            return cleaned
+    if profile.overview.strip():
+        return _trim(profile.overview, 120)
+    return "先完成 2-3 轮基础讲题，系统会开始形成稳定画像。"
+
+
+def poster_teacher_tip(profile: LearningProfileOut) -> str:
+    """总结海报教师建议：与 dashboard / 今日 Tab 共用 primaryNextAction。"""
+    if profile.primary_next_action.strip():
+        return profile.primary_next_action.strip()
+    return primary_next_action(profile)
+
+
+def profile_reason_for_section(profile: LearningProfileOut, section_id: str) -> str | None:
+    """把画像薄弱点证据格式化为作业推荐 / 布置理由。"""
+    sid = (section_id or "").strip()
+    if not sid:
+        return None
+    for item in profile.weak_knowledge:
+        if item.section_id != sid:
+            continue
+        parts: list[str] = [item.title]
+        mastery_bit = ""
+        caution_bit = ""
+        for ev in item.evidence:
+            if ev.label == "掌握度":
+                mastery_bit = ev.detail
+            elif ev.label == "错因记录":
+                caution_bit = f"错因：{ev.detail}"
+        if mastery_bit:
+            parts.append(mastery_bit)
+        if caution_bit:
+            parts.append(caution_bit)
+        elif item.description:
+            parts.append(item.description)
+        return " · ".join(parts)
+    return None
+
+
+def profile_reason_for_mistake(
+    profile: LearningProfileOut,
+    *,
+    section_id: str,
+    caution: str,
+) -> str:
+    """易错回顾推荐理由：优先对齐画像错因证据，再回落到回顾原文。"""
+    sid = (section_id or "").strip()
+    caution_clean = _trim(caution, 48)
+    for item in profile.weak_knowledge:
+        if item.section_id == sid:
+            section_reason = profile_reason_for_section(profile, sid)
+            if section_reason:
+                return f"画像薄弱点 · {section_reason}"
+    for trait in profile.learning_traits:
+        if trait.title == "主要错因模式" and caution_clean in trait.description:
+            return f"画像错因模式 · {caution_clean}"
+    return f"易错回顾：{caution_clean}"
 
 
 _AI_PROFILE_SYSTEM_PROMPT = """你是初中数学学习产品里的长期画像老师。
@@ -464,6 +533,7 @@ def build_learning_profile(db: Session, profile: StudentProfile) -> LearningProf
                 title=label,
                 description=_reason_for(row.section_id),
                 evidence=evidence,
+                section_id=row.section_id,
             )
         )
 
@@ -490,6 +560,7 @@ def build_learning_profile(db: Session, profile: StudentProfile) -> LearningProf
                     _evidence("掌握度", f"{score}/100"),
                     _evidence("练习轮数", f"已完成 {rounds} 轮讲题"),
                 ],
+                section_id=row.section_id,
             )
         )
 
@@ -578,9 +649,18 @@ def build_learning_profile(db: Session, profile: StudentProfile) -> LearningProf
         learning_traits=traits[:4],
         next_actions=next_actions[:4],
     )
+    rule_primary = primary_next_action(rule_profile)
     ai_payload = _generate_ai_refinement(
         rule_profile=rule_profile,
         reviews=reviews,
         sessions=sessions,
     )
-    return _apply_ai_refinement(rule_profile, ai_payload)
+    final_profile = _apply_ai_refinement(rule_profile, ai_payload)
+    recommended_section_id = weak_rows[0].section_id if weak_rows else ""
+    return final_profile.model_copy(
+        update={
+            "recommended_section_id": recommended_section_id,
+            # 统一出口用规则层建议，避免多次请求间 AI 非确定性导致文案漂移。
+            "primary_next_action": rule_primary,
+        }
+    )

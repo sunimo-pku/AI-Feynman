@@ -16,8 +16,14 @@ from app.db import (
     LectureReview,
     LectureSessionRecord,
     ParentAssignment,
+    StudentProfile,
     dump_json,
     load_json,
+)
+from app.services.learning_profile import (
+    build_learning_profile,
+    profile_reason_for_mistake,
+    profile_reason_for_section,
 )
 from app.services.section_grade import section_in_student_grade
 
@@ -186,6 +192,13 @@ def build_assignment_recommendations(
     seen_question_ids: set[str] = set()
     grade = (student_grade or "八年级").strip() or "八年级"
 
+    student_profile = (
+        db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
+    )
+    learning_profile = (
+        build_learning_profile(db, student_profile) if student_profile else None
+    )
+
     def _try_add(priority: int, payload: dict[str, Any]) -> None:
         qid = str(payload.get("questionId") or "")
         sid = str(payload.get("sectionId") or "")
@@ -217,11 +230,19 @@ def build_assignment_recommendations(
             caution = f"{caution[:48]}…"
         progress = progress_by_section.get(review.section_id)
         mastery = int(progress.mastery_score or 0) if progress else None
+        if learning_profile is not None:
+            reason = profile_reason_for_mistake(
+                learning_profile,
+                section_id=review.section_id,
+                caution=caution,
+            )
+        else:
+            reason = f"易错回顾：{caution}"
         _try_add(
             300 - idx,
             _question_to_recommendation_payload(
                 question,
-                reason=f"易错回顾：{caution}",
+                reason=reason,
                 reason_type="mistake_review",
                 mastery_score=mastery,
             ),
@@ -246,7 +267,11 @@ def build_assignment_recommendations(
             question = resolve_catalog_question(row.section_id, diff)
         except ValueError:
             continue
-        reason = _SECTION_WEAK_REASON.get(row.section_id) or f"掌握度 {score}/100，建议巩固"
+        reason = None
+        if learning_profile is not None:
+            reason = profile_reason_for_section(learning_profile, row.section_id)
+        if not reason:
+            reason = _SECTION_WEAK_REASON.get(row.section_id) or f"掌握度 {score}/100，建议巩固"
         _try_add(
             120 - score,
             _question_to_recommendation_payload(

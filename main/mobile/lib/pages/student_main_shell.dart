@@ -162,6 +162,18 @@ class _StudentMainShellState extends State<StudentMainShell> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _onOpenSectionById(String sectionId) async {
+    final target = await CurriculumRepository.instance.sectionById(sectionId);
+    if (target == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('找不到对应小节，请从课程页选择。')),
+      );
+      return;
+    }
+    await _onSectionTap(target);
+  }
+
   Future<void> _onOpenReviewBySectionId(String sectionId) async {
     final curriculum = await _curriculumFuture;
     CurriculumSection? target;
@@ -241,6 +253,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
                     },
                     onOpenCurriculum: () => setState(() => _tabIndex = 1),
                     onOpenReview: _onOpenReviewBySectionId,
+                    onOpenSection: _onOpenSectionById,
                   ),
                   CurriculumTabPage(
                     studentGradeLabel: safeGradeLabel,

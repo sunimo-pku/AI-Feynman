@@ -23,11 +23,13 @@ class ProfileInsight {
     required this.title,
     required this.description,
     required this.evidence,
+    this.sectionId = '',
   });
 
   final String title;
   final String description;
   final List<ProfileEvidence> evidence;
+  final String sectionId;
 
   factory ProfileInsight.fromJson(Map<String, dynamic> json) {
     final raw = json['evidence'];
@@ -42,6 +44,7 @@ class ProfileInsight {
       title: json['title'] as String? ?? '',
       description: json['description'] as String? ?? '',
       evidence: evidence,
+      sectionId: json['sectionId'] as String? ?? '',
     );
   }
 }
@@ -58,6 +61,8 @@ class LearningProfilePayload {
     required this.strengths,
     required this.learningTraits,
     required this.nextActions,
+    required this.primaryNextAction,
+    required this.recommendedSectionId,
     required this.generatedAt,
   });
 
@@ -71,6 +76,8 @@ class LearningProfilePayload {
   final List<ProfileInsight> strengths;
   final List<ProfileInsight> learningTraits;
   final List<String> nextActions;
+  final String primaryNextAction;
+  final String recommendedSectionId;
   final DateTime generatedAt;
 
   factory LearningProfilePayload.fromJson(Map<String, dynamic> json) {
@@ -104,6 +111,8 @@ class LearningProfilePayload {
       strengths: readInsights('strengths'),
       learningTraits: readInsights('learningTraits'),
       nextActions: readStrings('nextActions'),
+      primaryNextAction: json['primaryNextAction'] as String? ?? '',
+      recommendedSectionId: json['recommendedSectionId'] as String? ?? '',
       generatedAt:
           DateTime.tryParse(json['generatedAt'] as String? ?? '') ??
           DateTime.now(),

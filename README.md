@@ -407,8 +407,9 @@ Flutter 侧同步完成：
   `GET /parent/profile-insights` 先从掌握度、讲题回顾错因、未完成会话中实时聚合
   `weakKnowledge / learningTraits / strengths / nextActions` 规则骨架，再在
   DeepSeek 可用时用 AI 在证据范围内提炼 `aiSummary` 与老师式策略建议；
-  LLM 失败自动降级为规则画像。学生端「我的」展示画像预览，家长 dashboard
-  展示完整画像卡。
+  LLM 失败自动降级为规则画像。响应含 `primaryNextAction` / `recommendedSectionId`，
+  家长 dashboard 建议、总结海报 `teacherTip`、作业推荐理由与学生「今日」Tab
+  「今天建议练」卡片均共用同一画像出口。
 - 数据化题库与知识库：`scripts/generate_section_questions.py` 生成 `data/questions/pep-junior-math-questions.json`（90 节 × 基础/巩固/挑战 3 题，共 270 题），几何/坐标/函数/统计类题附带 SVG 题图；`data/knowledge/pep-g8-down-ch16_chunks.json` 由 `knowledge_index` 注入讲题 prompt。
 - HWR / OCR 可观测：白板 step payload 带 `imageBase64`；`DEBUG_OCR=1` 时讲题页展示 `stepId | latex | source | confidence | mode`。
 - 排行榜周结算：`scripts/settle_leaderboard.py` 幂等写入 `LeaderboardSnapshot`，`GET /leaderboard` 优先读 snapshot，缺失时回退实时聚合。
