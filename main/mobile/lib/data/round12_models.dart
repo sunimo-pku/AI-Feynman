@@ -418,6 +418,10 @@ class ReplaySummary {
     required this.likedByMe,
     required this.isMine,
     required this.videoUrl,
+    required this.commentCount,
+    required this.authorName,
+    required this.authorInitial,
+    required this.authorRankTier,
     required this.publishedAt,
     required this.createdAt,
   });
@@ -435,6 +439,10 @@ class ReplaySummary {
   final bool likedByMe;
   final bool isMine;
   final String videoUrl;
+  final int commentCount;
+  final String authorName;
+  final String authorInitial;
+  final String authorRankTier;
   final DateTime? publishedAt;
   final DateTime createdAt;
 
@@ -453,6 +461,10 @@ class ReplaySummary {
       likedByMe: json['likedByMe'] == true,
       isMine: json['isMine'] == true,
       videoUrl: json['videoUrl'] as String? ?? '',
+      commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
+      authorName: json['authorName'] as String? ?? '同学',
+      authorInitial: json['authorInitial'] as String? ?? '同',
+      authorRankTier: json['authorRankTier'] as String? ?? '青铜',
       publishedAt: DateTime.tryParse(json['publishedAt']?.toString() ?? ''),
       createdAt:
           DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
@@ -480,8 +492,40 @@ class ReplaySummary {
       likedByMe: likedByMe ?? this.likedByMe,
       isMine: isMine,
       videoUrl: videoUrl,
+      commentCount: commentCount,
+      authorName: authorName,
+      authorInitial: authorInitial,
+      authorRankTier: authorRankTier,
       publishedAt: publishedAt,
       createdAt: createdAt,
+    );
+  }
+}
+
+class ReplayComment {
+  const ReplayComment({
+    required this.commentId,
+    required this.studentName,
+    required this.body,
+    required this.createdAt,
+    required this.isMine,
+  });
+
+  final int commentId;
+  final String studentName;
+  final String body;
+  final DateTime createdAt;
+  final bool isMine;
+
+  factory ReplayComment.fromJson(Map<String, dynamic> json) {
+    return ReplayComment(
+      commentId: (json['commentId'] as num?)?.toInt() ?? 0,
+      studentName: json['studentName'] as String? ?? '同学',
+      body: json['body'] as String? ?? '',
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
+      isMine: json['isMine'] == true,
     );
   }
 }

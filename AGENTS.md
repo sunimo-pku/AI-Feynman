@@ -958,7 +958,11 @@ git push origin main
   PCM 录音合成 `data/replays/<session>.mp4`，通过 `/replay-videos/...`
   静态路径播放。依赖是 `pillow` + `imageio-ffmpeg`；不要假设服务器预装
   系统 `ffmpeg`。私有家长回放可继续用结构化过程回放兜底，但公开内容优先
-  使用 `videoUrl`。
+  使用 `videoUrl`。讲题页原「老师解答视频」入口里，老师视频置顶，同一道题
+  的同学讲法在下方按 `like_count desc` 排列；评论走
+  `/replays/{sessionId}/comments`。讲题广场卡片必须展示发布者用户名、
+  首字母头像与当前小节段位（`StudentProfile.display_name` +
+  `SectionPower.rank_tier`，无战力记录时默认青铜）。
 
 ---
 

@@ -24,6 +24,7 @@ from app.db import (
     CrystalWallet,
     LeaderboardSnapshot,
     LearningProgress,
+    LectureReplayComment,
     LectureReplayRecord,
     LectureReplayLike,
     PowerEvent,
@@ -165,6 +166,10 @@ class ReplayPublishRequest(BaseModel):
     is_public: bool = Field(True, alias="isPublic")
 
     model_config = {"populate_by_name": True}
+
+
+class ReplayCommentRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=200)
 
 
 def _tier(score: int) -> str:
@@ -927,12 +932,13 @@ async def parent_replays(
 ):
     profile = _replay_subject_profile(db, user, session_role)
     rows = db.query(LectureReplayRecord).filter(LectureReplayRecord.student_id == profile.id).order_by(LectureReplayRecord.created_at.desc()).limit(20).all()
-    return {"replays": [_replay_payload(r, include_timeline=False) for r in rows]}
+    return {"replays": [_replay_payload(r, include_timeline=False, db=db) for r in rows]}
 
 
 @router.get("/replays/public")
 async def public_replays(
     section_id: str | None = Query(None, alias="sectionId"),
+    question_id: str | None = Query(None, alias="questionId"),
     limit: int = Query(20, ge=1, le=50),
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
@@ -941,7 +947,17 @@ async def public_replays(
     query = db.query(LectureReplayRecord).filter(LectureReplayRecord.is_public == 1)
     if section_id:
         query = query.filter(LectureReplayRecord.section_id == section_id)
-    rows = query.order_by(LectureReplayRecord.published_at.desc(), LectureReplayRecord.created_at.desc()).limit(limit).all()
+    if question_id:
+        query = query.filter(LectureReplayRecord.question_id == question_id)
+    if question_id:
+        query = query.order_by(
+            LectureReplayRecord.like_count.desc(),
+            LectureReplayRecord.published_at.desc(),
+            LectureReplayRecord.created_at.desc(),
+        )
+    else:
+        query = query.order_by(LectureReplayRecord.published_at.desc(), LectureReplayRecord.created_at.desc())
+    rows = query.limit(limit).all()
     liked_ids: set[int] = set()
     if viewer is not None and rows:
         replay_ids = [int(r.id) for r in rows]
@@ -959,6 +975,7 @@ async def public_replays(
             _replay_payload(
                 r,
                 include_timeline=False,
+                db=db,
                 viewer_student_id=viewer.id if viewer is not None else None,
                 liked_replay_ids=liked_ids,
             )
@@ -988,7 +1005,7 @@ async def get_replay(
         .first()
         is not None
     )
-    return _replay_payload(row, include_timeline=True, viewer_student_id=profile.id, liked_override=liked)
+    return _replay_payload(row, include_timeline=True, db=db, viewer_student_id=profile.id, liked_override=liked)
 
 
 @router.post("/replays/{session_id}/publish")
@@ -1025,7 +1042,7 @@ async def publish_replay(
             raise HTTPException(status_code=502, detail="Replay video render failed.") from e
     db.commit()
     db.refresh(row)
-    return _replay_payload(row, include_timeline=False, viewer_student_id=profile.id, liked_override=False)
+    return _replay_payload(row, include_timeline=False, db=db, viewer_student_id=profile.id, liked_override=False)
 
 
 @router.post("/replays/{session_id}/like")
@@ -1078,6 +1095,70 @@ async def unlike_replay(
     return {"sessionId": row.session_id, "liked": False, "likeCount": int(row.like_count or 0)}
 
 
+@router.get("/replays/{session_id}/comments")
+async def replay_comments(
+    session_id: str,
+    user: User = Depends(require_user),
+    session_role: str = Depends(get_session_role),
+    db: Session = Depends(get_db),
+):
+    profile = _replay_subject_profile(db, user, session_role)
+    row = db.query(LectureReplayRecord).filter(LectureReplayRecord.session_id == session_id).first()
+    if row is None or (row.student_id != profile.id and not row.is_public):
+        raise HTTPException(status_code=404, detail="Replay not found.")
+    comments = (
+        db.query(LectureReplayComment, StudentProfile)
+        .join(StudentProfile, StudentProfile.id == LectureReplayComment.student_id)
+        .filter(LectureReplayComment.replay_id == row.id)
+        .order_by(LectureReplayComment.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return {
+        "comments": [
+            {
+                "commentId": c.id,
+                "studentName": p.display_name or "同学",
+                "body": c.body,
+                "createdAt": c.created_at,
+                "isMine": c.student_id == profile.id,
+            }
+            for c, p in comments
+        ]
+    }
+
+
+@router.post("/replays/{session_id}/comments")
+async def create_replay_comment(
+    session_id: str,
+    req: ReplayCommentRequest,
+    user: User = Depends(require_student_user),
+    db: Session = Depends(get_db),
+):
+    profile = ensure_student_profile(db, user)
+    row = db.query(LectureReplayRecord).filter(
+        LectureReplayRecord.session_id == session_id,
+        LectureReplayRecord.is_public == 1,
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Replay not found.")
+    comment = LectureReplayComment(
+        replay_id=row.id,
+        student_id=profile.id,
+        body=req.body.strip()[:200],
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    return {
+        "commentId": comment.id,
+        "studentName": profile.display_name or "同学",
+        "body": comment.body,
+        "createdAt": comment.created_at,
+        "isMine": True,
+    }
+
+
 @router.post("/questions/upload-image")
 async def upload_question_image(file: UploadFile = File(...), user: User = Depends(require_student_user)):
     data = await file.read()
@@ -1125,12 +1206,21 @@ def _replay_payload(
     row: LectureReplayRecord,
     *,
     include_timeline: bool,
+    db: Session,
     viewer_student_id: int | None = None,
     liked_replay_ids: set[int] | None = None,
     liked_override: bool | None = None,
 ) -> dict[str, Any]:
     owner = row.student_id == viewer_student_id if viewer_student_id is not None else False
     liked = bool(liked_override) if liked_override is not None else bool(liked_replay_ids and int(row.id) in liked_replay_ids)
+    author = db.query(StudentProfile).filter(StudentProfile.id == row.student_id).first()
+    power = db.query(SectionPower).filter(
+        SectionPower.student_id == row.student_id,
+        SectionPower.section_id == row.section_id,
+    ).first()
+    author_name = (author.display_name if author is not None else "") or "同学"
+    rank_tier = (power.rank_tier if power is not None else "") or "青铜"
+    comment_count = db.query(LectureReplayComment).filter(LectureReplayComment.replay_id == row.id).count()
     payload = {
         "sessionId": row.session_id,
         "sectionId": row.section_id,
@@ -1145,6 +1235,10 @@ def _replay_payload(
         "likedByMe": liked,
         "isMine": owner,
         "videoUrl": row.video_url or "",
+        "commentCount": comment_count,
+        "authorName": author_name,
+        "authorInitial": author_name.strip()[:1] or "同",
+        "authorRankTier": rank_tier,
         "publishedAt": row.published_at,
         "createdAt": row.created_at,
     }

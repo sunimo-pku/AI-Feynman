@@ -232,6 +232,18 @@ class LectureReplayLike(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class LectureReplayComment(Base):
+    """公开讲题视频下的评论。"""
+
+    __tablename__ = "lecture_replay_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    replay_id = Column(Integer, ForeignKey("lecture_replay_records.id"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=False, index=True)
+    body = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class SectionPower(Base):
     __tablename__ = "section_power"
     __table_args__ = (

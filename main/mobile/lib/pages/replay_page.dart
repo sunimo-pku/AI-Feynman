@@ -39,6 +39,9 @@ class _ReplayPageState extends State<ReplayPage> {
   int _likeCount = 0;
   bool _likedByMe = false;
   Uint8List? _wavBytes;
+  List<ReplayComment> _comments = const [];
+  bool _commentsLoading = false;
+  final TextEditingController _commentController = TextEditingController();
   Timer? _fallbackTimer;
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<void>? _completeSub;
@@ -77,6 +80,9 @@ class _ReplayPageState extends State<ReplayPage> {
         _wavBytes = wav;
       });
       _bindPlayerEvents();
+      if (p['isPublic'] == true) {
+        unawaited(_loadComments());
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -180,11 +186,52 @@ class _ReplayPageState extends State<ReplayPage> {
     }
   }
 
+  Future<void> _loadComments() async {
+    final p = _payload;
+    if (p == null) return;
+    setState(() => _commentsLoading = true);
+    try {
+      final comments = await _service.fetchComments(
+        p['sessionId'] as String? ?? widget.sessionId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _comments = comments;
+        _commentsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _commentsLoading = false);
+    }
+  }
+
+  Future<void> _submitComment() async {
+    final p = _payload;
+    if (p == null) return;
+    final body = _commentController.text.trim();
+    if (body.isEmpty) return;
+    try {
+      final comment = await _service.postComment(
+        sessionId: p['sessionId'] as String? ?? widget.sessionId,
+        body: body,
+      );
+      if (!mounted) return;
+      _commentController.clear();
+      setState(() => _comments = [comment, ..._comments]);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('评论失败：$e')));
+    }
+  }
+
   @override
   void dispose() {
     _fallbackTimer?.cancel();
     _posSub?.cancel();
     _completeSub?.cancel();
+    _commentController.dispose();
     unawaited(_player.dispose());
     _service.close();
     super.dispose();
@@ -230,6 +277,16 @@ class _ReplayPageState extends State<ReplayPage> {
                             p['questionPrompt'] as String? ?? '暂无题面',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
+                          if (canLike) ...[
+                            const SizedBox(height: 10),
+                            _ReplayAuthorHeader(
+                              authorName: p['authorName'] as String? ?? '同学',
+                              authorInitial:
+                                  p['authorInitial'] as String? ?? '同',
+                              rankTier: p['authorRankTier'] as String? ?? '青铜',
+                              isMine: p['isMine'] == true,
+                            ),
+                          ],
                           if ((p['description'] as String? ?? '')
                               .trim()
                               .isNotEmpty) ...[
@@ -287,6 +344,16 @@ class _ReplayPageState extends State<ReplayPage> {
                             const SizedBox(height: 8),
                             ..._buildTurnBubbles(p),
                           ],
+                          if (canLike) ...[
+                            const SizedBox(height: 18),
+                            _ReplayCommentsPanel(
+                              controller: _commentController,
+                              comments: _comments,
+                              loading: _commentsLoading,
+                              onSubmit: () => unawaited(_submitComment()),
+                              onRefresh: () => unawaited(_loadComments()),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -325,6 +392,70 @@ class _ReplayPageState extends State<ReplayPage> {
         ),
       );
     }).toList();
+  }
+}
+
+class _ReplayAuthorHeader extends StatelessWidget {
+  const _ReplayAuthorHeader({
+    required this.authorName,
+    required this.authorInitial,
+    required this.rankTier,
+    required this.isMine,
+  });
+
+  final String authorName;
+  final String authorInitial;
+  final String rankTier;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial =
+        authorInitial.trim().isNotEmpty
+            ? authorInitial.trim().substring(0, 1)
+            : (authorName.trim().isEmpty
+                ? '同'
+                : authorName.trim().substring(0, 1));
+    return StudyPanel(
+      tone: StudyPanelTone.quiet,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppPalette.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              initial,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: AppPalette.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              authorName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          StudySoftTag(text: rankTier, accent: AppPalette.primaryAccent),
+          if (isMine) ...[
+            const SizedBox(width: 6),
+            const StudySoftTag(text: '我发布的', accent: AppPalette.primary),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -454,6 +585,105 @@ class _ReplayMp4PlayerState extends State<_ReplayMp4Player> {
           ],
         );
       },
+    );
+  }
+}
+
+class _ReplayCommentsPanel extends StatelessWidget {
+  const _ReplayCommentsPanel({
+    required this.controller,
+    required this.comments,
+    required this.loading,
+    required this.onSubmit,
+    required this.onRefresh,
+  });
+
+  final TextEditingController controller;
+  final List<ReplayComment> comments;
+  final bool loading;
+  final VoidCallback onSubmit;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return StudyPanel(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(
+            title: '评论',
+            subtitle: '说说这段讲解哪里讲得清楚。',
+            action: IconButton(
+              tooltip: '刷新评论',
+              onPressed: onRefresh,
+              icon: const Icon(Icons.refresh),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  maxLength: 200,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    hintText: '写一句鼓励或补充...',
+                    filled: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(onPressed: onSubmit, child: const Text('发送')),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (loading)
+            const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          else if (comments.isEmpty)
+            const StudyEmptyHint('还没有评论，来写第一句吧。')
+          else
+            ...comments.map(
+              (comment) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ReplayCommentTile(comment: comment),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplayCommentTile extends StatelessWidget {
+  const _ReplayCommentTile({required this.comment});
+
+  final ReplayComment comment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppPalette.warmTint.withValues(alpha: 0.45),
+        borderRadius: AppRadius.buttonR,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            comment.isMine ? '${comment.studentName}（我）' : comment.studentName,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: AppPalette.primary),
+          ),
+          const SizedBox(height: 4),
+          Text(comment.body, style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      ),
     );
   }
 }

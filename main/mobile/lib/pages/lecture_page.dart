@@ -13,6 +13,7 @@ import '../data/live_lecture_events.dart';
 import '../data/mock_lecture_repository.dart';
 import '../data/progress_models.dart';
 import '../data/review_models.dart';
+import '../data/round12_models.dart';
 import '../services/audio_stream_service.dart';
 import '../services/auth_service.dart';
 import '../services/favorite_repository.dart';
@@ -36,6 +37,7 @@ import '../widgets/lecture_peer_rail.dart';
 import '../widgets/realtime_audio_panel.dart';
 import '../widgets/study_layout.dart';
 import 'privacy_notice_page.dart';
+import 'replay_page.dart';
 
 /// 讲题页：左侧多 Agent 对话区，右侧手写板（横屏），手机竖屏降级为上下布局。
 ///
@@ -1126,7 +1128,7 @@ class _LecturePageState extends State<LecturePage> {
                   Navigator.of(ctx).pop();
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已生成讲题视频并发布到同学讲法。')),
+                    const SnackBar(content: Text('已生成讲题视频并发布到讲题广场。')),
                   );
                 } catch (e) {
                   if (!mounted) return;
@@ -1733,6 +1735,11 @@ class _LecturePageState extends State<LecturePage> {
                         _AnswerVideoPlayer(video: video)
                       else
                         const _AnswerVideoEmptyState(),
+                      const SizedBox(height: 22),
+                      _QuestionPeerVideosSection(
+                        questionId: _question.questionId,
+                        sectionId: widget.section.id,
+                      ),
                     ],
                   ),
                 ),
@@ -3882,6 +3889,228 @@ class _AnswerVideoEmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuestionPeerVideosSection extends StatefulWidget {
+  const _QuestionPeerVideosSection({
+    required this.questionId,
+    required this.sectionId,
+  });
+
+  final String questionId;
+  final String sectionId;
+
+  @override
+  State<_QuestionPeerVideosSection> createState() =>
+      _QuestionPeerVideosSectionState();
+}
+
+class _QuestionPeerVideosSectionState
+    extends State<_QuestionPeerVideosSection> {
+  final ReplayService _service = ReplayService();
+  late Future<List<ReplaySummary>> _future = _load();
+
+  Future<List<ReplaySummary>> _load() {
+    return _service.fetchPublicReplays(
+      sectionId: widget.sectionId,
+      questionId: widget.questionId,
+      limit: 20,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _QuestionPeerVideosSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.questionId != widget.questionId ||
+        oldWidget.sectionId != widget.sectionId) {
+      _future = _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _service.close();
+    super.dispose();
+  }
+
+  void _reload() {
+    setState(() => _future = _load());
+  }
+
+  Future<void> _open(ReplaySummary replay) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReplayPage(sessionId: replay.sessionId),
+      ),
+    );
+    if (mounted) _reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<ReplaySummary>>(
+      future: _future,
+      builder: (context, snapshot) {
+        final body =
+            snapshot.hasData
+                ? _buildList(snapshot.data!)
+                : snapshot.hasError
+                ? StudyInlineBanner(
+                  message: '同学讲解加载失败：${snapshot.error}',
+                  tone: StudyPanelTone.danger,
+                  icon: Icons.info_outline,
+                )
+                : const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SectionHeader(
+              title: '同学讲这题',
+              subtitle: '按点赞数从高到低排列，看看别人怎么讲清楚。',
+              accent: AppPalette.primaryAccent,
+              action: IconButton(
+                tooltip: '刷新',
+                onPressed: _reload,
+                icon: const Icon(Icons.refresh),
+              ),
+            ),
+            const SizedBox(height: 10),
+            body,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildList(List<ReplaySummary> replays) {
+    if (replays.isEmpty) {
+      return const StudyEmptyHint('还没有同学发布这道题的讲解视频。');
+    }
+    return Column(
+      children: replays
+          .map(
+            (replay) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _PeerVideoRow(
+                replay: replay,
+                onTap: () => unawaited(_open(replay)),
+              ),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class _PeerVideoRow extends StatelessWidget {
+  const _PeerVideoRow({required this.replay, required this.onTap});
+
+  final ReplaySummary replay;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final description = replay.description.trim();
+    return Material(
+      color: AppPalette.warmTint.withValues(alpha: 0.45),
+      borderRadius: AppRadius.buttonR,
+      child: InkWell(
+        borderRadius: AppRadius.buttonR,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Row(
+            children: [
+              _PeerVideoAvatar(replay: replay),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            replay.authorName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        StudySoftTag(
+                          text: replay.authorRankTier,
+                          accent: AppPalette.primaryAccent,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description.isEmpty ? '同学讲题视频' : description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${replay.likeCount} 个赞 · ${_formatPeerVideoDuration(replay.durationMs)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppPalette.textSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PeerVideoAvatar extends StatelessWidget {
+  const _PeerVideoAvatar({required this.replay});
+
+  final ReplaySummary replay;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial =
+        replay.authorInitial.trim().isNotEmpty
+            ? replay.authorInitial.trim().substring(0, 1)
+            : (replay.authorName.trim().isEmpty
+                ? '同'
+                : replay.authorName.trim().substring(0, 1));
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: AppPalette.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          color: AppPalette.primary,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+String _formatPeerVideoDuration(int ms) {
+  final sec = ms <= 0 ? 0 : (ms / 1000).ceil();
+  final m = sec ~/ 60;
+  final s = sec % 60;
+  return m > 0 ? '$m 分 $s 秒' : '$s 秒';
 }
 
 class _QuestionImage extends StatelessWidget {

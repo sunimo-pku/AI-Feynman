@@ -194,11 +194,15 @@ class ReplayService {
 
   Future<List<ReplaySummary>> fetchPublicReplays({
     String? sectionId,
+    String? questionId,
     int limit = 20,
   }) async {
     final params = <String, String>{'limit': '$limit'};
     if (sectionId != null && sectionId.isNotEmpty) {
       params['sectionId'] = sectionId;
+    }
+    if (questionId != null && questionId.isNotEmpty) {
+      params['questionId'] = questionId;
     }
     final decoded = await _getMap(
       ApiConfig.uri('/replays/public').replace(queryParameters: params),
@@ -220,6 +224,30 @@ class ReplayService {
     return _getMap(
       ApiConfig.uri('/replays/$sessionId').replace(queryParameters: params),
     );
+  }
+
+  Future<List<ReplayComment>> fetchComments(String sessionId) async {
+    final decoded = await _getMap(
+      ApiConfig.uri('/replays/$sessionId/comments'),
+    );
+    final raw = decoded['comments'];
+    return raw is List
+        ? raw
+            .whereType<Map<String, dynamic>>()
+            .map(ReplayComment.fromJson)
+            .toList(growable: false)
+        : const <ReplayComment>[];
+  }
+
+  Future<ReplayComment> postComment({
+    required String sessionId,
+    required String body,
+  }) async {
+    final decoded = await _postMap(
+      ApiConfig.uri('/replays/$sessionId/comments'),
+      {'body': body},
+    );
+    return ReplayComment.fromJson(decoded);
   }
 
   Future<ReplaySummary> publishReplay({
@@ -254,7 +282,7 @@ class ReplayService {
         .get(uri, headers: AuthService.instance.authHeaders())
         .timeout(_timeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw ReplayApiException('请求失败（HTTP ${resp.statusCode}）。');
+      throw ReplayApiException(_errorMessage(resp));
     }
     final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
     if (decoded is! Map<String, dynamic>) {
@@ -276,7 +304,7 @@ class ReplayService {
         )
         .timeout(_timeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw ReplayApiException('请求失败（HTTP ${resp.statusCode}）。');
+      throw ReplayApiException(_errorMessage(resp));
     }
     final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
     if (decoded is! Map<String, dynamic>) {
@@ -291,7 +319,7 @@ class ReplayService {
         .delete(uri, headers: AuthService.instance.authHeaders())
         .timeout(_timeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw ReplayApiException('请求失败（HTTP ${resp.statusCode}）。');
+      throw ReplayApiException(_errorMessage(resp));
     }
     final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
     if (decoded is! Map<String, dynamic>) {
@@ -301,9 +329,31 @@ class ReplayService {
   }
 
   void close() => _client.close();
+
+  String _errorMessage(http.Response resp) {
+    var detail = '';
+    try {
+      final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+      if (decoded is Map && decoded['detail'] != null) {
+        detail = decoded['detail'].toString();
+      }
+    } catch (_) {}
+    if (resp.statusCode == 404 && detail.contains('Replay')) {
+      return '讲题广场接口还没更新或后端未重启，请更新后端后再试。';
+    }
+    if (resp.statusCode == 401) return '登录状态已过期，请重新登录后再试。';
+    if (resp.statusCode == 403) return '当前账号没有查看讲题广场的权限。';
+    if (resp.statusCode >= 500) {
+      return detail.isEmpty ? '后端暂时不可用（HTTP ${resp.statusCode}）。' : detail;
+    }
+    return detail.isEmpty ? '请求失败（HTTP ${resp.statusCode}）。' : detail;
+  }
 }
 
 class ReplayApiException implements Exception {
   const ReplayApiException(this.message);
   final String message;
+
+  @override
+  String toString() => message;
 }

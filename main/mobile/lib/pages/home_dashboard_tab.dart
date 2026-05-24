@@ -67,9 +67,9 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
   }
 
   Future<void> _openDailyChallenge() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const DailyChallengePage()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const DailyChallengePage()));
     if (mounted) await _loadBountySummary();
   }
 
@@ -131,16 +131,17 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
                       children: [
                         Text(
                           '每日挑战',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           streak > 0
                               ? '帮同学找错 · 已连续打卡 $streak 天'
                               : '帮同学找错 · 完成今日挑战开始打卡',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodyMedium?.copyWith(
                             color: AppPalette.textSecondary,
                             height: 1.35,
                           ),
@@ -297,9 +298,7 @@ class _RecentReviewCard extends StatelessWidget {
                 record.questionPrompt,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  height: 1.45,
-                ),
+                style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
                 formulaStyle: theme.textTheme.bodyLarge?.copyWith(
                   color: AppPalette.primary,
                   fontWeight: FontWeight.w700,
@@ -422,9 +421,9 @@ class _PendingAssignmentsBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   '家长布置了 $count 项作业',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               Icon(

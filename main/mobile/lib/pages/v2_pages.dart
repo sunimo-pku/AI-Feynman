@@ -65,6 +65,13 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
         .toList(growable: false);
   }
 
+  String _rankTierForTotal(int score) {
+    if (score >= 900) return '王者';
+    if (score >= 600) return '黄金';
+    if (score >= 300) return '白银';
+    return '青铜';
+  }
+
   @override
   void dispose() {
     _service.close();
@@ -114,10 +121,7 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                     children: [
                       StudyDenseTile(
                         title: p.studentName,
-                        subtitle:
-                            p.equippedTitle.isEmpty
-                                ? '数学练习生'
-                                : p.equippedTitle,
+                        subtitle: _rankTierForTotal(total),
                         icon: Icons.bolt_outlined,
                       ),
                       const SizedBox(height: 6),
@@ -172,11 +176,12 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                     StudyListRow(
                       title: '收藏的题目',
                       subtitle: '讲题页点星星收藏，方便回头再练',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const FavoriteQuestionsPage(),
-                        ),
-                      ),
+                      onTap:
+                          () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const FavoriteQuestionsPage(),
+                            ),
+                          ),
                     ),
                   ],
                 ),
@@ -271,9 +276,7 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
           Future<void> submit() async {
             final parentPassword = parentPasswordController.text;
             if (parentPassword.length < 6) {
-              setDialogState(
-                () => errorMessage = '请填写家长密码（至少 6 位）。',
-              );
+              setDialogState(() => errorMessage = '请填写家长密码（至少 6 位）。');
               return;
             }
             setDialogState(() {
@@ -326,9 +329,9 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
                     const SizedBox(height: 10),
                     Text(
                       errorMessage!,
-                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                        color: AppPalette.error,
-                      ),
+                      style: Theme.of(
+                        ctx,
+                      ).textTheme.bodySmall?.copyWith(color: AppPalette.error),
                     ),
                   ],
                 ],
@@ -465,8 +468,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
     });
   }
 
-  String get _chapterTitle =>
-      _chapterLabels[_chapterId] ?? _chapterId;
+  String get _chapterTitle => _chapterLabels[_chapterId] ?? _chapterId;
 
   bool get _canSwitchChapter => _rankedChapters.length > 1;
 
@@ -480,119 +482,119 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
     };
     final theme = Theme.of(context);
     final body = ListView(
-        padding: const EdgeInsets.all(AppSpacing.pageEdge),
-        children: [
+      padding: const EdgeInsets.all(AppSpacing.pageEdge),
+      children: [
+        Wrap(
+          spacing: 8,
+          children:
+              labels.entries
+                  .map(
+                    (e) => ChoiceChip(
+                      label: Text(e.value),
+                      selected: _scope == e.key,
+                      onSelected: (_) => _selectScope(e.key),
+                    ),
+                  )
+                  .toList(),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          '排名章节：$_chapterTitle',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: AppPalette.primary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _canSwitchChapter
+              ? '排行榜按大章分别计算。默认展示你战力最高的一章，也可以在下方切换到其它已有战力的章节。'
+              : '排行榜按大章分别计算。当前展示你已有战力的章节；各小节战力会汇总到对应大章。',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: AppPalette.textSecondary,
+            height: 1.4,
+          ),
+        ),
+        if (_canSwitchChapter) ...[
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children:
-                labels.entries
+                _rankedChapters
                     .map(
-                      (e) => ChoiceChip(
-                        label: Text(e.value),
-                        selected: _scope == e.key,
-                        onSelected: (_) => _selectScope(e.key),
+                      (c) => ChoiceChip(
+                        label: Text(_chapterLabels[c.chapterId] ?? c.chapterId),
+                        selected: _chapterId == c.chapterId,
+                        onSelected: (_) => _selectChapter(c.chapterId),
                       ),
                     )
                     .toList(),
           ),
-          const SizedBox(height: 10),
-          Text(
-            '排名章节：$_chapterTitle',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: AppPalette.primary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _canSwitchChapter
-                ? '排行榜按大章分别计算。默认展示你战力最高的一章，也可以在下方切换到其它已有战力的章节。'
-                : '排行榜按大章分别计算。当前展示你已有战力的章节；各小节战力会汇总到对应大章。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppPalette.textSecondary,
-              height: 1.4,
-            ),
-          ),
-          if (_canSwitchChapter) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children:
-                  _rankedChapters
-                      .map(
-                        (c) => ChoiceChip(
-                          label: Text(
-                            _chapterLabels[c.chapterId] ?? c.chapterId,
-                          ),
-                          selected: _chapterId == c.chapterId,
-                          onSelected: (_) => _selectChapter(c.chapterId),
-                        ),
-                      )
-                      .toList(),
-            ),
-          ],
-          const SizedBox(height: 12),
-          if (_bootstrapping)
-            const Center(child: Padding(
+        ],
+        const SizedBox(height: 12),
+        if (_bootstrapping)
+          const Center(
+            child: Padding(
               padding: EdgeInsets.all(24),
               child: CircularProgressIndicator(),
-            ))
-          else if (_bootstrapError != null)
-            StudyEmptyHint('加载章节战力失败：$_bootstrapError')
-          else
-            FutureBuilder<List<LeaderboardEntry>>(
-              future: _entriesFuture,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return _loadingOrError(snapshot, _reloadEntries);
-                }
-                final entries = snapshot.data!;
-                if (entries.isEmpty) {
-                  final hint =
-                      _canSwitchChapter
-                          ? '「$_chapterTitle」在${labels[_scope] ?? _scope}还没有记录。可以切换到其它章节查看，或完成该章讲题 / 每日挑战后再刷新。'
-                          : '「$_chapterTitle」在${labels[_scope] ?? _scope}还没有记录。完成该章节的讲题或每日挑战后，会在这里出现你的名次。';
-                  return StudyEmptyHint(hint);
-                }
-                return StudyGroupedPanel(
-                  children:
-                      entries
-                          .map(
-                            (e) => StudyDenseTile(
-                              dense: true,
-                              title: e.studentName,
-                              subtitle: e.titleLabel,
-                              icon: Icons.emoji_events_outlined,
-                              accent:
-                                  e.rank <= 3
-                                      ? AppPalette.primaryAccent
-                                      : AppPalette.primary,
-                              trailing: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '#${e.rank}',
-                                    style: theme.textTheme.labelLarge?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      color: AppPalette.primary,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${e.powerScore}',
-                                    style: theme.textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                          .toList(),
-                );
-              },
             ),
-        ],
-      );
+          )
+        else if (_bootstrapError != null)
+          StudyEmptyHint('加载章节战力失败：$_bootstrapError')
+        else
+          FutureBuilder<List<LeaderboardEntry>>(
+            future: _entriesFuture,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return _loadingOrError(snapshot, _reloadEntries);
+              }
+              final entries = snapshot.data!;
+              if (entries.isEmpty) {
+                final hint =
+                    _canSwitchChapter
+                        ? '「$_chapterTitle」在${labels[_scope] ?? _scope}还没有记录。可以切换到其它章节查看，或完成该章讲题 / 每日挑战后再刷新。'
+                        : '「$_chapterTitle」在${labels[_scope] ?? _scope}还没有记录。完成该章节的讲题或每日挑战后，会在这里出现你的名次。';
+                return StudyEmptyHint(hint);
+              }
+              return StudyGroupedPanel(
+                children:
+                    entries
+                        .map(
+                          (e) => StudyDenseTile(
+                            dense: true,
+                            title: e.studentName,
+                            subtitle: e.titleLabel,
+                            icon: Icons.emoji_events_outlined,
+                            accent:
+                                e.rank <= 3
+                                    ? AppPalette.primaryAccent
+                                    : AppPalette.primary,
+                            trailing: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '#${e.rank}',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: AppPalette.primary,
+                                  ),
+                                ),
+                                Text(
+                                  '${e.powerScore}',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+              );
+            },
+          ),
+      ],
+    );
     if (widget.embeddedInTab) {
       return body;
     }
@@ -627,12 +629,9 @@ class _BountyPageState extends State<BountyPage> {
       setState(() => _message = '本题缺少分步题，请从首页「每日挑战」进入。');
       return;
     }
-    final stepAnswers =
-        quizzes
-            .map(
-              (q) => {'stepId': q.stepId, 'optionId': q.correctOptionId},
-            )
-            .toList(growable: false);
+    final stepAnswers = quizzes
+        .map((q) => {'stepId': q.stepId, 'optionId': q.correctOptionId})
+        .toList(growable: false);
     final result = await _service.submitBounty(
       challengeId: c.challengeId,
       stepAnswers: stepAnswers,
@@ -716,23 +715,19 @@ class _ShopPageState extends State<ShopPage> {
     final shipPhone = _phone.text.trim();
     final shipAddress = _address.text.trim();
     if (shipName.isEmpty || shipPhone.isEmpty || shipAddress.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先填写收货人、电话和详细地址')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先填写收货人、电话和详细地址')));
       return;
     }
     await _service.redeem(
       item.skuId,
-      address: {
-        'name': shipName,
-        'phone': shipPhone,
-        'address': shipAddress,
-      },
+      address: {'name': shipName, 'phone': shipPhone, 'address': shipAddress},
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${item.name} 兑换已提交，等待发货（占位奖品）')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${item.name} 兑换已提交，等待发货（占位奖品）')));
     setState(() => _future = _service.fetchShopCatalog());
   }
 
@@ -783,10 +778,7 @@ class _ShopPageState extends State<ShopPage> {
                   children: [
                     _TextField(controller: _name, label: '收货人'),
                     _TextField(controller: _phone, label: '电话'),
-                    _TextField(
-                      controller: _address,
-                      label: '详细地址',
-                    ),
+                    _TextField(controller: _address, label: '详细地址'),
                   ],
                 ),
               ),
@@ -938,9 +930,9 @@ class _PhotoQuestionPageState extends State<PhotoQuestionPage> {
         children: [
           Text(
             '拍一张题目或从相册选图，识别后可直接进入讲题。',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppPalette.textSecondary,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppPalette.textSecondary),
           ),
           const SizedBox(height: 16),
           Row(
@@ -1128,9 +1120,7 @@ StudyDenseTile _shopDenseTile(
   VoidCallback onRedeem,
 ) {
   final desc =
-      item.description.trim().isEmpty
-          ? '占位文具'
-          : item.description.trim();
+      item.description.trim().isEmpty ? '占位文具' : item.description.trim();
   return StudyDenseTile(
     title: item.name,
     subtitle: desc,
@@ -1252,4 +1242,3 @@ class _TextField extends StatelessWidget {
     );
   }
 }
-

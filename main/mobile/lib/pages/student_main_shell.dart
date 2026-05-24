@@ -46,7 +46,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
   int _tabIndex = 0;
   int _pendingAssignments = 0;
 
-  static const _tabTitles = ['今日', '课程', '同学讲法', '排行榜', '我的'];
+  static const _tabTitles = ['今日', '课程', '讲题广场', '排行榜', '我的'];
 
   @override
   void initState() {
@@ -237,7 +237,7 @@ class _StudentMainShellState extends State<StudentMainShell> {
                     onSectionTap: _onSectionTap,
                     onSectionReview: _onSectionReview,
                   ),
-                  const PublicReplaysPage(embeddedInTab: true),
+                  const PublicReplaysPage(embeddedInTab: true, title: '讲题广场'),
                   const LeaderboardPage(embeddedInTab: true),
                   PowerProfilePage(
                     embeddedInTab: true,
@@ -275,12 +275,12 @@ class _StudentMainShellState extends State<StudentMainShell> {
             label: '课程',
           ),
           NavigationDestination(
-            icon: StudyTabIcon(asset: 'assets/icons/tab_leaderboard.svg'),
+            icon: StudyTabIcon(asset: 'assets/icons/tab_replays.svg'),
             selectedIcon: StudyTabIcon(
-              asset: 'assets/icons/tab_leaderboard.svg',
+              asset: 'assets/icons/tab_replays.svg',
               selected: true,
             ),
-            label: '同学讲法',
+            label: '讲题广场',
           ),
           NavigationDestination(
             icon: StudyTabIcon(asset: 'assets/icons/tab_leaderboard.svg'),

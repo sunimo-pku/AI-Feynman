@@ -9,9 +9,18 @@ import '../widgets/study_layout.dart';
 import 'replay_page.dart';
 
 class PublicReplaysPage extends StatefulWidget {
-  const PublicReplaysPage({super.key, this.embeddedInTab = false});
+  const PublicReplaysPage({
+    super.key,
+    this.embeddedInTab = false,
+    this.sectionId,
+    this.questionId,
+    this.title = '讲题广场',
+  });
 
   final bool embeddedInTab;
+  final String? sectionId;
+  final String? questionId;
+  final String title;
 
   @override
   State<PublicReplaysPage> createState() => _PublicReplaysPageState();
@@ -19,7 +28,14 @@ class PublicReplaysPage extends StatefulWidget {
 
 class _PublicReplaysPageState extends State<PublicReplaysPage> {
   final ReplayService _service = ReplayService();
-  late Future<List<ReplaySummary>> _future = _service.fetchPublicReplays();
+  late Future<List<ReplaySummary>> _future = _fetch();
+
+  Future<List<ReplaySummary>> _fetch() {
+    return _service.fetchPublicReplays(
+      sectionId: widget.sectionId,
+      questionId: widget.questionId,
+    );
+  }
 
   @override
   void dispose() {
@@ -28,7 +44,7 @@ class _PublicReplaysPageState extends State<PublicReplaysPage> {
   }
 
   void _reload() {
-    setState(() => _future = _service.fetchPublicReplays());
+    setState(() => _future = _fetch());
   }
 
   Future<void> _toggleLike(ReplaySummary replay) async {
@@ -91,8 +107,11 @@ class _PublicReplaysPageState extends State<PublicReplaysPage> {
                 tone: StudyPanelTone.primary,
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
                 child: SectionHeader(
-                  title: '同学讲法',
-                  subtitle: '像看短视频一样看看别人怎么讲题，也给讲得好的同学点个赞。',
+                  title: widget.title,
+                  subtitle:
+                      widget.questionId == null
+                          ? '像看短视频一样看看别人怎么讲题，也给讲得好的同学点个赞。'
+                          : '同一道题里，老师讲解置顶；同学讲法按点赞数从高到低排列。',
                   accent: AppPalette.primaryAccent,
                   action: IconButton(
                     tooltip: '刷新',
@@ -124,7 +143,7 @@ class _PublicReplaysPageState extends State<PublicReplaysPage> {
     if (widget.embeddedInTab) {
       return body;
     }
-    return StudyShell(title: '同学讲法', child: body);
+    return StudyShell(title: widget.title, child: body);
   }
 }
 
@@ -168,23 +187,38 @@ class _PublicReplayCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppPalette.primary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(
-                    Icons.play_circle_outline,
-                    color: AppPalette.primary,
-                  ),
-                ),
+                _ReplayAuthorAvatar(replay: replay),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              replay.authorName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          StudySoftTag(
+                            text: replay.authorRankTier,
+                            accent: AppPalette.primaryAccent,
+                          ),
+                          if (replay.isMine) ...[
+                            const SizedBox(width: 6),
+                            const StudySoftTag(
+                              text: '我发布的',
+                              accent: AppPalette.primary,
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 6),
                       Text(
                         title,
                         maxLines: 1,
@@ -257,6 +291,38 @@ class _PublicReplayCard extends StatelessWidget {
   }
 }
 
+class _ReplayAuthorAvatar extends StatelessWidget {
+  const _ReplayAuthorAvatar({required this.replay});
+
+  final ReplaySummary replay;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial =
+        replay.authorInitial.trim().isEmpty
+            ? (replay.authorName.trim().isEmpty
+                ? '同'
+                : replay.authorName.trim().substring(0, 1))
+            : replay.authorInitial.trim();
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: AppPalette.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial.substring(0, 1),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: AppPalette.primary,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
 class _ErrorState extends StatelessWidget {
   const _ErrorState({required this.message, required this.onRetry});
 
@@ -273,7 +339,7 @@ class _ErrorState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('同学讲法加载失败', style: Theme.of(context).textTheme.titleMedium),
+              Text('讲题广场加载失败', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               Text(
                 message,
