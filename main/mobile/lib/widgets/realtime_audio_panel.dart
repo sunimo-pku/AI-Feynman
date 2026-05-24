@@ -106,6 +106,16 @@ class RealtimeAudioPanel extends StatelessWidget {
           icon: const Icon(Icons.mic),
           label: const Text('开始讲题'),
         );
+      case RealtimeAudioPanelState.connecting:
+        return FilledButton.icon(
+          onPressed: null,
+          icon: const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          label: const Text('连接中…'),
+        );
       case RealtimeAudioPanelState.listening:
       case RealtimeAudioPanelState.paused:
         final manualPauseButton = FilledButton.icon(
@@ -169,6 +179,8 @@ class RealtimeAudioPanel extends StatelessWidget {
     switch (s) {
       case RealtimeAudioPanelState.idle:
         return '准备好开始讲题了吗？';
+      case RealtimeAudioPanelState.connecting:
+        return '正在连接…';
       case RealtimeAudioPanelState.listening:
         return '正在听你讲...';
       case RealtimeAudioPanelState.paused:
@@ -192,6 +204,8 @@ class RealtimeAudioPanel extends StatelessWidget {
     switch (s) {
       case RealtimeAudioPanelState.idle:
         return '点击「开始讲题」，一边写白板一边口头讲解你的思路。';
+      case RealtimeAudioPanelState.connecting:
+        return '麦克风尚未就绪，连接成功后再开口讲题。';
       case RealtimeAudioPanelState.listening:
         return '像发语音一样：讲完后点「讲题结束」，AI 再开始追问。';
       case RealtimeAudioPanelState.paused:
@@ -218,6 +232,12 @@ class RealtimeAudioPanel extends StatelessWidget {
           background: AppPalette.surface,
           border: AppPalette.outlineSoft,
           accent: AppPalette.textPrimary,
+        );
+      case RealtimeAudioPanelState.connecting:
+        return _PaletteVariant(
+          background: AppPalette.warmTint.withValues(alpha: 0.35),
+          border: AppPalette.outlineSoft,
+          accent: AppPalette.textSecondary,
         );
       case RealtimeAudioPanelState.listening:
         return _PaletteVariant(
@@ -273,6 +293,7 @@ class _StatusIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = switch (state) {
       RealtimeAudioPanelState.idle => Icons.mic_none_outlined,
+      RealtimeAudioPanelState.connecting => Icons.wifi_tethering,
       RealtimeAudioPanelState.listening => Icons.graphic_eq,
       RealtimeAudioPanelState.paused => Icons.psychology_alt_outlined,
       RealtimeAudioPanelState.thinking => Icons.psychology_outlined,
@@ -404,6 +425,7 @@ class _PulseDotState extends State<_PulseDot>
 /// thinking" → listening；"WS 已断" → disconnected 不管录音状态）。
 enum RealtimeAudioPanelState {
   idle,
+  connecting,
   listening,
   paused,
   thinking,

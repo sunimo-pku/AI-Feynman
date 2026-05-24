@@ -99,7 +99,7 @@ class LiveAsrBuffer:
             )
             return
         if seq < self._last_seq:
-            logger.debug(
+            logger.warning(
                 "[asr-buffer] 丢弃倒退 seq=%d (last=%d)", seq, self._last_seq
             )
             return
@@ -193,6 +193,12 @@ class LiveAsrBuffer:
         b64, seconds = self._drain()
         if not b64:
             return None
+        logger.info(
+            "[asr-buffer] flush window seconds=%.2f b64_len=%d force=%s",
+            seconds,
+            len(b64),
+            force,
+        )
         try:
             stream_result = self.stream_client.recognize_window(
                 audio_base64=b64,
@@ -208,8 +214,15 @@ class LiveAsrBuffer:
                         "mode": stream_result.mode,
                         "isFinal": stream_result.is_final,
                     }
+                text = stream_result.text.strip()
+                preview = text if len(text) <= 120 else f"{text[:120]}…"
+                logger.info(
+                    "[asr-buffer] flush result text_len=%d preview=%r",
+                    len(text),
+                    preview,
+                )
                 return {
-                    "text": stream_result.text.strip(),
+                    "text": text,
                     "seconds": seconds,
                     "error": None,
                     "mode": stream_result.mode,

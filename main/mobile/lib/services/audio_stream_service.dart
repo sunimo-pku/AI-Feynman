@@ -120,12 +120,8 @@ class AudioStreamService {
   Future<void> stop() async {
     _silenceTimer?.cancel();
     _silenceTimer = null;
-    try {
-      await _streamSub?.cancel();
-    } catch (_) {
-      /* swallow */
-    }
-    _streamSub = null;
+    // 先 stop 录音器让 record 包 flush 末段 PCM，再 cancel stream；
+    // 反过来会先丢 listener，表现为「讲题结束」后 ASR 缺句尾。
     try {
       if (await _recorder.isRecording()) {
         await _recorder.stop();
@@ -133,6 +129,12 @@ class AudioStreamService {
     } catch (_) {
       /* swallow */
     }
+    try {
+      await _streamSub?.cancel();
+    } catch (_) {
+      /* swallow */
+    }
+    _streamSub = null;
     _voiceActive = false;
     _lastVoiceAt = null;
     if (_status == AudioStreamStatus.listening ||

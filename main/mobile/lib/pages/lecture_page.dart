@@ -1946,6 +1946,10 @@ class _LecturePageState extends State<LecturePage> {
     _activeLiveSessionId = sessionId;
     _activeLiveGeneration = generation;
     if (_liveService.isConnected) {
+      setState(() {
+        _liveStatus = _LiveStatus.connecting;
+        _liveFailureReason = null;
+      });
       _replayService.startSession(
         sessionId: sessionId,
         sectionId: widget.section.id,
@@ -2074,7 +2078,6 @@ class _LecturePageState extends State<LecturePage> {
   bool get _isLiveRecording =>
       _liveStatus == _LiveStatus.listening ||
       _liveStatus == _LiveStatus.paused ||
-      _liveStatus == _LiveStatus.connecting ||
       _audioService.status == AudioStreamStatus.listening ||
       _audioService.status == AudioStreamStatus.paused;
 
@@ -2119,7 +2122,7 @@ class _LecturePageState extends State<LecturePage> {
     // 像发语音一样，学生点结束后立即停掉本段录音；AI 追问完成后再让
     // 学生手动开始下一段。
     if (_isLiveRecording) {
-      unawaited(_audioService.stop());
+      await _audioService.stop();
     }
     if (!_liveService.isConnected) {
       setState(() {
@@ -2625,6 +2628,7 @@ class _LecturePageState extends State<LecturePage> {
       case _LiveStatus.idle:
         return RealtimeAudioPanelState.idle;
       case _LiveStatus.connecting:
+        return RealtimeAudioPanelState.connecting;
       case _LiveStatus.listening:
         return RealtimeAudioPanelState.listening;
       case _LiveStatus.paused:
@@ -3230,6 +3234,16 @@ class _LecturePageState extends State<LecturePage> {
             ),
           );
         }
+        break;
+      case RealtimeAudioPanelState.connecting:
+        orbs.add(
+          const LectureOrbButton(
+            icon: Icons.wifi_tethering,
+            tooltip: '连接中，请稍候再开口',
+            loading: true,
+            onPressed: null,
+          ),
+        );
         break;
       case RealtimeAudioPanelState.listening:
       case RealtimeAudioPanelState.paused:

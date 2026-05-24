@@ -181,11 +181,13 @@ class VolcStreamingAsrClient:
             if force_final or not keep_open:
                 self.close()
         elapsed_ms = int((time.monotonic() - started) * 1000)
+        preview = text if len(text) <= 120 else f"{text[:120]}…"
         logger.info(
-            "[asr-stream] asr_mode=stream text_len=%d final=%s elapsed_ms=%d",
+            "[asr-stream] asr_mode=stream text_len=%d final=%s elapsed_ms=%d preview=%r",
             len(text),
             is_final,
             elapsed_ms,
+            preview,
         )
         return StreamAsrResult(text=text, is_final=is_final or force_final, mode="stream")
 

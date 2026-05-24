@@ -857,8 +857,18 @@ git push origin main
   调 `_persist_live_session_if_needed`，否则正常断线不会保存已完成实时讲题记录。
 - **同题多轮不能清 history，换题必须清旧任务**：`session_start` 若 section/question
   没变，只是新一段录音，后端必须保留 `history/round_index` 才能递进追问；若换题，
-  才清 history/ASR/白板，并取消旧 TTS task。ASR flush 失败必须发 error/listening
-  后中止 LLM，不能继续 peer assessment。
+  才清 history/白板，并取消旧 TTS task。**但 `asr_buffer` 每次 session_start 都必须
+  reset**——客户端每段录音会把 `audio seq` 归零，若保留 `_last_seq` 会把前半段 chunk
+  静默丢弃（只录到后半段）。ASR flush 失败必须发 error/listening 后中止 LLM，不能
+  继续 peer assessment。
+- **connecting 态不能伪装成 listening**：WS 握手完成前 `_audioService.start()` 尚未
+  执行，UI 若显示红脉动麦会让学生开口丢字。`connecting` 应单独展示「连接中…」，
+  且 `_isLiveRecording` 必须以录音服务真实状态为准，不能把 connecting 算进去。
+- **讲题结束必须先 await 停录再 OCR / pause_detected**：`_onManualPause` 里
+  `AudioStreamService.stop()` 要先于白板 OCR 与 `pause_detected`；且 stop 顺序必须是
+  「先 `_recorder.stop()` flush 末段 PCM，再 cancel stream」，否则句尾 chunk 丢失。
+- **ASR 调试日志**：`pause_detected` 路径应打 `pending_sec` + 转写 preview；
+  `asr-buffer` 对 seq 倒退用 warning（非 debug），便于对照「说了多少 vs 识别多少」。
 - **完成进度只按 completed + 正 delta 落库**：实时 WS 断连可保存
   `LectureSessionRecord`，但 `LearningProgress` / 作业完成只能在
   `last_status=completed && last_mastery_delta>0` 时更新，避免“没听懂/断线”

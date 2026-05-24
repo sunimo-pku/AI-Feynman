@@ -535,6 +535,44 @@ async def test_multi_round_same_question_passes_incremental_round_and_history(
 
 
 @pytest.mark.asyncio
+async def test_session_start_same_question_resets_asr_buffer_for_seq_zero() -> None:
+    """同题再次 session_start 时客户端 seq 归零，服务端必须 reset 缓冲。"""
+    session = LiveLectureSession(
+        session_id="sess-seq",
+        section_id="pep-g7-up-s1-1",
+        question_id="q1",
+        question_prompt="prompt",
+    )
+    session._started = True
+    session.asr_buffer.push(seq=0, base64_data=_b64_pcm(0.5))
+    session.asr_buffer.push(seq=12, base64_data=_b64_pcm(0.5))
+    assert session.asr_buffer.has_pending
+
+    sent: list[dict[str, Any]] = []
+
+    async def send(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+
+    await session.handle_event(
+        {
+            "type": "session_start",
+            "sessionId": "sess-seq-2",
+            "sectionId": "pep-g7-up-s1-1",
+            "questionId": "q1",
+            "questionPrompt": "prompt",
+        },
+        send=send,
+        recognize_fn=_fake_recognize,
+        peer_assessment_fn=_fake_peer_assessment_not_all_understood,
+    )
+
+    assert not session.asr_buffer.has_pending
+    session.asr_buffer.push(seq=0, base64_data=_b64_pcm(0.4))
+    assert session.asr_buffer.has_pending
+    assert session.asr_buffer.pending_seconds > 0.3
+
+
+@pytest.mark.asyncio
 async def test_session_start_preserves_same_question_history_and_clears_tts() -> None:
     session = LiveLectureSession(
         session_id="sess-same",

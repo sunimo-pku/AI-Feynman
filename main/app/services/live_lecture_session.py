@@ -365,7 +365,9 @@ class LiveLectureSession:
             self.board_latex = ""
             self.board_plain_text = ""
             self.pending_board_image_b64 = ""
-            self.asr_buffer.reset()
+        # 每次 session_start（含同题新一段录音）客户端都会把 audio seq 重置为 0。
+        # 若不清 ASR 缓冲，倒退 seq 的 chunk 会被静默丢弃，表现为「只录到后半段」。
+        self.asr_buffer.reset()
         self.is_thinking = False
         self._interrupt_event.clear()
         await self._safe_send(send, {
@@ -521,6 +523,7 @@ class LiveLectureSession:
             })
             return
         pause_t0 = time.monotonic()
+        pending_sec = self.asr_buffer.pending_seconds
         asr_ok = await self._maybe_flush_asr(
             send=send,
             recognize_fn=recognize_fn,
@@ -528,8 +531,9 @@ class LiveLectureSession:
         )
         asr_ms = (time.monotonic() - pause_t0) * 1000
         logger.info(
-            "[live-session] pause asr_flush_ms=%.0f session=%s",
+            "[live-session] pause asr_flush_ms=%.0f pending_sec=%.2f session=%s",
             asr_ms,
+            pending_sec,
             self.session_id,
         )
         if not asr_ok:
@@ -727,6 +731,13 @@ class LiveLectureSession:
         text = (result.get("text") or "").strip()
         if not text:
             return True
+        preview = text if len(text) <= 120 else f"{text[:120]}…"
+        logger.info(
+            "[live-session] asr_segment text_len=%d preview=%r session=%s",
+            len(text),
+            preview,
+            self.session_id,
+        )
         self.transcript_segments.append(text)
         await self._safe_send(send, {
             "type": EVT_ASR_SEGMENT,
