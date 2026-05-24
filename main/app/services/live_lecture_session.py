@@ -102,7 +102,17 @@ _INTER_DELTA_DELAY_MS = 0
 _MIN_THINKING_VISIBLE_MS = 0
 
 # 一个 session 内 history 最多保留多少条；与 lecture_agent._HISTORY_KEEP_LAST 同步。
-_HISTORY_KEEP_LAST = 6
+# 60 条 ≈ 10 轮完整闭环（学生 1 + 三同伴 3 + 可选 peerReply 1 + 可选
+# teacherSummary 1）。让同伴在多轮场景下能明确看到学生前几轮 ASR
+# 全文与当时三人的判断；prompt 内仍按 [学生·我] / [AI:role] 标签 +
+# 「【上一轮追问与回答历史】」表头与本轮严格分区。
+_HISTORY_KEEP_LAST = 60
+
+# 各轮白板 PNG/OCR 摘要归档上限；与 lecture_agent._ROUND_BOARD_KEEP_LAST 同步。
+_ROUND_BOARD_KEEP_LAST = 8
+
+# ink_snapshot 里 boardImageBase64 硬上限（约 1.5MB 原始 PNG）。
+_MAX_BOARD_IMAGE_B64_LEN = 2_000_000
 
 
 @dataclass
@@ -112,6 +122,23 @@ class _Stroke:
     latex: str = ""
     plain_text: str = ""
     bounding_box: dict[str, float] | None = None
+
+
+@dataclass
+class _RoundBoardSnapshot:
+    round_index: int
+    board_latex: str = ""
+    board_plain_text: str = ""
+    stroke_count: int = 0
+    board_image_base64: str = ""
+
+    def to_prompt_dict(self) -> dict[str, Any]:
+        return {
+            "roundIndex": self.round_index,
+            "boardLatex": self.board_latex,
+            "boardPlainText": self.board_plain_text,
+            "strokeCount": self.stroke_count,
+        }
 
 
 @dataclass
@@ -131,6 +158,8 @@ class LiveLectureSession:
     latest_steps: list[_Stroke] = field(default_factory=list)
     board_latex: str = ""
     board_plain_text: str = ""
+    pending_board_image_b64: str = ""
+    round_board_snapshots: list[_RoundBoardSnapshot] = field(default_factory=list)
 
     # ---- 状态机 ----
     is_thinking: bool = False
@@ -163,6 +192,47 @@ class LiveLectureSession:
 
     def _mark_transcript_round_consumed(self) -> None:
         self._transcript_round_start = len(self.transcript_segments)
+
+    def _assessment_round_index(self) -> int:
+        return max(1, self.round_index + 1)
+
+    def _prior_round_board_snapshots_for_prompt(self) -> list[dict[str, Any]]:
+        current = self._assessment_round_index()
+        return [
+            snap.to_prompt_dict()
+            for snap in self.round_board_snapshots
+            if snap.round_index < current
+        ]
+
+    def _archive_current_board_snapshot(self, completed_round: int) -> None:
+        total_strokes = sum(max(0, s.stroke_count) for s in self.latest_steps)
+        has_board = bool(
+            self.board_latex
+            or self.board_plain_text
+            or total_strokes > 0
+        )
+        if not has_board:
+            self.pending_board_image_b64 = ""
+            return
+        snap = _RoundBoardSnapshot(
+            round_index=max(1, int(completed_round)),
+            board_latex=self.board_latex,
+            board_plain_text=self.board_plain_text,
+            stroke_count=total_strokes,
+            board_image_base64=self.pending_board_image_b64,
+        )
+        self.round_board_snapshots.append(snap)
+        if len(self.round_board_snapshots) > _ROUND_BOARD_KEEP_LAST:
+            del self.round_board_snapshots[
+                : len(self.round_board_snapshots) - _ROUND_BOARD_KEEP_LAST
+            ]
+        self.pending_board_image_b64 = ""
+        logger.info(
+            "[live-session] board archived round=%d strokes=%d has_image=%s",
+            snap.round_index,
+            snap.stroke_count,
+            "yes" if snap.board_image_base64 else "no",
+        )
 
     # ============================================================== #
     # 事件入口
@@ -288,11 +358,13 @@ class LiveLectureSession:
         if not is_same_question:
             self.round_index = 0
             self.history.clear()
+            self.round_board_snapshots.clear()
             self.transcript_segments.clear()
             self._transcript_round_start = 0
             self.latest_steps.clear()
             self.board_latex = ""
             self.board_plain_text = ""
+            self.pending_board_image_b64 = ""
             self.asr_buffer.reset()
         self.is_thinking = False
         self._interrupt_event.clear()
@@ -385,6 +457,18 @@ class LiveLectureSession:
         self.board_plain_text = str(
             event.get("boardPlainText") or event.get("board_plain_text") or ""
         ).strip()
+        board_image = str(
+            event.get("boardImageBase64") or event.get("board_image_base64") or ""
+        ).strip()
+        if board_image:
+            if len(board_image) > _MAX_BOARD_IMAGE_B64_LEN:
+                logger.warning(
+                    "[live-session] ink_snapshot board image too large session=%s len=%d",
+                    self.session_id,
+                    len(board_image),
+                )
+            else:
+                self.pending_board_image_b64 = board_image
         # 第十二轮：no_steps_yet 故障线索几乎都是「新 session 没收到 snapshot」。
         # 加一条 info 日志，下次出问题立刻能看到「snapshot 到了哪个 session
         # 几步」，与 pause_detected 的时间戳对齐就能定位。
@@ -554,6 +638,7 @@ class LiveLectureSession:
         if teacher_summary and not self._interrupt_event.is_set():
             await self._stream_single_turn_to_client(teacher_summary, send=send)
 
+        completed_round = self._assessment_round_index()
         self._append_student_history_snapshot()
         for item in assessments:
             self.history.append(_assessment_to_history_item(item))
@@ -577,6 +662,7 @@ class LiveLectureSession:
         if len(self.history) > _HISTORY_KEEP_LAST:
             del self.history[: len(self.history) - _HISTORY_KEEP_LAST]
 
+        self._archive_current_board_snapshot(completed_round)
         self.round_index += 1
         self.last_status = status
         self.last_mastery_delta = mastery_delta
@@ -659,8 +745,9 @@ class LiveLectureSession:
         speech = self._current_round_speech()
         allowed_step_ids = self._allowed_step_ids()
         loop = asyncio.get_event_loop()
-        round_index = max(1, self.round_index + 1)
+        round_index = self._assessment_round_index()
         history = list(self.history)
+        prior_boards = self._prior_round_board_snapshots_for_prompt()
 
         async def _run_one(role: str) -> dict[str, Any]:
             return await loop.run_in_executor(
@@ -676,6 +763,7 @@ class LiveLectureSession:
                     round_index=round_index,
                     history=history,
                     standard_answer=self.standard_answer,
+                    round_board_snapshots=prior_boards,
                 ),
             )
 
@@ -729,8 +817,9 @@ class LiveLectureSession:
                 question_prompt=self.question_prompt,
                 student_speech_text=speech,
                 steps=steps_payload,
-                round_index=max(1, self.round_index + 1),
+                round_index=self._assessment_round_index(),
                 history=list(self.history),
+                round_board_snapshots=self._prior_round_board_snapshots_for_prompt(),
             ),
         )
 
@@ -751,10 +840,11 @@ class LiveLectureSession:
                 question_prompt=self.question_prompt,
                 student_speech_text=speech,
                 steps=steps_payload,
-                round_index=max(1, self.round_index + 1),
+                round_index=self._assessment_round_index(),
                 history=list(self.history),
                 peer_assessments=peer_assessments,
                 standard_answer=self.standard_answer,
+                round_board_snapshots=self._prior_round_board_snapshots_for_prompt(),
             ),
         )
 
@@ -1083,8 +1173,9 @@ class LiveLectureSession:
                 question_prompt=self.question_prompt,
                 student_speech_text=speech,
                 steps=steps_payload,
-                round_index=max(1, self.round_index + 1),
+                round_index=self._assessment_round_index(),
                 history=list(self.history),
+                round_board_snapshots=self._prior_round_board_snapshots_for_prompt(),
             ),
         )
 

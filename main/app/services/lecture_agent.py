@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from app.config import Config
-from app.services.kimi import DEEPSEEK_THINKING_DISABLED, deepseek_client
+from app.services.kimi import deepseek_api_key_configured, deepseek_client, deepseek_thinking_disabled_extra_body
 from app.services import knowledge_index
 from app.services.peer_personas import build_lecture_director_system_prompt
 
@@ -44,7 +44,7 @@ class LectureAgentError(RuntimeError):
 
 _LECTURE_MODEL = Config.DEEPSEEK_MODEL
 _LECTURE_TEMPERATURE = 0.4
-_LECTURE_EXTRA_BODY: dict[str, Any] = DEEPSEEK_THINKING_DISABLED
+_LECTURE_EXTRA_BODY: dict[str, Any] = {}  # 见 deepseek_thinking_disabled_extra_body()
 
 # 非实时 `/lecture/submit` 仍需要等待完整 JSON；实时讲题走
 # `lecture_agent_stream.py`，首 token 超过 2 秒会直接报错。
@@ -72,9 +72,15 @@ _HISTORY_ROLES: tuple[str, ...] = (
     "system",
 )
 
-# 单次请求里 history 只取最近 N 条，避免 Prompt 暴涨；前端也建议只送最近
-# 6-10 条。这里再做一次硬截断，防御前端实现走样。
-_HISTORY_KEEP_LAST = 6
+# 单次请求里 history 只取最近 N 条，避免 Prompt 暴涨。
+# 一轮闭环大约 push 4-6 条 history（学生快照 1 + 三同伴 assessment 3 +
+# 可选 peerReply 1 + 可选 teacherSummary 1），按 60 条上限可以稳稳保留
+# 最近 ~10 轮的完整跨轮记忆，让同伴在多轮场景下能明确看到学生前几轮
+# 的 ASR 全文与三人当时的判断。前端实现走样时这里仍是硬截断兜底。
+_HISTORY_KEEP_LAST = 60
+
+# 各轮白板 OCR 摘要最多保留多少轮（独立于 history 截断，供同伴跨轮对照）。
+_ROUND_BOARD_KEEP_LAST = 8
 
 _DEFAULT_DISPLAY_NAME: dict[str, str] = {
     "xiaoming": "小明",
@@ -188,6 +194,81 @@ def _last_peer_followup(history: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
+def _sanitize_round_board_snapshots(
+    snapshots: list[dict[str, Any]] | None,
+    *,
+    current_round: int,
+) -> list[dict[str, Any]]:
+    """清洗各轮白板摘要，只保留当前轮次之前的已完成轮。"""
+
+    if not snapshots:
+        return []
+
+    safe_current = max(1, int(current_round or 1))
+    cleaned: list[dict[str, Any]] = []
+    for item in snapshots:
+        if not isinstance(item, dict):
+            continue
+        try:
+            round_index = int(item.get("roundIndex") or item.get("round_index") or 0)
+        except (TypeError, ValueError):
+            continue
+        if round_index <= 0 or round_index >= safe_current:
+            continue
+        plain = str(
+            item.get("boardPlainText") or item.get("board_plain_text") or ""
+        ).strip()
+        latex = str(item.get("boardLatex") or item.get("board_latex") or "").strip()
+        try:
+            stroke_count = int(item.get("strokeCount") or item.get("stroke_count") or 0)
+        except (TypeError, ValueError):
+            stroke_count = 0
+        if not plain and not latex and stroke_count <= 0:
+            continue
+        cleaned.append(
+            {
+                "round_index": round_index,
+                "board_plain_text": plain,
+                "board_latex": latex,
+                "stroke_count": max(0, stroke_count),
+            }
+        )
+
+    cleaned.sort(key=lambda x: x["round_index"])
+    if len(cleaned) > _ROUND_BOARD_KEEP_LAST:
+        cleaned = cleaned[-_ROUND_BOARD_KEEP_LAST:]
+    return cleaned
+
+
+def _append_prior_round_boards_section(
+    lines: list[str],
+    *,
+    snapshots: list[dict[str, Any]],
+) -> None:
+    if not snapshots:
+        return
+    lines.append("")
+    lines.append(
+        "【各轮白板摘要】（按轮次从早到晚；**不是**本轮刚写的，"
+        "描述时用「第 N 轮白板上」；若两轮内容相同说明学生未擦板、在原有基础上续写）"
+    )
+    for item in snapshots:
+        round_index = item["round_index"]
+        plain = item.get("board_plain_text") or ""
+        latex = item.get("board_latex") or ""
+        strokes = int(item.get("stroke_count") or 0)
+        bits: list[str] = []
+        if plain:
+            bits.append(f'说明="{plain}"')
+        if latex:
+            bits.append(f"LaTeX=`{latex}`")
+        if strokes:
+            bits.append(f"笔画数={strokes}")
+        if not bits:
+            bits.append("（仅有手写，无 OCR 文字）")
+        lines.append(f"- 第 {round_index} 轮：{'；'.join(bits)}")
+
+
 def _build_user_prompt(
     *,
     section_id: str,
@@ -200,6 +281,7 @@ def _build_user_prompt(
     history: list[dict[str, Any]],
     purpose: Literal["lecture", "peer_assessment", "teacher", "teacher_summary"] = "lecture",
     standard_answer: str = "",
+    round_board_snapshots: list[dict[str, Any]] | None = None,
 ) -> str:
     """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。
 
@@ -252,6 +334,14 @@ def _build_user_prompt(
         lines.append(f'【学生口述（仅麦克风语音转写，不含白板文字）】"{speech}"')
     else:
         lines.append("【学生口述】（本轮学生没有有效语音转写；不要假装学生说过什么）")
+
+    prior_boards = _sanitize_round_board_snapshots(
+        round_board_snapshots,
+        current_round=round_index,
+    )
+    if prior_boards and purpose in ("peer_assessment", "teacher", "teacher_summary"):
+        _append_prior_round_boards_section(lines, snapshots=prior_boards)
+
     lines.append("")
     board_step = next(
         (
@@ -269,7 +359,7 @@ def _build_user_prompt(
     )
     if board_latex or board_plain:
         lines.append(
-            "【学生白板整板识别】下列内容来自整板 OCR（不是逐步拆开）；"
+            f"【本轮（第 {round_index} 轮）白板整板识别】下列内容来自整板 OCR（不是逐步拆开）；"
             "描述时用「你白板上写的」："
         )
         if board_plain:
@@ -283,7 +373,7 @@ def _build_user_prompt(
             lines.append(f"- 总笔画数={strokes}")
     else:
         lines.append(
-            "【学生白板步骤】下列 plainText / LaTeX 来自学生手敲说明或真实 OCR；"
+            f"【本轮（第 {round_index} 轮）白板步骤】下列 plainText / LaTeX 来自学生手敲说明或真实 OCR；"
             "**不是**语音口述，也**不是**题目自带的 referenceSteps 解题框架。"
             "描述时用「你写的」「白板上」；只有【学生口述】区块才能用「你说」。"
             "若某步只有笔画数、无文字/LaTeX，只能说「这一步有手写」，"
@@ -594,7 +684,7 @@ def generate_lecture_turns(
     # round_index 防御：< 1 视为 1，避免上游打错数字污染多轮判断。
     safe_round = max(1, int(round_index or 1))
 
-    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+    if not deepseek_api_key_configured():
         logger.error(
             "[lecture-agent] DEEPSEEK_API_KEY 未配置 section=%s round=%d",
             section_id,
@@ -619,7 +709,7 @@ def generate_lecture_turns(
     ]
 
     # 直接走 `deepseek_client.chat.completions.create(...)`：
-    #   - 用 DeepSeek-V4-Flash，靠 `extra_body.thinking.type=disabled` 关思考。
+    #   - 用 DeepSeek-V4-Flash；DashScope 走 enable_thinking=false，官方 API 走 thinking.type=disabled。
     #   - `response_format={"type":"json_object"}` 双保险地约束 LLM 输出 JSON。
     #   - `timeout` 走 OpenAI SDK 自带的 per-request 超时（秒），超时即抛
     #     `APITimeoutError`，被外层 `except Exception` 接住后显式返回错误。
@@ -634,7 +724,7 @@ def generate_lecture_turns(
             max_tokens=1200,
             response_format={"type": "json_object"},
             timeout=_LLM_TIMEOUT_SECONDS,
-            extra_body=_LECTURE_EXTRA_BODY,
+            extra_body=deepseek_thinking_disabled_extra_body(),
         )
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
     except Exception as e:  # noqa: BLE001 — OpenAI-compatible SDK 可能抛任意异常

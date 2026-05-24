@@ -14,13 +14,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from app.config import Config
-from app.services.kimi import DEEPSEEK_THINKING_DISABLED, deepseek_client
+from app.services.kimi import deepseek_api_key_configured, deepseek_client, deepseek_thinking_disabled_extra_body
 from app.services.lecture_agent import (
     LectureAgentError,
     _DEFAULT_DISPLAY_NAME,
     _PEER_ROLES,
     _build_user_prompt,
     _sanitize_history,
+    _sanitize_round_board_snapshots,
     _strip_markdown_fence,
 )
 from app.services.peer_harmonize import (
@@ -41,10 +42,14 @@ logger = logging.getLogger(__name__)
 
 _ASSESSMENT_MODEL = Config.DEEPSEEK_MODEL
 _ASSESSMENT_TEMPERATURE = 0.45
-_ASSESSMENT_EXTRA_BODY: dict[str, Any] = DEEPSEEK_THINKING_DISABLED
+_ASSESSMENT_EXTRA_BODY: dict[str, Any] = {}  # 见 deepseek_thinking_disabled_extra_body()
 _LLM_TIMEOUT_SECONDS = 5.0
 _MAX_REASON_LEN = 220
-_PEER_HISTORY_KEEP = 3
+# 与 lecture_agent._HISTORY_KEEP_LAST 对齐（约 10 轮完整闭环）。
+# 不再在 peer 路径做更紧的二次裁切——同伴能看到的跨轮记忆与全局一致，
+# 包括前几轮学生 ASR 全文、三人判断与老师收束。如果未来 prompt 长度
+# 真的成为瓶颈，再考虑按 roundIndex（而不是按条数）裁切。
+_PEER_HISTORY_KEEP = 60
 
 # 「你说『…』」类表述：引号内必须出现在本轮 student_speech_text 里。
 _SPEECH_QUOTE_RE = re.compile(
@@ -178,6 +183,7 @@ def assess_one_peer(
     round_index: int,
     history: list[dict[str, Any]],
     standard_answer: str = "",
+    round_board_snapshots: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """单次 LLM 评估一名同伴（供 live session 并行 + 增量推送）。"""
     return _assess_one_peer(
@@ -191,6 +197,7 @@ def assess_one_peer(
         round_index=round_index,
         history=history,
         standard_answer=standard_answer,
+        round_board_snapshots=round_board_snapshots,
     )
 
 
@@ -206,12 +213,17 @@ def _assess_one_peer(
     round_index: int,
     history: list[dict[str, Any]],
     standard_answer: str = "",
+    round_board_snapshots: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     cleaned_history = _sanitize_history(history)
     if len(cleaned_history) > _PEER_HISTORY_KEEP:
         cleaned_history = cleaned_history[-_PEER_HISTORY_KEEP:]
     std = (standard_answer or "").strip() or resolve_standard_answer(
         question_id=question_id,
+    )
+    prior_boards = _sanitize_round_board_snapshots(
+        round_board_snapshots,
+        current_round=round_index,
     )
     context = _build_user_prompt(
         section_id=section_id,
@@ -224,6 +236,7 @@ def _assess_one_peer(
         history=cleaned_history,
         purpose="peer_assessment",
         standard_answer=std,
+        round_board_snapshots=prior_boards,
     )
     user_prompt = (
         f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
@@ -244,7 +257,7 @@ def _assess_one_peer(
             max_tokens=280,
             response_format={"type": "json_object"},
             timeout=_LLM_TIMEOUT_SECONDS,
-            extra_body=_ASSESSMENT_EXTRA_BODY,
+            extra_body=deepseek_thinking_disabled_extra_body(),
         )
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
     except Exception as e:  # noqa: BLE001
@@ -280,7 +293,7 @@ def _generate_monitor_misconception_correction(
     round_index: int,
 ) -> dict[str, Any] | None:
     """小明误解型提问后，班长接一句帮腔纠偏（可选 LLM）。"""
-    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+    if not deepseek_api_key_configured():
         return None
 
     context = _build_user_prompt(
@@ -314,7 +327,7 @@ def _generate_monitor_misconception_correction(
             max_tokens=200,
             response_format={"type": "json_object"},
             timeout=_LLM_TIMEOUT_SECONDS,
-            extra_body=_ASSESSMENT_EXTRA_BODY,
+            extra_body=deepseek_thinking_disabled_extra_body(),
         )
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
     except Exception as e:  # noqa: BLE001
@@ -412,10 +425,11 @@ def generate_peer_assessments(
     round_index: int = 1,
     history: list[dict[str, Any]] | None = None,
     standard_answer: str = "",
+    round_board_snapshots: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """并行评估三名同伴，返回 assessments + all_understood。"""
 
-    if not Config.DEEPSEEK_API_KEY or Config.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+    if not deepseek_api_key_configured():
         raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
 
     allowed_step_ids = [
@@ -424,6 +438,10 @@ def generate_peer_assessments(
     allowed_step_ids = [sid for sid in allowed_step_ids if sid]
     cleaned_history = _sanitize_history(history)
     safe_round = max(1, int(round_index or 1))
+    prior_boards = _sanitize_round_board_snapshots(
+        round_board_snapshots,
+        current_round=safe_round,
+    )
     std = resolve_standard_answer(
         question_id=question_id,
         client_answer=standard_answer,
@@ -439,6 +457,7 @@ def generate_peer_assessments(
         "round_index": safe_round,
         "history": cleaned_history,
         "standard_answer": std,
+        "round_board_snapshots": prior_boards,
     }
 
     by_role: dict[str, dict[str, Any]] = {}
