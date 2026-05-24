@@ -1597,21 +1597,15 @@
               "knowledgePoints": [
                 {
                   "id": "pep-g8-down-s16-1-kp1",
-                  "title": "二次根式的形式",
-                  "label": "二次根式的形式",
+                  "title": "二次根式的定义",
+                  "label": "二次根式的定义",
                   "order": 1
                 },
                 {
                   "id": "pep-g8-down-s16-1-kp2",
-                  "title": "被开方数非负",
-                  "label": "被开方数非负",
+                  "title": "二次根式有意义的条件",
+                  "label": "二次根式有意义的条件",
                   "order": 2
-                },
-                {
-                  "id": "pep-g8-down-s16-1-kp3",
-                  "title": "多个根式取交集",
-                  "label": "多个根式取交集",
-                  "order": 3
                 }
               ]
             },
@@ -1625,21 +1619,27 @@
               "knowledgePoints": [
                 {
                   "id": "pep-g8-down-s16-2-kp1",
-                  "title": "二次根式乘法法则",
-                  "label": "二次根式乘法法则",
+                  "title": "二次根式的性质与化简",
+                  "label": "二次根式的性质与化简",
                   "order": 1
                 },
                 {
                   "id": "pep-g8-down-s16-2-kp2",
-                  "title": "二次根式除法法则",
-                  "label": "二次根式除法法则",
+                  "title": "最简二次根式",
+                  "label": "最简二次根式",
                   "order": 2
                 },
                 {
                   "id": "pep-g8-down-s16-2-kp3",
-                  "title": "完全平方数外移",
-                  "label": "完全平方数外移",
+                  "title": "二次根式的乘除法",
+                  "label": "二次根式的乘除法",
                   "order": 3
+                },
+                {
+                  "id": "pep-g8-down-s16-2-kp4",
+                  "title": "分母有理化",
+                  "label": "分母有理化",
+                  "order": 4
                 }
               ]
             },
@@ -1659,15 +1659,27 @@
                 },
                 {
                   "id": "pep-g8-down-s16-3-kp2",
-                  "title": "二次根式加减步骤",
-                  "label": "二次根式加减步骤",
+                  "title": "二次根式的加减法",
+                  "label": "二次根式的加减法",
                   "order": 2
                 },
                 {
                   "id": "pep-g8-down-s16-3-kp3",
-                  "title": "合并时留意符号",
-                  "label": "合并时留意符号",
+                  "title": "二次根式的混合运算",
+                  "label": "二次根式的混合运算",
                   "order": 3
+                },
+                {
+                  "id": "pep-g8-down-s16-3-kp4",
+                  "title": "二次根式的化简求值",
+                  "label": "二次根式的化简求值",
+                  "order": 4
+                },
+                {
+                  "id": "pep-g8-down-s16-3-kp5",
+                  "title": "二次根式的应用",
+                  "label": "二次根式的应用",
+                  "order": 5
                 }
               ]
             }

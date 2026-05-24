@@ -1,56 +1,72 @@
 [
   {
-    "id": "k-s16-1-meaning",
+    "id": "k-s16-1-definition",
     "sectionId": "pep-g8-down-s16-1",
-    "title": "二次根式的形式",
-    "text": "一般地，形如 \\(\\sqrt{a}\\) 的式子叫做二次根式，其中被开方数 a 必须在实数范围内有意义。",
-    "keywords": ["二次根式", "形式", "被开方数"]
+    "knowledgePointId": "pep-g8-down-s16-1-kp1",
+    "title": "二次根式的定义",
+    "text": "一般地，形如 \\(\\sqrt{a}\\) 的式子叫做二次根式，其中 \\(a\\) 叫做被开方数。",
+    "keywords": ["二次根式", "定义", "被开方数", "根号"]
   },
   {
     "id": "k-s16-1-domain",
     "sectionId": "pep-g8-down-s16-1",
-    "title": "被开方数非负",
-    "text": "讨论 \\(\\sqrt{a}\\) 是否有意义时，关键条件是被开方数 \\(a\\ge0\\)，不是 \\(a>0\\)。",
-    "keywords": ["有意义", "非负", "取值范围", "大于等于"]
+    "knowledgePointId": "pep-g8-down-s16-1-kp2",
+    "title": "二次根式有意义的条件",
+    "text": "在实数范围内，\\(\\sqrt{a}\\) 有意义当且仅当被开方数 \\(a\\ge 0\\)。",
+    "keywords": ["有意义", "非负", "取值范围", "被开方数"]
   },
   {
     "id": "k-s16-1-system",
     "sectionId": "pep-g8-down-s16-1",
+    "knowledgePointId": "pep-g8-down-s16-1-kp2",
     "title": "多个根式取交集",
     "text": "一个式子含有多个二次根式时，每个被开方数都要非负，最后解不等式组并取公共范围。",
     "keywords": ["不等式组", "公共范围", "交集"]
   },
   {
+    "id": "k-s16-2-property",
+    "sectionId": "pep-g8-down-s16-2",
+    "knowledgePointId": "pep-g8-down-s16-2-kp1",
+    "title": "二次根式的性质与化简",
+    "text": "化简二次根式时，应把被开方数中的完全平方因数尽量提到根号外，例如 \\(\\sqrt{12}=2\\sqrt{3}\\)。",
+    "keywords": ["性质", "化简", "完全平方数", "根号外"]
+  },
+  {
+    "id": "k-s16-2-simplest",
+    "sectionId": "pep-g8-down-s16-2",
+    "knowledgePointId": "pep-g8-down-s16-2-kp2",
+    "title": "最简二次根式",
+    "text": "最简二次根式需满足：被开方数不含分母，被开方数中不含能开得尽方的因数或因式。",
+    "keywords": ["最简二次根式", "开得尽方", "因数"]
+  },
+  {
     "id": "k-s16-2-multiply-rule",
     "sectionId": "pep-g8-down-s16-2",
-    "title": "二次根式乘法法则",
-    "text": "当 \\(a\\ge0,b\\ge0\\) 时，\\(\\sqrt{a}\\sqrt{b}=\\sqrt{ab}\\)。使用时要说明前提条件。",
-    "keywords": ["乘法法则", "前提条件", "合并"]
-  },
-  {
-    "id": "k-s16-2-divide-rule",
-    "sectionId": "pep-g8-down-s16-2",
-    "title": "二次根式除法法则",
-    "text": "当 \\(a\\ge0,b>0\\) 时，\\(\\frac{\\sqrt{a}}{\\sqrt{b}}=\\sqrt{\\frac{a}{b}}\\)，分母对应的被开方数必须大于 0。",
-    "keywords": ["除法法则", "分母", "大于0"]
-  },
-  {
-    "id": "k-s16-2-simplify",
-    "sectionId": "pep-g8-down-s16-2",
-    "title": "完全平方数外移",
-    "text": "化简二次根式时，应把被开方数中的完全平方因数尽量提到根号外，例如 \\(\\sqrt{12}=2\\sqrt{3}\\)。",
-    "keywords": ["完全平方数", "化简", "根号外"]
+    "knowledgePointId": "pep-g8-down-s16-2-kp3",
+    "title": "二次根式的乘除法",
+    "text": "当 \\(a\\ge0,b\\ge0\\) 时，\\(\\sqrt{a}\\sqrt{b}=\\sqrt{ab}\\)；当 \\(a\\ge0,b>0\\) 时，\\(\\dfrac{\\sqrt{a}}{\\sqrt{b}}=\\sqrt{\\dfrac{a}{b}}\\)。使用时要说明前提条件。",
+    "keywords": ["乘法法则", "除法法则", "前提条件", "乘除法"]
   },
   {
     "id": "k-s16-2-negative-trap",
     "sectionId": "pep-g8-down-s16-2",
+    "knowledgePointId": "pep-g8-down-s16-2-kp3",
     "title": "负数不能直接拆根号",
     "text": "在实数范围内，不能把 \\(\\sqrt{-2}\\sqrt{-8}\\) 直接改写成 \\(\\sqrt{16}\\)，因为原式本身无意义。",
     "keywords": ["负数", "无意义", "易错"]
   },
   {
+    "id": "k-s16-2-rationalize",
+    "sectionId": "pep-g8-down-s16-2",
+    "knowledgePointId": "pep-g8-down-s16-2-kp4",
+    "title": "分母有理化",
+    "text": "把分母中的根号化去，使分母变为有理数，叫做分母有理化。常用方法是分子分母同乘适当的根式。",
+    "keywords": ["分母有理化", "有理数", "同乘"]
+  },
+  {
     "id": "k-s16-3-like-radicals",
     "sectionId": "pep-g8-down-s16-3",
+    "knowledgePointId": "pep-g8-down-s16-3-kp1",
     "title": "同类二次根式",
     "text": "几个二次根式化成最简二次根式后，如果被开方数相同，就叫同类二次根式，可以合并系数。",
     "keywords": ["同类二次根式", "最简", "合并"]
@@ -58,22 +74,41 @@
   {
     "id": "k-s16-3-add-subtract",
     "sectionId": "pep-g8-down-s16-3",
-    "title": "二次根式加减步骤",
+    "knowledgePointId": "pep-g8-down-s16-3-kp2",
+    "title": "二次根式的加减法",
     "text": "二次根式加减通常先化简，再找同类二次根式，最后只合并根号前的系数，根号部分不变。",
     "keywords": ["加减", "系数", "根号部分"]
   },
   {
     "id": "k-s16-3-sign",
     "sectionId": "pep-g8-down-s16-3",
+    "knowledgePointId": "pep-g8-down-s16-3-kp2",
     "title": "合并时留意符号",
     "text": "合并同类二次根式时，减号会影响系数，例如 \\(2\\sqrt{3}-3\\sqrt{3}=-\\sqrt{3}\\)。",
     "keywords": ["负号", "系数", "减法"]
   },
   {
-    "id": "k-s16-3-zero",
+    "id": "k-s16-3-mixed",
     "sectionId": "pep-g8-down-s16-3",
-    "title": "系数合并为零",
-    "text": "当同类二次根式的系数相加减为 0 时，结果就是 0，不需要保留根号项。",
-    "keywords": ["零", "合并", "多项"]
+    "knowledgePointId": "pep-g8-down-s16-3-kp3",
+    "title": "二次根式的混合运算",
+    "text": "混合运算按先乘除后加减的顺序进行；多项合并时要逐项化简，留意符号与同类项。",
+    "keywords": ["混合运算", "乘除", "加减", "顺序"]
+  },
+  {
+    "id": "k-s16-3-evaluate",
+    "sectionId": "pep-g8-down-s16-3",
+    "knowledgePointId": "pep-g8-down-s16-3-kp4",
+    "title": "二次根式的化简求值",
+    "text": "化简求值时，先把根式化为最简形式，再代入已知条件计算；注意先化简再代入可减小计算量。",
+    "keywords": ["化简求值", "代入", "最简"]
+  },
+  {
+    "id": "k-s16-3-application",
+    "sectionId": "pep-g8-down-s16-3",
+    "knowledgePointId": "pep-g8-down-s16-3-kp5",
+    "title": "二次根式的应用",
+    "text": "实际问题中常出现面积、边长与根式的关系；建模时要写清单位，并检验结果是否在有意义范围内。",
+    "keywords": ["应用", "实际问题", "面积", "边长"]
   }
 ]

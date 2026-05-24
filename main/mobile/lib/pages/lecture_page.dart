@@ -242,6 +242,7 @@ class _LecturePageState extends State<LecturePage> {
 
   /// 当前正在被流式增量的 AI turn id；空字符串表示当前没有未完成 turn。
   String _activeStreamingTurnId = '';
+  final Set<String> _materializedTeacherTurnIds = <String>{};
   Timer? _inkSnapshotDebounce;
   Timer? _stuckHintTimer;
   Timer? _wrapUpTimer;
@@ -1617,6 +1618,7 @@ class _LecturePageState extends State<LecturePage> {
     await _liveService.endSession();
     await _liveService.stopTts();
     _activeStreamingTurnId = '';
+    _materializedTeacherTurnIds.clear();
     _liveStatus = _LiveStatus.idle;
     _liveFailureReason = null;
   }
@@ -2427,6 +2429,13 @@ class _LecturePageState extends State<LecturePage> {
         _cancelThinkingWatchdog();
         final p = event.payload as LiveAgentTurnStartPayload;
         final role = parseAgentRole(p.role);
+        if (role == AgentRole.teacher &&
+            _materializedTeacherTurnIds.contains(p.turnId)) {
+          if (mounted) {
+            setState(() => _hintLoading = false);
+          }
+          break;
+        }
         setState(() {
           _liveStatus = _LiveStatus.aiSpeaking;
           _activeStreamingTurnId = p.turnId;
@@ -2454,6 +2463,7 @@ class _LecturePageState extends State<LecturePage> {
       case LiveServerEventType.agentTurnDelta:
         final p = event.payload as LiveAgentTurnDeltaPayload;
         if (p.delta.isEmpty) break;
+        if (_materializedTeacherTurnIds.contains(p.turnId)) break;
         // 替换 _turns 中匹配 turnId 的那条，把 text 追加 delta。
         for (var i = _turns.length - 1; i >= 0; i--) {
           if (_turns[i].turnId == p.turnId) {
@@ -2474,6 +2484,12 @@ class _LecturePageState extends State<LecturePage> {
         break;
       case LiveServerEventType.agentTurnDone:
         final p = event.payload as LiveAgentTurnDonePayload;
+        if (_materializedTeacherTurnIds.remove(p.turnId)) {
+          if (_activeStreamingTurnId == p.turnId) {
+            _activeStreamingTurnId = '';
+          }
+          break;
+        }
         // 找到这条 turn，记录到 history 并触发 TTS。
         AgentTurn? doneTurn;
         for (final t in _turns) {
@@ -2487,6 +2503,12 @@ class _LecturePageState extends State<LecturePage> {
             if (mounted) {
               setState(() => _hintLoading = false);
             }
+            unawaited(
+              _liveService.requestTts(
+                doneTurn.text,
+                role: agentRoleWire(doneTurn.role),
+              ),
+            );
           }
           _replayService.appendTurn(
             role: agentRoleWire(doneTurn.role),
@@ -2522,19 +2544,31 @@ class _LecturePageState extends State<LecturePage> {
         _liveService.clearSegmentAudio();
         unawaited(_liveService.clearPendingTts());
         final peerPayload = event.payload as LivePeerAssessmentsPayload;
+        final teacherSummary = peerPayload.teacherSummary;
         setState(() {
           _applyPeerAssessmentRound(
             assessments: peerPayload.assessments,
             allUnderstood: peerPayload.allUnderstood,
             status: peerPayload.status,
             masteryDelta: peerPayload.masteryDelta,
-            teacherSummary: peerPayload.teacherSummary,
+            teacherSummary: teacherSummary,
             committedStudent: _buildLiveStudentHistoryItem(),
             peerReplies: peerPayload.peerReplies,
-            omitTeacherTurn: peerPayload.teacherSummary != null,
           );
+          final turnId = teacherSummary?.turnId;
+          if (turnId != null && turnId.isNotEmpty) {
+            _materializedTeacherTurnIds.add(turnId);
+          }
           _liveStatus = _LiveStatus.idle;
         });
+        if (teacherSummary != null && teacherSummary.text.trim().isNotEmpty) {
+          unawaited(
+            _liveService.requestTts(
+              teacherSummary.text,
+              role: agentRoleWire(teacherSummary.role),
+            ),
+          );
+        }
         _scrollToBottomSoon();
         break;
       case LiveServerEventType.roundDone:

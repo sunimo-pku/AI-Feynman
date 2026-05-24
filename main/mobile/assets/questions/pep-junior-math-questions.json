@@ -3622,200 +3622,590 @@
       "knowledgePointLabel": "分式方程"
     },
     {
-      "questionId": "q-s16-1-001",
-      "prompt": "判断 $\\sqrt{2x-6}$ 在实数范围内有意义时，$x$ 的取值范围。",
-      "hint": "提示：被开方数必须非负。",
-      "referenceSteps": [
-        "$2x - 6 \\ge 0$",
-        "$x \\ge 3$"
-      ],
-      "difficulty": 1,
-      "tags": [
-        "取值范围",
-        "非负条件"
-      ],
-      "quality": "curated",
+      "questionId": "q-s16-1-kp1-001",
       "sectionId": "pep-g8-down-s16-1",
       "sectionLabel": "16.1 二次根式",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $2x - 6 \\ge 0$\n• $x \\ge 3$",
-      "variantQuestionId": "q-s16-1-002",
+      "prompt": "若 $m$ 为正整数，$\\sqrt{12m}$ 是整数，求 $m$ 的最小值，并说明理由。",
+      "hint": "提示：$\\sqrt{12m}$ 为整数时，$12m$ 应是完全平方数；可先把 $12$ 分解质因数。",
+      "referenceSteps": [
+        "$12m$ 是完全平方数",
+        "$12m = 3 \\times 2^2 \\times m = 2^2 \\times (3m)$",
+        "$3m$ 是完全平方数",
+        "$m$ 的最小值为 $3$"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "二次根式的定义",
+        "完全平方数",
+        "质因数分解"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$m$ 的最小值为 $3$。\n• 由题意，$12m$ 是完全平方数。\n• $12m = 2^2 \\times (3m)$，故 $3m$ 也是完全平方数。\n• 因此 $m$ 最小为 $3$。",
+      "variantQuestionId": "q-s16-1-kp1-002",
       "knowledgePointId": "pep-g8-down-s16-1-kp1",
-      "knowledgePointLabel": "二次根式的形式"
+      "knowledgePointLabel": "二次根式的定义",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-1/kp1-001.png"
     },
     {
-      "questionId": "q-s16-1-002",
-      "prompt": "判断 $\\sqrt{5-x}$ 在实数范围内有意义时，$x$ 的取值范围。",
-      "hint": "提示：把不等式 $5 - x \\ge 0$ 化简后再写结论。",
-      "referenceSteps": [
-        "$5 - x \\ge 0$",
-        "$x \\le 5$"
-      ],
-      "difficulty": 2,
-      "tags": [
-        "取值范围",
-        "移项"
-      ],
-      "quality": "curated",
+      "questionId": "q-s16-1-kp1-002",
       "sectionId": "pep-g8-down-s16-1",
       "sectionLabel": "16.1 二次根式",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $5 - x \\ge 0$\n• $x \\le 5$",
-      "variantQuestionId": "q-s16-1-003",
-      "knowledgePointId": "pep-g8-down-s16-1-kp2",
-      "knowledgePointLabel": "被开方数非负"
-    },
-    {
-      "questionId": "q-s16-1-003",
-      "prompt": "判断 $\\sqrt{x+3} + \\sqrt{2-x}$ 在实数范围内有意义时，$x$ 的取值范围。",
-      "hint": "提示：两个被开方数都要 $\\ge 0$，最终取交集。",
+      "prompt": "下列式子中，哪一个一定是二次根式？请逐项说明理由。\nA. $\\sqrt{-2025}$　B. $\\sqrt[3]{27}$　C. $\\sqrt{a-1}$　D. $\\sqrt{a^2+1}$",
+      "hint": "提示：二次根式形如 $\\sqrt{a}$，被开方数 $a \\ge 0$；还要区分立方根。",
       "referenceSteps": [
-        "$x + 3 \\ge 0 \\Rightarrow x \\ge -3$",
-        "$2 - x \\ge 0 \\Rightarrow x \\le 2$",
-        "$-3 \\le x \\le 2$"
-      ],
-      "difficulty": 3,
-      "tags": [
-        "公共定义域",
-        "不等式组"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-1",
-      "sectionLabel": "16.1 二次根式",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $x + 3 \\ge 0 \\Rightarrow x \\ge -3$\n• $2 - x \\ge 0 \\Rightarrow x \\le 2$\n• $-3 \\le x \\le 2$",
-      "variantQuestionId": "q-s16-1-001",
-      "knowledgePointId": "pep-g8-down-s16-1-kp3",
-      "knowledgePointLabel": "多个根式取交集"
-    },
-    {
-      "questionId": "q-s16-2-001",
-      "prompt": "化简：$\\sqrt{12} \\cdot \\sqrt{3}$，并说明用到的乘法法则与前提条件。",
-      "hint": "提示：$\\sqrt{a} \\cdot \\sqrt{b} = \\sqrt{ab}$（$a, b \\ge 0$）。",
-      "referenceSteps": [
-        "$\\sqrt{12 \\cdot 3}$",
-        "$\\sqrt{36}$",
-        "$= 6$"
+        "A：$-2025<0$，$\\sqrt{-2025}$ 在实数范围内无意义，不是二次根式",
+        "B：$\\sqrt[3]{27}=3$，根指数为 $3$，不是二次根式",
+        "C：仅当 $a \\ge 1$ 时 $\\sqrt{a-1}$ 才有意义，不一定",
+        "D：$a^2+1 \\ge 1 > 0$，故 $\\sqrt{a^2+1}$ 一定是二次根式"
       ],
       "difficulty": 1,
       "tags": [
-        "乘法法则",
-        "前提条件"
+        "二次根式的定义",
+        "被开方数非负",
+        "立方根辨析"
       ],
       "quality": "curated",
-      "sectionId": "pep-g8-down-s16-2",
-      "sectionLabel": "16.2 二次根式的乘除",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{12 \\cdot 3}$\n• $\\sqrt{36}$\n• $= 6$",
-      "variantQuestionId": "q-s16-2-002",
-      "knowledgePointId": "pep-g8-down-s16-2-kp1",
-      "knowledgePointLabel": "二次根式乘法法则"
+      "standardAnswer": "答案：D。\n• A 被开方数为负，不是二次根式。\n• B 是立方根，不是二次根式。\n• C 取决于 $a$ 的取值，不一定。\n• D 中 $a^2+1 \\ge 1 > 0$，一定是二次根式。",
+      "variantQuestionId": "q-s16-1-kp1-003",
+      "knowledgePointId": "pep-g8-down-s16-1-kp1",
+      "knowledgePointLabel": "二次根式的定义",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-1/kp1-002.png"
     },
     {
-      "questionId": "q-s16-2-002",
-      "prompt": "化简：$\\sqrt{50} \\div \\sqrt{2}$。",
-      "hint": "提示：$\\dfrac{\\sqrt{a}}{\\sqrt{b}} = \\sqrt{\\dfrac{a}{b}}$（$a \\ge 0, b > 0$）。",
+      "questionId": "q-s16-1-kp1-003",
+      "sectionId": "pep-g8-down-s16-1",
+      "sectionLabel": "16.1 二次根式",
+      "prompt": "在下列式子中，判断哪些是二次根式，并说明理由：① $\\sqrt{\\frac{1}{3}}$；② $\\sqrt{-5}$；③ $-\\sqrt{x^2+1}$；④ $\\sqrt[3]{3}$；⑤ $\\sqrt{\\left(-\\frac{1}{3}\\right)^2}$。一共几个？",
+      "hint": "提示：逐个看根指数是否为 $2$、被开方数是否非负；注意③前面有负号不影响“是不是二次根式”。",
       "referenceSteps": [
-        "$\\sqrt{50 \\div 2}$",
-        "$\\sqrt{25}$",
-        "$= 5$"
-      ],
-      "difficulty": 2,
-      "tags": [
-        "除法法则",
-        "化简"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-2",
-      "sectionLabel": "16.2 二次根式的乘除",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{50 \\div 2}$\n• $\\sqrt{25}$\n• $= 5$",
-      "variantQuestionId": "q-s16-2-003",
-      "knowledgePointId": "pep-g8-down-s16-2-kp2",
-      "knowledgePointLabel": "二次根式除法法则"
-    },
-    {
-      "questionId": "q-s16-2-003",
-      "prompt": "化简：$\\sqrt{8} \\cdot \\sqrt{18}$。",
-      "hint": "提示：先用乘法法则合并，再把完全平方数全部提出来。",
-      "referenceSteps": [
-        "$\\sqrt{8 \\cdot 18}$",
-        "$\\sqrt{144}$",
-        "$= 12$"
+        "① $\\sqrt{\\frac{1}{3}}$：根指数为 $2$，被开方数 $>0$，是二次根式",
+        "② $\\sqrt{-5}$：被开方数 $<0$，在实数范围内无意义，不是",
+        "③ $-\\sqrt{x^2+1}$：根指数为 $2$，且 $x^2+1 \\ge 1 > 0$，是二次根式",
+        "④ $\\sqrt[3]{3}$：根指数为 $3$，不是二次根式",
+        "⑤ $\\sqrt{\\left(-\\frac{1}{3}\\right)^2}$：被开方数为 $\\frac{1}{9}>0$，是二次根式",
+        "共有 $3$ 个二次根式"
       ],
       "difficulty": 3,
       "tags": [
-        "乘法",
-        "完全平方数"
+        "二次根式的定义",
+        "逐个判断",
+        "根指数"
       ],
       "quality": "curated",
-      "sectionId": "pep-g8-down-s16-2",
-      "sectionLabel": "16.2 二次根式的乘除",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{8 \\cdot 18}$\n• $\\sqrt{144}$\n• $= 12$",
-      "variantQuestionId": "q-s16-2-001",
-      "knowledgePointId": "pep-g8-down-s16-2-kp3",
-      "knowledgePointLabel": "完全平方数外移"
+      "standardAnswer": "答案：共 $3$ 个（①③⑤）。\n• ①③⑤ 满足根指数为 $2$ 且被开方数非负。\n• ② 无意义；④ 为三次根式。",
+      "variantQuestionId": "q-s16-1-kp1-001",
+      "knowledgePointId": "pep-g8-down-s16-1-kp1",
+      "knowledgePointLabel": "二次根式的定义",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-1/kp1-003.png"
     },
     {
-      "questionId": "q-s16-3-001",
-      "prompt": "化简：$\\sqrt{12} - \\sqrt{27}$。",
-      "hint": "提示：先化为最简二次根式，再合并同类二次根式。",
+      "questionId": "q-s16-1-kp2-004",
+      "sectionId": "pep-g8-down-s16-1",
+      "sectionLabel": "16.1 二次根式",
+      "prompt": "若二次根式 $\\sqrt{2-x}$ 有意义，求 $x$ 的取值范围。",
+      "hint": "提示：被开方数必须 $\\ge 0$，列出 $2-x \\ge 0$ 再解不等式。",
       "referenceSteps": [
-        "$\\sqrt{12} = 2\\sqrt{3}$",
-        "$\\sqrt{27} = 3\\sqrt{3}$",
-        "$2\\sqrt{3} - 3\\sqrt{3} = -\\sqrt{3}$"
+        "$2 - x \\ge 0$",
+        "$x \\le 2$"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "取值范围",
+        "被开方数非负"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$x \\le 2$。\n• 由题意 $2-x \\ge 0$。\n• 解得 $x \\le 2$。",
+      "variantQuestionId": "q-s16-1-kp2-005",
+      "knowledgePointId": "pep-g8-down-s16-1-kp2",
+      "knowledgePointLabel": "二次根式有意义的条件",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-1/kp2-004.png"
+    },
+    {
+      "questionId": "q-s16-1-kp2-005",
+      "sectionId": "pep-g8-down-s16-1",
+      "sectionLabel": "16.1 二次根式",
+      "prompt": "要使式子 $\\sqrt{x-3} + \\dfrac{1}{x-4}$ 有意义，$x$ 应满足什么条件？在 $1,\\,2,\\,3,\\,4$ 中哪一个符合？",
+      "hint": "提示：根号内 $x-3 \\ge 0$，分母 $x-4 \\ne 0$，两个条件要同时满足。",
+      "referenceSteps": [
+        "$x - 3 \\ge 0 \\Rightarrow x \\ge 3$",
+        "$x - 4 \\ne 0 \\Rightarrow x \\ne 4$",
+        "综合得 $x \\ge 3$ 且 $x \\ne 4$",
+        "四个数中只有 $3$ 符合"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "二次根式",
+        "分式有意义",
+        "取值范围"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$x \\ge 3$ 且 $x \\ne 4$；选项中为 $3$。\n• $\\sqrt{x-3}$ 要求 $x \\ge 3$。\n• 分式要求 $x \\ne 4$。\n• 只有 $3$ 同时满足。",
+      "variantQuestionId": "q-s16-1-kp2-006",
+      "knowledgePointId": "pep-g8-down-s16-1-kp2",
+      "knowledgePointLabel": "二次根式有意义的条件",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-1/kp2-005.png"
+    },
+    {
+      "questionId": "q-s16-1-kp2-006",
+      "sectionId": "pep-g8-down-s16-1",
+      "sectionLabel": "16.1 二次根式",
+      "prompt": "已知 $x, y$ 是实数，且 $y = \\dfrac{\\sqrt{x^2-9} + \\sqrt{9-x^2} - 2}{x+3}$，求 $5x + 6y$ 的值。",
+      "hint": "提示：两个根号同时有意义，往往推出 $x^2-9=0$；别忘了分母 $x+3 \\ne 0$。",
+      "referenceSteps": [
+        "$\\begin{cases} x^2-9 \\ge 0 \\\\ 9-x^2 \\ge 0 \\\\ x+3 \\ne 0 \\end{cases}$",
+        "由前两式得 $x^2=9$，即 $x=\\pm 3$",
+        "又 $x \\ne -3$，故 $x=3$",
+        "$y = \\dfrac{0+0-2}{3+3} = -\\dfrac{1}{3}$",
+        "$5x+6y = 5\\times 3 + 6\\times\\left(-\\dfrac{1}{3}\\right) = 13$"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "不等式组",
+        "分母不为零",
+        "化简求值"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$13$。\n• 由有意义条件得 $x=3$，$y=-\\dfrac{1}{3}$。\n• $5x+6y=13$。",
+      "variantQuestionId": "q-s16-1-kp2-007",
+      "knowledgePointId": "pep-g8-down-s16-1-kp2",
+      "knowledgePointLabel": "二次根式有意义的条件",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-1/kp2-006.png"
+    },
+    {
+      "questionId": "q-s16-1-kp2-007",
+      "sectionId": "pep-g8-down-s16-1",
+      "sectionLabel": "16.1 二次根式",
+      "prompt": "实数 $a, b$ 满足 $(2a+b)^2 + \\dfrac{|2a^2-32|}{\\sqrt{3-a}} = 0$，求 $a$ 与 $b$ 的值。",
+      "hint": "提示：平方、绝对值、根式分母都非负，和为 $0$ 则每一项为 $0$；分母根号内还要 $>0$。",
+      "referenceSteps": [
+        "$\\begin{cases} 2a+b=0 \\\\ 2a^2-32=0 \\\\ 3-a>0 \\end{cases}$",
+        "由 $2a^2-32=0$ 得 $a=\\pm 4$",
+        "由 $3-a>0$ 得 $a<3$，故 $a=-4$",
+        "代入 $2a+b=0$ 得 $b=8$"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "非负数和为零",
+        "绝对值",
+        "分母根式"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$a=-4$，$b=8$。\n• 各项非负且和为 $0$，分别令其为 $0$。\n• 结合 $3-a>0$ 得 $a=-4$，再得 $b=8$。",
+      "variantQuestionId": "q-s16-1-kp2-004",
+      "knowledgePointId": "pep-g8-down-s16-1-kp2",
+      "knowledgePointLabel": "二次根式有意义的条件",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-1/kp2-007.png"
+    },
+    {
+      "questionId": "q-s16-2-kp1-001",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "下列计算正确的是哪一个？请逐项说明理由。\nA. $\\sqrt{(-a)^6}=a^4$　B. $(-a)^3\\cdot a^2=-a^6$　C. $(-a^2)^3=a^5$　D. $(-a^2)\\cdot a^3=-a^5$",
+      "hint": "提示：分别用二次根式性质 $\\sqrt{a^2}=|a|$ 与幂的运算法则检验；不要漏绝对值。",
+      "referenceSteps": [
+        "A：$\\sqrt{(-a)^6}=\\sqrt{a^6}=|a^3|\\ne a^4$，错误",
+        "B：$(-a)^3\\cdot a^2=-a^5\\ne -a^6$，错误",
+        "C：$(-a^2)^3=-a^6\\ne a^5$，错误",
+        "D：$(-a^2)\\cdot a^3=-a^5$，正确"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "二次根式性质",
+        "幂的运算",
+        "绝对值"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：D。\n• A 应为 $|a^3|$，不能写成 $a^4$。\n• B 结果为 $-a^5$。\n• C 结果为 $-a^6$。\n• D 计算正确。",
+      "variantQuestionId": "q-s16-2-kp1-002",
+      "knowledgePointId": "pep-g8-down-s16-2-kp1",
+      "knowledgePointLabel": "二次根式的性质与化简",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp1-001.png"
+    },
+    {
+      "questionId": "q-s16-2-kp1-002",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "求二次根式 $\\sqrt{(-2)^2}$ 的值，并说明依据。",
+      "hint": "提示：$\\sqrt{a^2}=|a|$，先算根号内，再取非负结果。",
+      "referenceSteps": [
+        "$\\sqrt{(-2)^2}=|-2|$",
+        "$=2$"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "二次根式性质",
+        "算术平方根"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$2$。\n• $\\sqrt{(-2)^2}=|-2|=2$。",
+      "variantQuestionId": "q-s16-2-kp1-003",
+      "knowledgePointId": "pep-g8-down-s16-2-kp1",
+      "knowledgePointLabel": "二次根式的性质与化简",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp1-002.png"
+    },
+    {
+      "questionId": "q-s16-2-kp1-003",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "若 $\\sqrt{(3-a)^2}=a-3$，求 $a$ 的取值范围，并说明理由。",
+      "hint": "提示：$\\sqrt{x^2}=|x|$；右边是 $a-3$ 说明 $|3-a|$ 应等于 $-(3-a)$。",
+      "referenceSteps": [
+        "$\\sqrt{(3-a)^2}=|3-a|$",
+        "由 $|3-a|=a-3$ 得 $3-a\\le 0$",
+        "$a\\ge 3$"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "二次根式性质",
+        "绝对值",
+        "取值范围"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$a\\ge 3$。\n• $|3-a|=a-3$ 当且仅当 $3-a\\le 0$。\n• 故 $a\\ge 3$。",
+      "variantQuestionId": "q-s16-2-kp1-004",
+      "knowledgePointId": "pep-g8-down-s16-2-kp1",
+      "knowledgePointLabel": "二次根式的性质与化简",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp1-003.png"
+    },
+    {
+      "questionId": "q-s16-2-kp1-004",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "下列运算正确的是哪一个？请逐项说明理由。\nA. $\\sqrt{(-2)^2}=-2$　B. $(\\sqrt{3})^2=3$　C. $\\sqrt[3]{-8}=2$　D. $\\sqrt{16}=\\pm 4$",
+      "hint": "提示：算术平方根结果非负；$(\\sqrt{a})^2=a\\,(a\\ge0)$；不要和立方根、平方根混淆。",
+      "referenceSteps": [
+        "A：$\\sqrt{(-2)^2}=2\\ne -2$，错误",
+        "B：$(\\sqrt{3})^2=3$，正确",
+        "C：$\\sqrt[3]{-8}=-2\\ne 2$，错误",
+        "D：$\\sqrt{16}=4\\ne \\pm 4$，错误"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "二次根式性质",
+        "算术平方根",
+        "立方根辨析"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：B。\n• A 结果应为 $2$。\n• B 正确。\n• C 应为 $-2$。\n• D 算术平方根只取 $4$。",
+      "variantQuestionId": "q-s16-2-kp1-005",
+      "knowledgePointId": "pep-g8-down-s16-2-kp1",
+      "knowledgePointLabel": "二次根式的性质与化简",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp1-004.png"
+    },
+    {
+      "questionId": "q-s16-2-kp1-005",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "仿照 $2\\sqrt{\\dfrac{3}{2}}=\\sqrt{6}$ 的化简方法，完成下列化简：\n① $3\\sqrt{\\dfrac{2}{3}}$　② $-\\dfrac{5}{2}\\sqrt{\\dfrac{8}{5}}$　③ $a\\sqrt{-\\dfrac{1}{a}}$",
+      "hint": "提示：把根号外的因式平方后移入根号内；③ 中要使 $\\sqrt{-\\dfrac{1}{a}}$ 有意义，需 $a<0$，移入时注意符号。",
+      "referenceSteps": [
+        "① $3\\sqrt{\\dfrac{2}{3}}=\\sqrt{9\\cdot\\dfrac{2}{3}}=\\sqrt{6}$",
+        "② $-\\dfrac{5}{2}\\sqrt{\\dfrac{8}{5}}=-\\sqrt{\\dfrac{25}{4}\\cdot\\dfrac{8}{5}}=-\\sqrt{10}$",
+        "③ 由 $-\\dfrac{1}{a}\\ge 0$ 得 $a<0$，故 $a\\sqrt{-\\dfrac{1}{a}}=-\\sqrt{a^2\\cdot\\left(-\\dfrac{1}{a}\\right)}=-\\sqrt{-a}$"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "根号外移根号内",
+        "化简",
+        "符号"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：① $\\sqrt{6}$；② $-\\sqrt{10}$；③ $-\\sqrt{-a}$（$a<0$）。\n• ①② 把根号外因式平方后移入。\n• ③ 先由有意义条件得 $a<0$，再移入并保留负号。",
+      "variantQuestionId": "q-s16-2-kp1-001",
+      "knowledgePointId": "pep-g8-down-s16-2-kp1",
+      "knowledgePointLabel": "二次根式的性质与化简",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp1-005.png"
+    },
+    {
+      "questionId": "q-s16-2-kp2-001",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "下列二次根式中，哪一个属于最简二次根式？请逐项说明理由。\nA. $\\sqrt{\\dfrac{1}{2}}$　B. $\\sqrt{1.5}$　C. $\\sqrt{3}$　D. $\\sqrt{8}$",
+      "hint": "提示：最简二次根式要求被开方数不含分母、不含能开得尽方的因数或因式。",
+      "referenceSteps": [
+        "A：$\\sqrt{\\dfrac{1}{2}}=\\dfrac{\\sqrt{2}}{2}$，被开方数含分母，不是",
+        "B：$\\sqrt{1.5}=\\sqrt{\\dfrac{3}{2}}=\\dfrac{\\sqrt{6}}{2}$，不是",
+        "C：$\\sqrt{3}$ 被开方数是整数且无完全平方因数，是",
+        "D：$\\sqrt{8}=2\\sqrt{2}$，含完全平方因数 $4$，不是"
       ],
       "difficulty": 1,
       "tags": [
         "最简二次根式",
-        "同类二次根式"
+        "被开方数",
+        "完全平方因数"
       ],
       "quality": "curated",
-      "sectionId": "pep-g8-down-s16-3",
-      "sectionLabel": "16.3 二次根式的加减",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{12} = 2\\sqrt{3}$\n• $\\sqrt{27} = 3\\sqrt{3}$\n• $2\\sqrt{3} - 3\\sqrt{3} = -\\sqrt{3}$",
-      "variantQuestionId": "q-s16-3-002",
-      "knowledgePointId": "pep-g8-down-s16-3-kp1",
-      "knowledgePointLabel": "同类二次根式"
+      "standardAnswer": "答案：C。\n• A、B 被开方数含分母/小数。\n• D 可化简为 $2\\sqrt{2}$。\n• 只有 C 满足最简二次根式定义。",
+      "variantQuestionId": "q-s16-2-kp2-002",
+      "knowledgePointId": "pep-g8-down-s16-2-kp2",
+      "knowledgePointLabel": "最简二次根式",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp2-001.png"
     },
     {
-      "questionId": "q-s16-3-002",
-      "prompt": "化简：$2\\sqrt{8} + \\sqrt{18}$。",
-      "hint": "提示：先把 $\\sqrt{8}$、$\\sqrt{18}$ 化成同底再合并。",
+      "questionId": "q-s16-2-kp2-002",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "下列各式中，哪一个属于最简二次根式？请逐项说明理由。\nA. $\\sqrt{0.5}$　B. $\\sqrt{a^2+b^2}$　C. $\\dfrac{2}{\\sqrt{5}}$　D. $\\sqrt{50}$",
+      "hint": "提示：除“无分母、无完全平方因数”外，被开方数还应是整数或整式；带分母的式子不算最简二次根式。",
       "referenceSteps": [
-        "$2\\sqrt{8} = 4\\sqrt{2}$",
-        "$\\sqrt{18} = 3\\sqrt{2}$",
-        "$4\\sqrt{2} + 3\\sqrt{2} = 7\\sqrt{2}$"
+        "A：$\\sqrt{0.5}$ 被开方数是小数，不是",
+        "B：$\\sqrt{a^2+b^2}$ 被开方数是整式，且 $a^2+b^2$ 不能再提取平方因数，是",
+        "C：$\\dfrac{2}{\\sqrt{5}}$ 根号在分母，不是二次根式本身的最简形",
+        "D：$\\sqrt{50}=5\\sqrt{2}$，含完全平方因数，不是"
       ],
       "difficulty": 2,
       "tags": [
-        "化简",
-        "合并同类项"
+        "最简二次根式",
+        "整式被开方数",
+        "分母有理化"
       ],
       "quality": "curated",
-      "sectionId": "pep-g8-down-s16-3",
-      "sectionLabel": "16.3 二次根式的加减",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $2\\sqrt{8} = 4\\sqrt{2}$\n• $\\sqrt{18} = 3\\sqrt{2}$\n• $4\\sqrt{2} + 3\\sqrt{2} = 7\\sqrt{2}$",
-      "variantQuestionId": "q-s16-3-003",
-      "knowledgePointId": "pep-g8-down-s16-3-kp2",
-      "knowledgePointLabel": "二次根式加减步骤"
+      "standardAnswer": "答案：B。\n• A 含小数；D 可化简。\n• C 是分式形式，不是最简二次根式。\n• B 符合定义。",
+      "variantQuestionId": "q-s16-2-kp2-001",
+      "knowledgePointId": "pep-g8-down-s16-2-kp2",
+      "knowledgePointLabel": "最简二次根式",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp2-002.png"
     },
     {
-      "questionId": "q-s16-3-003",
-      "prompt": "化简：$\\sqrt{45} - 2\\sqrt{20} + \\sqrt{5}$。",
-      "hint": "提示：三项都化成同底 $\\sqrt{5}$，再依次合并系数，留意负号。",
+      "questionId": "q-s16-2-kp3-001",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "下列运算正确的是哪一个？请逐项说明理由。\nA. $\\sqrt{6}\\div\\sqrt{2}=3$　B. $\\sqrt{(-9)^2}=-9$　C. $\\sqrt{3}\\times\\sqrt{6}=2\\sqrt{3}$　D. $\\sqrt{8}=2\\sqrt{2}$",
+      "hint": "提示：$\\sqrt{a}\\sqrt{b}=\\sqrt{ab}$，$\\dfrac{\\sqrt{a}}{\\sqrt{b}}=\\sqrt{\\dfrac{a}{b}}$（$a,b\\ge0,b>0$）；算术平方根非负。",
       "referenceSteps": [
-        "$\\sqrt{45} = 3\\sqrt{5}$",
-        "$2\\sqrt{20} = 4\\sqrt{5}$",
-        "$3\\sqrt{5} - 4\\sqrt{5} + \\sqrt{5} = 0$"
+        "A：$\\sqrt{6}\\div\\sqrt{2}=\\sqrt{3}\\ne 3$，错误",
+        "B：$\\sqrt{(-9)^2}=9\\ne -9$，错误",
+        "C：$\\sqrt{3}\\times\\sqrt{6}=\\sqrt{18}=3\\sqrt{2}\\ne 2\\sqrt{3}$，错误",
+        "D：$\\sqrt{8}=\\sqrt{4\\times2}=2\\sqrt{2}$，正确"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "乘除法则",
+        "化简",
+        "算术平方根"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：D。\n• A 应为 $\\sqrt{3}$。\n• B 应为 $9$。\n• C 应为 $3\\sqrt{2}$。\n• D 正确。",
+      "variantQuestionId": "q-s16-2-kp3-002",
+      "knowledgePointId": "pep-g8-down-s16-2-kp3",
+      "knowledgePointLabel": "二次根式的乘除法",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp3-001.png"
+    },
+    {
+      "questionId": "q-s16-2-kp3-002",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "下列运算正确的是哪一个？请逐项说明理由。\nA. $2a^3\\cdot a^4=a^{12}$　B. $2\\sqrt{2}\\times\\sqrt{2}=4$　C. $(2a^4)^3=8a^7$　D. $a^8\\div a^2=a^4$",
+      "hint": "提示：系数要保留；$2\\sqrt{2}\\times\\sqrt{2}=2\\times\\sqrt{4}=2\\times2$。",
+      "referenceSteps": [
+        "A：$2a^3\\cdot a^4=2a^7\\ne a^{12}$，错误",
+        "B：$2\\sqrt{2}\\times\\sqrt{2}=2\\times2=4$，正确",
+        "C：$(2a^4)^3=8a^{12}\\ne 8a^7$，错误",
+        "D：$a^8\\div a^2=a^6\\ne a^4$，错误"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "根式乘法",
+        "系数",
+        "幂的运算"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：B。\n• B：$2\\sqrt{2}\\times\\sqrt{2}=4$。\n• 其余选项幂运算均错。",
+      "variantQuestionId": "q-s16-2-kp3-003",
+      "knowledgePointId": "pep-g8-down-s16-2-kp3",
+      "knowledgePointLabel": "二次根式的乘除法",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp3-002.png"
+    },
+    {
+      "questionId": "q-s16-2-kp3-003",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "若 $\\sqrt{a(a-3)}=\\sqrt{a}\\cdot\\sqrt{a-3}$，求 $a$ 的取值范围，并说明理由。",
+      "hint": "提示：乘法法则 $\\sqrt{x}\\sqrt{y}=\\sqrt{xy}$ 成立需 $x\\ge0$ 且 $y\\ge0$。",
+      "referenceSteps": [
+        "由法则成立条件：$a\\ge 0$ 且 $a-3\\ge 0$",
+        "综合得 $a\\ge 3$"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "乘法法则",
+        "前提条件",
+        "取值范围"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$a\\ge 3$。\n• 需同时满足 $a\\ge0$ 与 $a-3\\ge0$。\n• 故 $a\\ge3$。",
+      "variantQuestionId": "q-s16-2-kp3-004",
+      "knowledgePointId": "pep-g8-down-s16-2-kp3",
+      "knowledgePointLabel": "二次根式的乘除法",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp3-003.png"
+    },
+    {
+      "questionId": "q-s16-2-kp3-004",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "计算：$(1+\\sqrt{2})^{2006}\\cdot(1-\\sqrt{2})^{2007}$。",
+      "hint": "提示：把 $2007$ 拆成 $2006+1$，再用平方差公式 $(1+\\sqrt{2})(1-\\sqrt{2})=1-2=-1$。",
+      "referenceSteps": [
+        "原式 $=(1+\\sqrt{2})^{2006}(1-\\sqrt{2})^{2006}(1-\\sqrt{2})$",
+        "$=[(1+\\sqrt{2})(1-\\sqrt{2})]^{2006}(1-\\sqrt{2})$",
+        "$=(-1)^{2006}(1-\\sqrt{2})$",
+        "$=1-\\sqrt{2}$"
       ],
       "difficulty": 3,
       "tags": [
-        "多项合并",
-        "负号"
+        "平方差公式",
+        "积的乘方",
+        "综合计算"
       ],
       "quality": "curated",
-      "sectionId": "pep-g8-down-s16-3",
-      "sectionLabel": "16.3 二次根式的加减",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{45} = 3\\sqrt{5}$\n• $2\\sqrt{20} = 4\\sqrt{5}$\n• $3\\sqrt{5} - 4\\sqrt{5} + \\sqrt{5} = 0$",
-      "variantQuestionId": "q-s16-3-001",
-      "knowledgePointId": "pep-g8-down-s16-3-kp3",
-      "knowledgePointLabel": "合并时留意符号"
+      "standardAnswer": "答案：$1-\\sqrt{2}$。\n• 先合并同指数部分得 $(-1)^{2006}=1$。\n• 再乘 $(1-\\sqrt{2})$。",
+      "variantQuestionId": "q-s16-2-kp3-005",
+      "knowledgePointId": "pep-g8-down-s16-2-kp3",
+      "knowledgePointLabel": "二次根式的乘除法",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp3-004.png"
+    },
+    {
+      "questionId": "q-s16-2-kp3-005",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "小东认为 $\\sqrt{\\dfrac{-20}{-5}}=\\dfrac{\\sqrt{-20}}{\\sqrt{-5}}$ 并据此化简得 $2$。\n① 他的化简正确吗？若不对，写出正确过程。\n② $\\sqrt{\\dfrac{a}{b}}=\\dfrac{\\sqrt{a}}{\\sqrt{b}}$ 成立的条件是什么？",
+      "hint": "提示：实数范围内不能对负数开平方；除法法则要求 $a\\ge0,b>0$。",
+      "referenceSteps": [
+        "① 不正确：应先 $\\sqrt{\\dfrac{-20}{-5}}=\\sqrt{\\dfrac{20}{5}}=\\dfrac{\\sqrt{20}}{\\sqrt{5}}=\\dfrac{\\sqrt{5\\cdot4}}{\\sqrt{5}}=2$",
+        "② 成立条件：$a\\ge 0$ 且 $b>0$"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "除法法则",
+        "前提条件",
+        "易错辨析"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：① 不正确，正确化简结果为 $2$；② $a\\ge0$ 且 $b>0$。\n• 不能把 $\\sqrt{-20}$、$\\sqrt{-5}$ 当作实数范围内的运算。\n• 分母对应的被开方数必须大于 $0$。",
+      "variantQuestionId": "q-s16-2-kp3-001",
+      "knowledgePointId": "pep-g8-down-s16-2-kp3",
+      "knowledgePointLabel": "二次根式的乘除法",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp3-005.png"
+    },
+    {
+      "questionId": "q-s16-2-kp4-001",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "在实数 $3.1415926,\\ \\dfrac{1}{3},\\ \\sqrt{2^2},\\ \\dfrac{\\sqrt{3}}{2},\\ \\dfrac{1}{\\sqrt{2}+1}$ 中，无理数有几个？请逐项说明并化简 $\\dfrac{1}{\\sqrt{2}+1}$。",
+      "hint": "提示：有限小数、分数、开得尽方的根式是有理数；先把分母有理化再判断 $\\dfrac{1}{\\sqrt{2}+1}$。",
+      "referenceSteps": [
+        "$3.1415926$、$\\dfrac{1}{3}$、$\\sqrt{2^2}=2$ 都是有理数",
+        "$\\dfrac{\\sqrt{3}}{2}$ 是无理数",
+        "$\\dfrac{1}{\\sqrt{2}+1}=\\dfrac{\\sqrt{2}-1}{(\\sqrt{2}+1)(\\sqrt{2}-1)}=\\sqrt{2}-1$，是无理数",
+        "共有 $2$ 个无理数"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "分母有理化",
+        "无理数",
+        "有理数辨析"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：$2$ 个。\n• 有理数：$3.1415926$、$\\dfrac{1}{3}$、$\\sqrt{2^2}=2$。\n• 无理数：$\\dfrac{\\sqrt{3}}{2}$、$\\dfrac{1}{\\sqrt{2}+1}=\\sqrt{2}-1$。",
+      "variantQuestionId": "q-s16-2-kp4-002",
+      "knowledgePointId": "pep-g8-down-s16-2-kp4",
+      "knowledgePointLabel": "分母有理化",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp4-001.png"
+    },
+    {
+      "questionId": "q-s16-2-kp4-002",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "已知 $a=\\sqrt{2}-1$，$b=\\dfrac{1}{\\sqrt{2}+1}$，判断 $a$ 与 $b$ 的关系。\nA. $a=b$　B. $ab=1$　C. $a=-b$　D. $ab=-1$",
+      "hint": "提示：把 $b$ 的分母有理化，分子分母同乘 $\\sqrt{2}-1$。",
+      "referenceSteps": [
+        "$b=\\dfrac{1}{\\sqrt{2}+1}=\\dfrac{\\sqrt{2}-1}{(\\sqrt{2}+1)(\\sqrt{2}-1)}=\\sqrt{2}-1$",
+        "又 $a=\\sqrt{2}-1$",
+        "故 $a=b$"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "分母有理化",
+        "平方差公式"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：A，$a=b$。\n• $b$ 有理化后为 $\\sqrt{2}-1$，与 $a$ 相等。",
+      "variantQuestionId": "q-s16-2-kp4-003",
+      "knowledgePointId": "pep-g8-down-s16-2-kp4",
+      "knowledgePointLabel": "分母有理化",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp4-002.png"
+    },
+    {
+      "questionId": "q-s16-2-kp4-003",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "$\\sqrt{a-4}$ 的有理化因式是哪一个？请说明理由。\nA. $\\sqrt{a+4}$　B. $\\sqrt{a-4}$　C. $\\sqrt{a}+2$　D. $\\sqrt{a}-2$",
+      "hint": "提示：有理化因式与原来相乘后，积中不再含根号。",
+      "referenceSteps": [
+        "$\\sqrt{a-4}\\cdot\\sqrt{a-4}=(\\sqrt{a-4})^2=a-4$，积无根号",
+        "其余选项相乘后仍含根号",
+        "故选 B"
+      ],
+      "difficulty": 2,
+      "tags": [
+        "有理化因式",
+        "二次根式乘法"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：B。\n• $\\sqrt{a-4}\\cdot\\sqrt{a-4}=a-4$，满足有理化因式定义。",
+      "variantQuestionId": "q-s16-2-kp4-004",
+      "knowledgePointId": "pep-g8-down-s16-2-kp4",
+      "knowledgePointLabel": "分母有理化",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp4-003.png"
+    },
+    {
+      "questionId": "q-s16-2-kp4-004",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "下列运算正确的是哪一个？请逐项说明理由。\nA. $(2\\sqrt{3})^2=6$　B. $\\dfrac{6}{\\sqrt{3}}=2\\sqrt{2}$　C. $\\sqrt{6}\\div\\sqrt{\\dfrac{2}{3}}=3$　D. $2\\sqrt{5}\\cdot3\\sqrt{5}=6\\sqrt{5}$",
+      "hint": "提示：B 需分母有理化；C 用除法法则 $\\sqrt{a}\\div\\sqrt{b}=\\sqrt{a/b}$。",
+      "referenceSteps": [
+        "A：$(2\\sqrt{3})^2=12\\ne6$，错误",
+        "B：$\\dfrac{6}{\\sqrt{3}}=2\\sqrt{3}\\ne2\\sqrt{2}$，错误",
+        "C：$\\sqrt{6}\\div\\sqrt{\\dfrac{2}{3}}=\\sqrt{6\\times\\dfrac{3}{2}}=\\sqrt{9}=3$，正确",
+        "D：$2\\sqrt{5}\\cdot3\\sqrt{5}=30\\ne6\\sqrt{5}$，错误"
+      ],
+      "difficulty": 1,
+      "tags": [
+        "分母有理化",
+        "根式乘除",
+        "运算辨析"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：C。\n• A 应为 $12$；B 应为 $2\\sqrt{3}$；D 应为 $30$。",
+      "variantQuestionId": "q-s16-2-kp4-005",
+      "knowledgePointId": "pep-g8-down-s16-2-kp4",
+      "knowledgePointLabel": "分母有理化",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp4-004.png"
+    },
+    {
+      "questionId": "q-s16-2-kp4-005",
+      "sectionId": "pep-g8-down-s16-2",
+      "sectionLabel": "16.2 二次根式的乘除",
+      "prompt": "已知 $a=3+\\sqrt{2}$，$b=3-\\sqrt{2}$，求：\n① $a^2-b^2$　② $a^2-2ab+b^2$",
+      "hint": "提示：① 用平方差公式 $a^2-b^2=(a+b)(a-b)$；② 用完全平方公式 $(a-b)^2$。",
+      "referenceSteps": [
+        "$a+b=6$，$a-b=2\\sqrt{2}$",
+        "① $a^2-b^2=(a+b)(a-b)=6\\times2\\sqrt{2}=12\\sqrt{2}$",
+        "② $a^2-2ab+b^2=(a-b)^2=(2\\sqrt{2})^2=8$"
+      ],
+      "difficulty": 3,
+      "tags": [
+        "平方差公式",
+        "完全平方",
+        "根式运算"
+      ],
+      "quality": "curated",
+      "standardAnswer": "答案：① $12\\sqrt{2}$；② $8$。\n• 先算 $a+b$、$a-b$ 再代入公式。",
+      "variantQuestionId": "q-s16-2-kp4-001",
+      "knowledgePointId": "pep-g8-down-s16-2-kp4",
+      "knowledgePointLabel": "分母有理化",
+      "sourceImage": "data/import/questions/pep-g8-down-s16-2/kp4-005.png"
     },
     {
       "questionId": "q-pep-g8-down-s17-1-001",
@@ -11011,201 +11401,6 @@
       "variantQuestionId": "q-pep-g8-up-s15-3-003",
       "knowledgePointId": "pep-g8-up-s15-3-kp2",
       "knowledgePointLabel": "分式方程"
-    },
-    {
-      "questionId": "q-s16-1-001-d2",
-      "prompt": "判断 $\\sqrt{2x-6}$ 在实数范围内有意义时，$x$ 的取值范围。（巩固练）",
-      "hint": "提示：被开方数必须非负。",
-      "referenceSteps": [
-        "$2x - 6 \\ge 0$",
-        "$x \\ge 3$"
-      ],
-      "difficulty": 2,
-      "tags": [
-        "取值范围",
-        "非负条件"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-1",
-      "sectionLabel": "16.1 二次根式",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $2x - 6 \\ge 0$\n• $x \\ge 3$",
-      "variantQuestionId": "q-s16-1-002",
-      "knowledgePointId": "pep-g8-down-s16-1-kp1",
-      "knowledgePointLabel": "二次根式的形式"
-    },
-    {
-      "questionId": "q-s16-1-001-d3",
-      "prompt": "判断 $\\sqrt{2x-6}$ 在实数范围内有意义时，$x$ 的取值范围。（挑战练）",
-      "hint": "提示：被开方数必须非负。",
-      "referenceSteps": [
-        "$2x - 6 \\ge 0$",
-        "$x \\ge 3$"
-      ],
-      "difficulty": 3,
-      "tags": [
-        "取值范围",
-        "非负条件"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-1",
-      "sectionLabel": "16.1 二次根式",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $2x - 6 \\ge 0$\n• $x \\ge 3$",
-      "variantQuestionId": "q-s16-1-002",
-      "knowledgePointId": "pep-g8-down-s16-1-kp1",
-      "knowledgePointLabel": "二次根式的形式"
-    },
-    {
-      "questionId": "q-s16-1-002-d3",
-      "prompt": "判断 $\\sqrt{5-x}$ 在实数范围内有意义时，$x$ 的取值范围。（挑战练）",
-      "hint": "提示：把不等式 $5 - x \\ge 0$ 化简后再写结论。",
-      "referenceSteps": [
-        "$5 - x \\ge 0$",
-        "$x \\le 5$"
-      ],
-      "difficulty": 3,
-      "tags": [
-        "取值范围",
-        "移项"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-1",
-      "sectionLabel": "16.1 二次根式",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $5 - x \\ge 0$\n• $x \\le 5$",
-      "variantQuestionId": "q-s16-1-003",
-      "knowledgePointId": "pep-g8-down-s16-1-kp2",
-      "knowledgePointLabel": "被开方数非负"
-    },
-    {
-      "questionId": "q-s16-2-001-d2",
-      "prompt": "化简：$\\sqrt{12} \\cdot \\sqrt{3}$，并说明用到的乘法法则与前提条件。（巩固练）",
-      "hint": "提示：$\\sqrt{a} \\cdot \\sqrt{b} = \\sqrt{ab}$（$a, b \\ge 0$）。",
-      "referenceSteps": [
-        "$\\sqrt{12 \\cdot 3}$",
-        "$\\sqrt{36}$",
-        "$= 6$"
-      ],
-      "difficulty": 2,
-      "tags": [
-        "乘法法则",
-        "前提条件"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-2",
-      "sectionLabel": "16.2 二次根式的乘除",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{12 \\cdot 3}$\n• $\\sqrt{36}$\n• $= 6$",
-      "variantQuestionId": "q-s16-2-002",
-      "knowledgePointId": "pep-g8-down-s16-2-kp1",
-      "knowledgePointLabel": "二次根式乘法法则"
-    },
-    {
-      "questionId": "q-s16-2-001-d3",
-      "prompt": "化简：$\\sqrt{12} \\cdot \\sqrt{3}$，并说明用到的乘法法则与前提条件。（挑战练）",
-      "hint": "提示：$\\sqrt{a} \\cdot \\sqrt{b} = \\sqrt{ab}$（$a, b \\ge 0$）。",
-      "referenceSteps": [
-        "$\\sqrt{12 \\cdot 3}$",
-        "$\\sqrt{36}$",
-        "$= 6$"
-      ],
-      "difficulty": 3,
-      "tags": [
-        "乘法法则",
-        "前提条件"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-2",
-      "sectionLabel": "16.2 二次根式的乘除",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{12 \\cdot 3}$\n• $\\sqrt{36}$\n• $= 6$",
-      "variantQuestionId": "q-s16-2-002",
-      "knowledgePointId": "pep-g8-down-s16-2-kp1",
-      "knowledgePointLabel": "二次根式乘法法则"
-    },
-    {
-      "questionId": "q-s16-2-002-d3",
-      "prompt": "化简：$\\sqrt{50} \\div \\sqrt{2}$。（挑战练）",
-      "hint": "提示：$\\dfrac{\\sqrt{a}}{\\sqrt{b}} = \\sqrt{\\dfrac{a}{b}}$（$a \\ge 0, b > 0$）。",
-      "referenceSteps": [
-        "$\\sqrt{50 \\div 2}$",
-        "$\\sqrt{25}$",
-        "$= 5$"
-      ],
-      "difficulty": 3,
-      "tags": [
-        "除法法则",
-        "化简"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-2",
-      "sectionLabel": "16.2 二次根式的乘除",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{50 \\div 2}$\n• $\\sqrt{25}$\n• $= 5$",
-      "variantQuestionId": "q-s16-2-003",
-      "knowledgePointId": "pep-g8-down-s16-2-kp2",
-      "knowledgePointLabel": "二次根式除法法则"
-    },
-    {
-      "questionId": "q-s16-3-001-d2",
-      "prompt": "化简：$\\sqrt{12} - \\sqrt{27}$。（巩固练）",
-      "hint": "提示：先化为最简二次根式，再合并同类二次根式。",
-      "referenceSteps": [
-        "$\\sqrt{12} = 2\\sqrt{3}$",
-        "$\\sqrt{27} = 3\\sqrt{3}$",
-        "$2\\sqrt{3} - 3\\sqrt{3} = -\\sqrt{3}$"
-      ],
-      "difficulty": 2,
-      "tags": [
-        "最简二次根式",
-        "同类二次根式"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-3",
-      "sectionLabel": "16.3 二次根式的加减",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{12} = 2\\sqrt{3}$\n• $\\sqrt{27} = 3\\sqrt{3}$\n• $2\\sqrt{3} - 3\\sqrt{3} = -\\sqrt{3}$",
-      "variantQuestionId": "q-s16-3-002",
-      "knowledgePointId": "pep-g8-down-s16-3-kp1",
-      "knowledgePointLabel": "同类二次根式"
-    },
-    {
-      "questionId": "q-s16-3-001-d3",
-      "prompt": "化简：$\\sqrt{12} - \\sqrt{27}$。（挑战练）",
-      "hint": "提示：先化为最简二次根式，再合并同类二次根式。",
-      "referenceSteps": [
-        "$\\sqrt{12} = 2\\sqrt{3}$",
-        "$\\sqrt{27} = 3\\sqrt{3}$",
-        "$2\\sqrt{3} - 3\\sqrt{3} = -\\sqrt{3}$"
-      ],
-      "difficulty": 3,
-      "tags": [
-        "最简二次根式",
-        "同类二次根式"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-3",
-      "sectionLabel": "16.3 二次根式的加减",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $\\sqrt{12} = 2\\sqrt{3}$\n• $\\sqrt{27} = 3\\sqrt{3}$\n• $2\\sqrt{3} - 3\\sqrt{3} = -\\sqrt{3}$",
-      "variantQuestionId": "q-s16-3-002",
-      "knowledgePointId": "pep-g8-down-s16-3-kp1",
-      "knowledgePointLabel": "同类二次根式"
-    },
-    {
-      "questionId": "q-s16-3-002-d3",
-      "prompt": "化简：$2\\sqrt{8} + \\sqrt{18}$。（挑战练）",
-      "hint": "提示：先把 $\\sqrt{8}$、$\\sqrt{18}$ 化成同底再合并。",
-      "referenceSteps": [
-        "$2\\sqrt{8} = 4\\sqrt{2}$",
-        "$\\sqrt{18} = 3\\sqrt{2}$",
-        "$4\\sqrt{2} + 3\\sqrt{2} = 7\\sqrt{2}$"
-      ],
-      "difficulty": 3,
-      "tags": [
-        "化简",
-        "合并同类项"
-      ],
-      "quality": "curated",
-      "sectionId": "pep-g8-down-s16-3",
-      "sectionLabel": "16.3 二次根式的加减",
-      "standardAnswer": "（教研占位）标准解答要点：\n• $2\\sqrt{8} = 4\\sqrt{2}$\n• $\\sqrt{18} = 3\\sqrt{2}$\n• $4\\sqrt{2} + 3\\sqrt{2} = 7\\sqrt{2}$",
-      "variantQuestionId": "q-s16-3-003",
-      "knowledgePointId": "pep-g8-down-s16-3-kp2",
-      "knowledgePointLabel": "二次根式加减步骤"
     },
     {
       "questionId": "q-pep-g8-down-s17-1-001-d2",

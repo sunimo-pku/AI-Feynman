@@ -8,7 +8,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
-    'question asset covers 102 curriculum sections with 3 questions each',
+    'question asset covers curriculum sections; seed 3×102 + curated 16.x imports',
     () async {
       final raw = await rootBundle.loadString(
         MockLectureRepository.questionBankAssetPath,
@@ -27,13 +27,28 @@ void main() {
               .map((q) => q['sectionId'] as String? ?? '')
               .where((id) => id.isNotEmpty)
               .toSet();
-      expect(sectionIds.length, 102);
-      expect(questions.length, 306);
+      // 16.3 尚未导入 curated 题，题库暂不含该节。
+      expect(sectionIds.length, 101);
+      expect(sectionIds.contains('pep-g8-down-s16-3'), isFalse);
+      expect(questions.length, 321);
+
+      const curatedSections = <String>{
+        'pep-g8-down-s16-1',
+        'pep-g8-down-s16-2',
+      };
+      const curatedCounts = <String, int>{
+        'pep-g8-down-s16-1': 7,
+        'pep-g8-down-s16-2': 17,
+      };
 
       for (final sectionId in sectionIds) {
         final sectionQuestions = questions
             .where((q) => q['sectionId'] == sectionId)
             .toList(growable: false);
+        if (curatedSections.contains(sectionId)) {
+          expect(sectionQuestions.length, curatedCounts[sectionId]);
+          continue;
+        }
         expect(sectionQuestions.map((q) => q['difficulty']).toList(), [
           1,
           2,

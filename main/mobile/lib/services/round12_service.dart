@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../data/learning_profile_models.dart';
 import '../data/round12_models.dart';
 import 'auth_service.dart';
 
@@ -86,6 +87,11 @@ class Round12Service {
 
   Future<Map<String, dynamic>> fetchProfile() {
     return _getMap(ApiConfig.uri('/learning/profile'));
+  }
+
+  Future<LearningProfilePayload> fetchLearningProfile() async {
+    final json = await _getMap(ApiConfig.uri('/learning/profile-insights'));
+    return LearningProfilePayload.fromJson(json);
   }
 
   Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> patch) {

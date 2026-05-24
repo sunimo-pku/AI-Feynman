@@ -34,6 +34,7 @@ from app.db import (
     load_json,
 )
 from app.middleware.auth import require_student_user
+from app.services.learning_profile import LearningProfileOut, build_learning_profile
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +265,20 @@ async def patch_profile(
     db.refresh(profile)
     logger.info("[learning] profile updated user=%s display=%s", user.username, profile.display_name)
     return _profile_to_out(profile)
+
+
+@router.get(
+    "/profile-insights",
+    response_model=LearningProfileOut,
+    response_model_by_alias=True,
+    summary="学生端可解释长期学习画像",
+)
+async def learning_profile_insights(
+    user: User = Depends(require_student_user),
+    db: Session = Depends(get_db),
+) -> LearningProfileOut:
+    profile = ensure_student_profile(db, user)
+    return build_learning_profile(db, profile)
 
 
 @router.post(

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/curriculum_models.dart';
 import '../data/curriculum_repository.dart';
+import '../data/learning_profile_models.dart';
 import '../data/lecture_models.dart';
 import '../data/mock_lecture_repository.dart';
 import '../data/round12_models.dart';
@@ -14,6 +15,7 @@ import '../services/round12_service.dart';
 import '../services/student_grade_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
+import '../widgets/learning_profile_panel.dart';
 import '../widgets/study_layout.dart';
 import 'lecture_page.dart';
 import 'privacy_notice_page.dart';
@@ -41,6 +43,8 @@ class PowerProfilePage extends StatefulWidget {
 class _PowerProfilePageState extends State<PowerProfilePage> {
   final _service = Round12Service();
   late Future<PowerProfile> _future = _service.fetchPowerProfile();
+  late final Future<LearningProfilePayload> _learningProfileFuture =
+      _service.fetchLearningProfile();
   Map<String, String> _chapterLabels = const {};
 
   @override
@@ -148,6 +152,8 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                _LearningProfilePreview(future: _learningProfileFuture),
+                const SizedBox(height: 20),
                 StudySectionTitle(
                   title: grade == null ? '章节战力' : '$grade · 章节战力',
                 ),
@@ -255,6 +261,39 @@ class _PowerProfilePageState extends State<PowerProfilePage> {
       return body;
     }
     return _ScaffoldShell(title: '我的战力', child: body);
+  }
+}
+
+class _LearningProfilePreview extends StatelessWidget {
+  const _LearningProfilePreview({required this.future});
+
+  final Future<LearningProfilePayload> future;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<LearningProfilePayload>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          return LearningProfilePanel(profile: snapshot.data!, compact: true);
+        }
+        if (snapshot.hasError) {
+          return const StudyInlineBanner(
+            message: '学习画像暂时加载失败，完成讲题后可以稍后再看。',
+            icon: Icons.info_outline,
+          );
+        }
+        return const StudyPanel(
+          padding: EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: StudyDenseTile(
+            title: '长期学习画像',
+            subtitle: '正在读取讲题记录与错因证据…',
+            icon: Icons.psychology_alt_outlined,
+            accent: AppPalette.primaryAccent,
+          ),
+        );
+      },
+    );
   }
 }
 

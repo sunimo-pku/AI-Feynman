@@ -250,10 +250,10 @@ def test_parent_assignment_recommendations(client: TestClient) -> None:
             ],
             "reviews": [
                 {
-                    "id": f"q-s16-1-002-{int(datetime.utcnow().timestamp() * 1000)}",
+                    "id": f"q-s16-1-kp2-005-{int(datetime.utcnow().timestamp() * 1000)}",
                     "sectionId": "pep-g8-down-s16-1",
-                    "questionId": "q-s16-1-002",
-                    "questionPrompt": r"判断 $\sqrt{5-x}$ 有意义时 x 的范围",
+                    "questionId": "q-s16-1-kp2-005",
+                    "questionPrompt": r"要使 $\sqrt{x-3}+\dfrac{1}{x-4}$ 有意义，x 应满足什么条件？",
                     "difficulty": 2,
                     "completedAt": datetime.utcnow().isoformat() + "Z",
                     "summary": "基本讲清楚",

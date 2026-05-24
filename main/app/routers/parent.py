@@ -36,6 +36,7 @@ from app.db import (
     load_json,
 )
 from app.middleware.auth import require_parent_user
+from app.services.learning_profile import LearningProfileOut, build_learning_profile
 
 logger = logging.getLogger(__name__)
 
@@ -458,6 +459,20 @@ async def parent_dashboard(
         weekly_activity=weekly,
         suggested_next_action=suggestion,
     )
+
+
+@router.get(
+    "/profile-insights",
+    response_model=LearningProfileOut,
+    response_model_by_alias=True,
+    summary="家长端查看孩子可解释长期学习画像",
+)
+async def parent_profile_insights(
+    user: User = Depends(require_parent_user),
+    db: Session = Depends(get_db),
+) -> LearningProfileOut:
+    profile = _require_linked_child(db, user)
+    return build_learning_profile(db, profile)
 
 
 @router.get(

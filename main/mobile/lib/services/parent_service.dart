@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../data/learning_profile_models.dart';
 import '../data/parent_models.dart';
 import '../data/question_engagement_models.dart';
 import 'auth_service.dart';
@@ -29,6 +30,11 @@ class ParentService {
   Future<ParentPosterPayload> fetchPoster({int? studentId}) async {
     final body = await _get('/parent/poster', studentId: studentId);
     return ParentPosterPayload.fromJson(body);
+  }
+
+  Future<LearningProfilePayload> fetchLearningProfile({int? studentId}) async {
+    final body = await _get('/parent/profile-insights', studentId: studentId);
+    return LearningProfilePayload.fromJson(body);
   }
 
   Future<void> updateProfile({

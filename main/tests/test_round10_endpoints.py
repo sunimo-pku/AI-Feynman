@@ -426,6 +426,127 @@ def test_parent_dashboard_basic_fields(client: TestClient) -> None:
     assert "16.2" in body["suggestedNextAction"] or "弱" in body["suggestedNextAction"]
 
 
+def test_learning_profile_insights_explain_weakness_to_student_and_parent(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.learning_profile._generate_ai_refinement",
+        lambda **kwargs: None,
+    )
+    child_name, child_password = _register_student(client)
+    child_token = _login(client, child_name, child_password)
+    headers = {"Authorization": f"Bearer {child_token}"}
+    sync_resp = client.post(
+        "/learning/progress/sync",
+        headers=headers,
+        json={
+            "progress": [
+                {
+                    "sectionId": "pep-g8-down-s16-2",
+                    "completedRounds": 2,
+                    "masteryScore": 32,
+                    "lastPracticedAt": "2026-05-22T02:01:00",
+                    "lastSummary": "乘除法则前提条件还需要复讲。",
+                }
+            ],
+            "reviews": [
+                {
+                    "id": f"profile-rev-{uuid.uuid4().hex[:8]}",
+                    "sectionId": "pep-g8-down-s16-2",
+                    "questionId": "q-s16-2-001",
+                    "questionPrompt": "化简二次根式乘除",
+                    "difficulty": 1,
+                    "tags": ["二次根式乘除"],
+                    "completedAt": "2026-05-22T02:02:00",
+                    "summary": "需要说明 a,b≥0。",
+                    "agentHighlights": [],
+                    "cautionPoints": ["公式成立前先说明 a,b≥0"],
+                }
+            ],
+        },
+    )
+    assert sync_resp.status_code == 200, sync_resp.text
+
+    student_resp = client.get("/learning/profile-insights", headers=headers)
+    assert student_resp.status_code == 200, student_resp.text
+    body = student_resp.json()
+    assert body["profileSource"] == "rules"
+    assert body["aiSummary"] == ""
+    assert body["dataPoints"] >= 2
+    assert body["weakKnowledge"]
+    assert "16.2" in body["weakKnowledge"][0]["title"]
+    assert body["weakKnowledge"][0]["evidence"]
+    assert body["learningTraits"]
+    assert body["nextActions"]
+
+    _, _, parent_token = _register_parent(client, child_name)
+    parent_resp = client.get(
+        "/parent/profile-insights",
+        headers={"Authorization": f"Bearer {parent_token}"},
+    )
+    assert parent_resp.status_code == 200, parent_resp.text
+    parent_body = parent_resp.json()
+    assert parent_body["weakKnowledge"][0]["title"] == body["weakKnowledge"][0]["title"]
+
+
+def test_learning_profile_insights_can_apply_ai_refinement(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    child_name, child_password = _register_student(client)
+    child_token = _login(client, child_name, child_password)
+    headers = {"Authorization": f"Bearer {child_token}"}
+    client.post(
+        "/learning/progress/sync",
+        headers=headers,
+        json={
+            "progress": [
+                {
+                    "sectionId": "pep-g8-down-s16-2",
+                    "completedRounds": 2,
+                    "masteryScore": 32,
+                    "lastPracticedAt": "2026-05-22T02:01:00",
+                    "lastSummary": "乘除法则前提条件还需要复讲。",
+                }
+            ],
+            "reviews": [],
+        },
+    )
+
+    def fake_refinement(**kwargs):
+        return {
+            "overview": "AI 观察到乘除法则前提条件需要优先复讲。",
+            "aiSummary": "这名学生会算根式乘除，但讲解时容易先套公式、后补条件。",
+            "learningTraits": [
+                {
+                    "title": "先算后补",
+                    "description": "能跟上计算，但需要把公式成立条件前置说明。",
+                    "evidence": [
+                        {
+                            "label": "掌握度",
+                            "detail": "16.2 当前 32/100，已完成 2 轮讲题",
+                        }
+                    ],
+                }
+            ],
+            "nextActions": ["下次讲根式乘除前，先说 a,b≥0。"],
+        }
+
+    monkeypatch.setattr(
+        "app.services.learning_profile._generate_ai_refinement",
+        fake_refinement,
+    )
+
+    resp = client.get("/learning/profile-insights", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["profileSource"] == "rules_ai"
+    assert "先套公式" in body["aiSummary"]
+    assert body["learningTraits"][0]["title"] == "先算后补"
+    assert body["nextActions"][0] == "下次讲根式乘除前，先说 a,b≥0。"
+
+
 def test_parent_poster_includes_week_stats(client: TestClient) -> None:
     child_name, child_password = _register_student(client)
     child_token = _login(client, child_name, child_password)

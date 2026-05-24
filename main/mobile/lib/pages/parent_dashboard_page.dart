@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../config/app_branding.dart';
+import '../data/learning_profile_models.dart';
 import '../data/parent_models.dart';
 import '../data/question_engagement_models.dart';
 import '../data/round12_models.dart';
@@ -12,6 +13,7 @@ import '../services/parent_service.dart';
 import '../services/replay_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/formula_text.dart';
+import '../widgets/learning_profile_panel.dart';
 import '../widgets/study_layout.dart';
 import 'replay_page.dart';
 
@@ -50,6 +52,7 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
   bool _loading = true;
   String? _error;
   ParentDashboardPayload? _payload;
+  LearningProfilePayload? _learningProfile;
   List<ReplaySummary> _replays = const <ReplaySummary>[];
   List<ParentQuestionFeedbackItem> _questionFeedback =
       const <ParentQuestionFeedbackItem>[];
@@ -84,11 +87,13 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     }
     try {
       final payload = await _parentService.fetchDashboard();
+      final learningProfile = await _parentService.fetchLearningProfile();
       final replays = await _replayService.fetchParentReplays();
       final feedback = await _parentService.fetchQuestionFeedback();
       if (!mounted) return;
       setState(() {
         _payload = payload;
+        _learningProfile = learningProfile;
         _replays = replays;
         _questionFeedback = feedback;
         _loading = false;
@@ -347,6 +352,10 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
             icon: Icons.lightbulb_outline,
           ),
           const SizedBox(height: AppSpacing.moduleGap),
+          if (_learningProfile != null) ...[
+            LearningProfilePanel(profile: _learningProfile!),
+            const SizedBox(height: AppSpacing.moduleGap),
+          ],
           _DashboardPair(
             left: _SectionGroupCard(
               title: '最近常卡',
@@ -1125,7 +1134,7 @@ class _PosterCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 '${AppBranding.displayName} · 本周学习海报',
                 style: TextStyle(
                   color: AppPalette.primary,
