@@ -972,6 +972,78 @@ git push origin main
   恰恰是同伴最需要的视觉证据。失败分支也要重组 request，保留 image 字段
   + history / standardAnswer / roundBoardSnapshots。
 
+### 第十二轮第五轮 · 砍掉 OCR + 多模型多样性（Qwen × Kimi × DeepSeek 兜底）
+
+- **OCR 文字摘要在第十二轮第四轮 prompt 里又坑了一次**：把 OCR LaTeX/PlainText
+  作为「辅助文字摘要」喂给 Qwen-VL 时，模型会**优先**信文字摘要而不是图片。
+  当 OCR 把上一轮内容误识别成「学生写了两个答案」时，同伴模型直接复读
+  「你写了两遍 X」。结论：**OCR 全砍**——多模态 LLM 直接看图，让它自己
+  生成一段 `boardSummary`（≤30 字）作为白板的精简文字摘要，用于
+  历史拼接 / 持久化。前端不再调 `/ocr/ink`；后端 `routers/ocr.py` 标记
+  deprecated 但仍在线（未来若需要异步精校 OCR 可恢复）。
+- **多模型多样性 = 4 个 Agent 走 3 个 LLM 厂商**：单一模型评估会出现「三个
+  同伴一个口吻 + 同样错误偏好」——比如三人都把"先化简再合并"夸成"高级写法"。
+  最终拓扑：
+  - 小明 / 班长 → **Qwen-VL-Max-latest**（DashScope `ALIYUN_API_KEY`）
+  - 大雄 → **Kimi-K2.6**（DashScope `KIMI_DASHSCOPE_KEY`，model id 必须
+    无前缀的 `kimi-k2.6`，带 `kimi/kimi-k2.6` 前缀返回空）
+  - 李老师 → **Kimi-K2.6 multimodal**（hint + summary）
+  - 兜底 → **DeepSeek-V4-Flash** 纯文本（任一 multimodal 路径失败 / key 缺失
+    时启用）
+- **`peer_assessment_agent._vision_client_for_role(role)`**：按 role 返回
+  `(client, model, provider)` 三元组；provider in {`qwen`, `kimi`}。
+  `daxiong` 在 `KIMI_DASHSCOPE_KEY` 缺失时**自动回退到 Qwen-VL** 仍走
+  multimodal；只有所有 multimodal key 都缺时才退到 DeepSeek 文本。这条
+  fallback 链保证 demo 永远有同伴可用，不会因为漏配一个 key 就挂掉。
+- **Kimi K2.6 在 DashScope 上要先开通**：阿里云控制台 → 模型广场 → Moonshot
+  K2.6 → 开通，否则返回 `BadRequestError: The product is not activated`。
+  开通后 `kimi-k2.6` model id（**无前缀**）支持 multimodal `image_url`，
+  实测带图 < 1s 出 JSON；带前缀 `kimi/kimi-k2.6` 会返回空 choices.content。
+- **Moonshot-Kimi-K2-Instruct 不能用作 vision**：DashScope 接口接受
+  `image_url` 入参不会报错，但实际是**文本模型 hallucinate 图片内容**
+  （实测把 `x+1=5` 编成 `x² + y² = 25`）。必须明确选 `kimi-k2.6` 而不是
+  `kimi-k2-instruct`。
+- **`boardSummary` 替代 OCR 文字进入 history**：所有 multimodal LLM 评估
+  响应里加 `boardSummary: <=30 字>`。后端 `_archive_current_board_snapshot`
+  把第一条非空 `boardSummary` 写进 `_RoundBoardSnapshot.board_summary`，
+  下一轮 prompt 拼装时 `_append_prior_round_boards_section` 走
+  「图像优先 + `boardSummary` 作为标签」路径，**不再**喂 OCR LaTeX/PlainText。
+  `board_latex` / `board_plain_text` 保留为兼容字段（旧数据反序列化），
+  不再进入 prompt。
+- **`teacher_agent._call_teacher_llm` 统一 hint + summary**：先尝试 Kimi-K2.6
+  multimodal（带 `current_board_image_base64`），失败或未配置时回退到
+  DeepSeek 文本。两条路径 prompt 内容一致，仅 user.content 在文本路径是
+  纯 str，在 multimodal 路径是 `[{type:text...}, {type:image_url...}, ...]`。
+- **`generate_peer_assessments` API key 校验放宽**：旧版强制要求
+  `DEEPSEEK_API_KEY`，现在只要 `ALIYUN_API_KEY` / `KIMI_DASHSCOPE_KEY` /
+  `DEEPSEEK_API_KEY` 任一存在就放行；都没配才报 `LectureAgentError`。
+  对应测试 `test_generate_peer_assessments_requires_key` 要 monkeypatch
+  三把 key 全部置空。
+- **`enrichWithOcr` 不要彻底删，做成 noop**：前端 `lecture_page.dart`
+  上百处调用 `_lectureService.enrichWithOcr(...)`；直接删函数会牵动巨量
+  调用方代码。改成「有图就拼回去、没图就 pass-through」的 noop，签名不动，
+  调用方零改动。`OcrService` 类同理保留占位但所有方法都 `return null`，
+  `OcrService.debugBoard` 等 ValueNotifier 还在让 lecture_page debug 面板
+  不崩。
+- **`/ocr/ink` 路由保留**：标 deprecated 但仍可调；目的是给未来「家长端
+  慢速 OCR 精校」「离线作业批改」这类异步场景留口子。现在主流程上 frontend
+  不再 fetch 它。
+- **OpenAI SDK 用 `extra_body` 传 thinking 开关，client 通过 `kimi.py` 集中
+  管**：DashScope 兼容 OpenAI 协议，但 thinking / extra body 等字段需要
+  通过 SDK 的 `extra_body` 透传。`kimi.kimi_dashscope_client` 用
+  `Config.KIMI_DASHSCOPE_KEY` + `Config.KIMI_DASHSCOPE_BASE_URL`
+  （默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`）创建。
+  `Config.KIMI_K2_MODEL` 默认 `kimi-k2.6`。
+- **测试 monkeypatch 要追新签名**：`_vision_client` 改成
+  `_vision_client_for_role(role) -> tuple[client|None, model_id, provider]`,
+  旧测试里 `monkeypatch.setattr("...._vision_client", lambda: ...)`
+  会 `AttributeError: module has no attribute '_vision_client'`。新增
+  `test_vision_client_for_role_uses_qwen_for_xiaoming` /
+  `_uses_kimi_for_daxiong` / `_daxiong_falls_back_to_qwen` 锁死路由逻辑。
+- **前端 `enrichWithOcr` 单测三条**：① 没图时 pass-through 同一引用；
+  ② 有图时复制 request 并写入 boardImageBase64，其它字段不变；③ <200ms 完成
+  不发任何网络请求。锁死「OCR 已 noop」的契约，避免未来误改回去。
+
 ### 账号模型 · 学生 / 家长独立账号（1:1 绑定）
 
 - **`User.role` 与 `parent_password_hash`**：学生 `role=student` 仅账号密码；

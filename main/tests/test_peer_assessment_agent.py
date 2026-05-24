@@ -16,8 +16,14 @@ def _png_b64(seed: int) -> str:
 
 
 def test_generate_peer_assessments_requires_key(monkeypatch) -> None:
+    # 第十二轮第五轮：三家 key（DEEPSEEK / ALIYUN / KIMI_DASHSCOPE）全没配置时
+    # 必须 raise，避免静默走 fake；任一可用即应放行（由实际调用决定具体路径）。
     monkeypatch.setattr("app.services.peer_assessment_agent.Config.DEEPSEEK_API_KEY", "")
     monkeypatch.setattr("app.services.peer_assessment_agent.Config.ALIYUN_API_KEY", "")
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.KIMI_DASHSCOPE_KEY",
+        "",
+    )
     with pytest.raises(LectureAgentError):
         peer_assessment_agent.generate_peer_assessments(
             section_id="pep-g8-down-s16-1",
@@ -187,9 +193,11 @@ def test_assess_one_peer_uses_vision_when_images_available(monkeypatch) -> None:
         def with_options(self, **_kwargs):  # noqa: ANN003
             return self
 
+    # 第十二轮第五轮：按 role 分发模型。小明走 Qwen-VL，所以这里 mock
+    # _vision_client_for_role 返回 (client, qwen_model, "qwen")。
     monkeypatch.setattr(
-        "app.services.peer_assessment_agent._vision_client",
-        lambda: _FakeClient(),
+        "app.services.peer_assessment_agent._vision_client_for_role",
+        lambda role: (_FakeClient(), "qwen-vl-max", "qwen"),
     )
     monkeypatch.setattr(
         "app.services.peer_assessment_agent.Config.QWEN_VL_MODEL",
@@ -266,9 +274,11 @@ def test_assess_one_peer_falls_back_to_text_when_no_aliyun_key(monkeypatch) -> N
         def with_options(self, **_kwargs):  # noqa: ANN003
             return self
 
+    # 第十二轮第五轮：按 role 分发模型。两家 vision key 都缺失时回退
+    # (None, "", "") → 强制走 DeepSeek 文本兜底。
     monkeypatch.setattr(
-        "app.services.peer_assessment_agent._vision_client",
-        lambda: None,
+        "app.services.peer_assessment_agent._vision_client_for_role",
+        lambda role: (None, "", ""),
     )
     monkeypatch.setattr(
         "app.services.peer_assessment_agent.deepseek_client",
@@ -322,3 +332,86 @@ def test_all_understood_sets_completed(monkeypatch) -> None:
     assert result["all_understood"] is True
     assert result["status"] == "completed"
     assert result["mastery_delta"] == 1
+
+
+def test_vision_client_for_role_uses_qwen_for_xiaoming(monkeypatch) -> None:
+    """小明 / 班长按设计走 Qwen-VL（Aliyun key）。"""
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.ALIYUN_API_KEY",
+        "aliyun-key",
+    )
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.KIMI_DASHSCOPE_KEY",
+        "kimi-key",
+    )
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.QWEN_VL_MODEL",
+        "qwen-vl-max-latest",
+    )
+    for role in ("xiaoming", "monitor"):
+        client, model, provider = peer_assessment_agent._vision_client_for_role(role)
+        assert client is not None
+        assert model == "qwen-vl-max-latest"
+        assert provider == "qwen"
+
+
+def test_vision_client_for_role_uses_kimi_for_daxiong(monkeypatch) -> None:
+    """大雄按设计走 Kimi-K2.6（DashScope route）。"""
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.ALIYUN_API_KEY",
+        "aliyun-key",
+    )
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.KIMI_DASHSCOPE_KEY",
+        "kimi-key",
+    )
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.KIMI_K2_MODEL",
+        "kimi-k2.6",
+    )
+    client, model, provider = peer_assessment_agent._vision_client_for_role("daxiong")
+    assert client is not None
+    assert model == "kimi-k2.6"
+    assert provider == "kimi"
+
+
+def test_vision_client_for_role_daxiong_falls_back_to_qwen(monkeypatch) -> None:
+    """大雄想走 Kimi 但 KIMI_DASHSCOPE_KEY 没配，回落到 Qwen 以保住多模态主路径。"""
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.ALIYUN_API_KEY",
+        "aliyun-key",
+    )
+    monkeypatch.setattr(
+        "app.services.peer_assessment_agent.Config.KIMI_DASHSCOPE_KEY",
+        "",
+    )
+    client, model, provider = peer_assessment_agent._vision_client_for_role("daxiong")
+    assert client is not None
+    assert provider == "qwen"
+
+
+def test_parse_assessment_extracts_board_summary() -> None:
+    """multimodal 路径要求 LLM 返回 boardSummary；解析后写进结果用于 history 摘要。"""
+    parsed = peer_assessment_agent._parse_assessment(
+        '{"understood":true,"questionKind":"none","reason":"跟上了",'
+        '"highlightStepIds":["step_1"],"boardSummary":"写了 √12=2√3"}',
+        role="xiaoming",
+        allowed_step_ids=["step_1"],
+        student_speech_text="",
+        steps=[{"stepId": "step_1", "strokeCount": 1}],
+    )
+    assert parsed["board_summary"] == "写了 √12=2√3"
+
+
+def test_parse_assessment_truncates_long_board_summary() -> None:
+    long_summary = "学生" * 50  # 100 字符，超过 _MAX_BOARD_SUMMARY_LEN
+    parsed = peer_assessment_agent._parse_assessment(
+        '{"understood":true,"reason":"跟上了","highlightStepIds":["step_1"],'
+        f'"boardSummary":"{long_summary}"}}',
+        role="xiaoming",
+        allowed_step_ids=["step_1"],
+        student_speech_text="",
+        steps=[{"stepId": "step_1", "strokeCount": 1}],
+    )
+    assert len(parsed["board_summary"]) <= peer_assessment_agent._MAX_BOARD_SUMMARY_LEN + 1  # +1 for "…"
+    assert parsed["board_summary"].endswith("…")

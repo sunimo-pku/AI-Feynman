@@ -11,7 +11,6 @@ import '../config/api_config.dart';
 import '../data/live_lecture_events.dart';
 import '../utils/tts_text.dart';
 import 'auth_service.dart';
-import 'ocr_service.dart';
 import 'segment_audio_buffer.dart';
 
 typedef LiveWebSocketConnector = WebSocketChannel Function(Uri uri);
@@ -36,17 +35,14 @@ class LiveLectureService {
   LiveLectureService({
     http.Client? httpClient,
     AudioPlayer? audioPlayer,
-    OcrService? ocrService,
     LiveWebSocketConnector? webSocketConnector,
   }) : _httpClient = httpClient ?? http.Client(),
        _audioPlayer = audioPlayer ?? AudioPlayer(),
-       _ocrService = ocrService ?? OcrService(),
        _webSocketConnector =
            webSocketConnector ?? ((uri) => WebSocketChannel.connect(uri));
 
   final http.Client _httpClient;
   final AudioPlayer _audioPlayer;
-  final OcrService _ocrService;
   final LiveWebSocketConnector _webSocketConnector;
 
   /// 第十轮：当前题目相关上下文；OCR 仅在 [runOcr] 为 true 时调用。
@@ -448,46 +444,10 @@ class LiveLectureService {
     required List<String> knowledgeTags,
     String boardImageBase64 = '',
   }) async {
-    var boardLatex = '';
-    var boardPlain = '';
-    final totalStrokes = steps.fold<int>(
-      0,
-      (sum, s) => sum + ((s['strokeCount'] as int?) ?? 0),
-    );
-    final hasManualText = steps.any((s) {
-      final latex = (s['latex'] as String? ?? '').trim();
-      final plain = (s['plainText'] as String? ?? '').trim();
-      return latex.isNotEmpty || plain.isNotEmpty;
-    });
-    if (!hasManualText && boardImageBase64.isNotEmpty && sectionId.isNotEmpty) {
-      try {
-        final board = await _ocrService.recognizeBoard(
-          sectionId: sectionId,
-          questionId: questionId,
-          referenceSteps: referenceSteps,
-          boardImageBase64: boardImageBase64,
-          totalStrokeCount: totalStrokes,
-          questionPrompt: questionPrompt,
-          sectionLabel: sectionLabel,
-          knowledgeTags: knowledgeTags,
-          steps: steps
-              .map(
-                (s) => OcrStepInput(
-                  stepId: s['stepId'] as String? ?? '',
-                  strokeCount: (s['strokeCount'] as int?) ?? 0,
-                  boundingBox: s['boundingBox'] as Map<String, dynamic>?,
-                ),
-              )
-              .toList(growable: false),
-        );
-        if (board != null) {
-          boardLatex = board.latex;
-          boardPlain = board.plainText;
-        }
-      } catch (e) {
-        _emitError('OCR 调用失败：$e');
-      }
-    }
+    // 第十二轮第五轮（砍 OCR）：不再调用 /ocr/ink。后端的同伴评估 / 老师收束
+    // 直接读 boardImageBase64 做多模态判断，前端只负责把整板 PNG 透传过去。
+    // referenceSteps / questionPrompt / sectionLabel / knowledgeTags 仍保留
+    // 在签名里以便未来需要做异步落库 OCR 时复用。
     if (!_isConnected ||
         _sessionId != sessionId ||
         _currentQuestionId != questionId) {
@@ -508,8 +468,8 @@ class LiveLectureService {
       LiveClientEvent.inkSnapshot(
         sessionId: sessionId,
         steps: payloadSteps,
-        boardLatex: boardLatex,
-        boardPlainText: boardPlain,
+        boardLatex: '',
+        boardPlainText: '',
         boardImageBase64: boardImageBase64,
       ),
     );
@@ -766,9 +726,6 @@ class LiveLectureService {
     } catch (_) {}
     try {
       _httpClient.close();
-    } catch (_) {}
-    try {
-      _ocrService.close();
     } catch (_) {}
     await _eventsController.close();
     await _connectionController.close();

@@ -220,11 +220,12 @@ def _sanitize_round_board_snapshots(
     *,
     current_round: int,
 ) -> list[dict[str, Any]]:
-    """清洗各轮白板摘要，只保留当前轮次之前的已完成轮。
+    """清洗各轮白板快照，只保留当前轮次之前的已完成轮。
 
-    同伴 Qwen-VL multimodal 路径会从 `board_image_base64` 字段抽出整板 PNG 作为
-    image_url 附件；纯文本 prompt 路径会忽略该字段。**只要 image 存在，
-    即使 OCR 没识别出文字也保留**，这样视觉模型仍能对照看到上一轮白板。
+    第十二轮第五轮（砍 OCR）后：
+    - `board_image_base64` 是 multimodal LLM 的主输入（image_url 附件）；
+    - `board_summary` 是 prompt 文字摘要的主来源（同伴评估时由 multimodal 返回）；
+    - `board_latex` / `board_plain_text` 仍接收但只作为兼容字段，不再渲染进 prompt。
     """
 
     if not snapshots:
@@ -252,7 +253,16 @@ def _sanitize_round_board_snapshots(
         image_b64 = str(
             item.get("boardImageBase64") or item.get("board_image_base64") or ""
         ).strip()
-        if not plain and not latex and stroke_count <= 0 and not image_b64:
+        board_summary = str(
+            item.get("boardSummary") or item.get("board_summary") or ""
+        ).strip()
+        if (
+            not plain
+            and not latex
+            and stroke_count <= 0
+            and not image_b64
+            and not board_summary
+        ):
             continue
         cleaned.append(
             {
@@ -261,6 +271,7 @@ def _sanitize_round_board_snapshots(
                 "board_latex": latex,
                 "stroke_count": max(0, stroke_count),
                 "board_image_base64": image_b64,
+                "board_summary": board_summary,
             }
         )
 
@@ -278,11 +289,11 @@ def _append_prior_round_boards_section(
 ) -> None:
     """在 user prompt 里追加「各轮白板摘要」段。
 
-    - `vision_attached=False`：纯文本路径（teacher/teacher_summary/lecture），
-      渲染 OCR LaTeX 摘要 + 笔画数；
-    - `vision_attached=True`：同伴 Qwen-VL multimodal 路径，仅渲染轮次提示，
-      具体白板内容以**附带的整板 PNG**为准（OCR 文字仅当成额外消歧素材），
-      避免再让 LLM 拿同一段 OCR 文字做语义 diff。
+    第十二轮第五轮（砍 OCR）后：
+    - `vision_attached=True`：图片附件是主证据；文字段仅显示「第 N 轮 · <boardSummary>」
+      作为轮次定位，OCR 字段（board_latex/board_plain_text）不再渲染；
+    - `vision_attached=False`：multimodal key 全部缺失的兜底（DeepSeek 文本路径），
+      此时优先展示 boardSummary，没有 summary 时退到 OCR LaTeX/笔画数。
     """
 
     if not snapshots:
@@ -292,9 +303,9 @@ def _append_prior_round_boards_section(
         lines.append(
             "【各轮白板照片】已作为图片附件随本消息一并发送，按轮次从早到晚标注；"
             "**最后一张图是本轮整板**（学生若未擦板，会**物理上包含**上一轮所有未擦笔迹），"
-            "请优先用图片直接对比「上一轮整板」与「本轮整板」找出本轮真正新增的笔迹，"
-            "再结合下方 OCR 文字摘要做符号消歧。**禁止**把上一轮就已经写过的内容当作"
-            "本轮新增的「第二个答案」追问。"
+            "请**直接看图**对比「上一轮整板」与「本轮整板」找出本轮真正新增的笔迹。"
+            "**禁止**把上一轮就已经写过的内容当作本轮新增的「第二个答案」追问。"
+            "下面每轮附一句话快照，仅供轮次定位："
         )
     else:
         lines.append(
@@ -303,18 +314,23 @@ def _append_prior_round_boards_section(
         )
     for item in snapshots:
         round_index = item["round_index"]
-        plain = item.get("board_plain_text") or ""
-        latex = item.get("board_latex") or ""
+        summary = (item.get("board_summary") or "").strip()
+        plain = (item.get("board_plain_text") or "").strip()
+        latex = (item.get("board_latex") or "").strip()
         strokes = int(item.get("stroke_count") or 0)
         bits: list[str] = []
-        if plain:
-            bits.append(f'说明="{plain}"')
-        if latex:
-            bits.append(f"LaTeX=`{latex}`")
+        if summary:
+            bits.append(f'摘要="{summary}"')
+        if not vision_attached:
+            # 兜底文本路径才渲染 OCR 字段，避免 multimodal 路径双重描述
+            if plain:
+                bits.append(f'说明="{plain}"')
+            if latex:
+                bits.append(f"LaTeX=`{latex}`")
         if strokes:
             bits.append(f"笔画数={strokes}")
         if not bits:
-            bits.append("（仅有手写，无 OCR 文字）")
+            bits.append("（仅有手写，无文字摘要）")
         lines.append(f"- 第 {round_index} 轮：{'；'.join(bits)}")
 
 
@@ -412,18 +428,23 @@ def _build_user_prompt(
         if board_step
         else ""
     )
-    if board_latex or board_plain:
-        if vision_attached:
-            lines.append(
-                f"【本轮（第 {round_index} 轮）白板照片】见 user 消息最后一张图片附件；"
-                "下面是辅助的整板 OCR 文字摘要，**仅供符号消歧**，"
-                "不要用文字 diff 来判断本轮新增内容 —— 请直接对比图片："
-            )
-        else:
-            lines.append(
-                f"【本轮（第 {round_index} 轮）白板整板识别】下列内容来自整板 OCR（不是逐步拆开）；"
-                "描述时用「你白板上写的」："
-            )
+    if vision_attached:
+        # 砍 OCR 后多模态路径不再渲染本轮 OCR LaTeX/plain；学生本轮白板就是
+        # user 消息的最后一张 image_url 附件，让 LLM 直接看图判断。
+        strokes = (board_step or {}).get("strokeCount") or (
+            board_step or {}
+        ).get("stroke_count") or 0
+        lines.append(
+            f"【本轮（第 {round_index} 轮）白板】见 user 消息最后一张图片附件；"
+            "请直接看图判断学生本轮在白板上写了什么，**不要**从其他渠道猜测内容。"
+        )
+        if strokes:
+            lines.append(f"- 总笔画数={strokes}")
+    elif board_latex or board_plain:
+        lines.append(
+            f"【本轮（第 {round_index} 轮）白板整板识别】下列内容来自整板 OCR（不是逐步拆开）；"
+            "描述时用「你白板上写的」："
+        )
         if board_plain:
             lines.append(f'- 整板说明="{board_plain}"')
         if board_latex:

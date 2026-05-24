@@ -41,6 +41,17 @@ def kimi_api_key_configured() -> bool:
     return bool(key) and key != "your_kimi_api_key_here"
 
 
+def kimi_dashscope_api_key_configured() -> bool:
+    """Kimi K2.6 via DashScope route 是否可用。
+
+    走的是阿里云百炼的 OpenAI 兼容端点，model id = `kimi-k2.6`，**真正支持
+    multimodal**（实测能读 image_url，不会幻觉）。供大雄同伴 + 李老师调用。
+    若 KIMI_DASHSCOPE_KEY 未单独配置则回落到 ALIYUN_API_KEY。
+    """
+    key = (Config.KIMI_DASHSCOPE_KEY or "").strip()
+    return bool(key) and key not in _PLACEHOLDER_API_KEYS
+
+
 kimi_client = OpenAI(
     api_key=_api_key_for_client(Config.KIMI_API_KEY),
     base_url=Config.KIMI_BASE_URL,
@@ -48,6 +59,12 @@ kimi_client = OpenAI(
 deepseek_client = OpenAI(
     api_key=_api_key_for_client(resolve_deepseek_api_key()),
     base_url=Config.DEEPSEEK_BASE_URL,
+)
+# Kimi K2.6 via DashScope（multimodal 路径，与 deepseek_client / 同 base_url
+# 但 model id 不同）。共用 _api_key_for_client 兜底避免空 key crash。
+kimi_dashscope_client = OpenAI(
+    api_key=_api_key_for_client(Config.KIMI_DASHSCOPE_KEY),
+    base_url=Config.KIMI_DASHSCOPE_BASE_URL,
 )
 
 

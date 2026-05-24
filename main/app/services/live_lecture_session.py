@@ -126,21 +126,33 @@ class _Stroke:
 
 @dataclass
 class _RoundBoardSnapshot:
+    """每轮归档的整板快照。
+
+    第十二轮第五轮（砍 OCR）后：
+    - `board_latex` / `board_plain_text` 仍允许接收（来自客户端兼容字段），
+      但**所有 LLM prompt 不再读这两个字段**，全靠 `board_image_base64`；
+    - `board_summary` 由同伴 multimodal 评估返回（≤30 字描述本轮新增内容），
+      取代 OCR 文本作为下一轮 history / 落库的文字摘要来源。
+    """
+
     round_index: int
-    board_latex: str = ""
-    board_plain_text: str = ""
+    board_latex: str = ""  # 兼容字段，已不参与 LLM prompt
+    board_plain_text: str = ""  # 兼容字段，已不参与 LLM prompt
     stroke_count: int = 0
     board_image_base64: str = ""
+    board_summary: str = ""
 
     def to_prompt_dict(self) -> dict[str, Any]:
-        # boardImageBase64 仅在同伴 multimodal 路径里被抽出来作为 image_url
-        # 附件；纯文本 prompt 渲染时会被忽略，不会污染 LaTeX 摘要段。
+        # boardImageBase64 → multimodal LLM 的 image_url 附件
+        # boardSummary    → prompt 里渲染成 "第 N 轮：<summary>"
+        # boardLatex / boardPlainText 不再渲染，保留字段仅为持久化兼容
         return {
             "roundIndex": self.round_index,
             "boardLatex": self.board_latex,
             "boardPlainText": self.board_plain_text,
             "strokeCount": self.stroke_count,
             "boardImageBase64": self.board_image_base64,
+            "boardSummary": self.board_summary,
         }
 
 
@@ -207,12 +219,21 @@ class LiveLectureSession:
             if snap.round_index < current
         ]
 
-    def _archive_current_board_snapshot(self, completed_round: int) -> None:
+    def _archive_current_board_snapshot(
+        self,
+        completed_round: int,
+        *,
+        board_summary: str = "",
+    ) -> None:
         total_strokes = sum(max(0, s.stroke_count) for s in self.latest_steps)
+        # 砍 OCR 后归档判定改为「有笔画 / 有图片 / 有 boardSummary」三选一即可。
+        # 旧 board_latex/plain_text 字段仅作为持久化兼容，不影响归档决定。
         has_board = bool(
-            self.board_latex
+            total_strokes > 0
+            or self.pending_board_image_b64
+            or board_summary
+            or self.board_latex
             or self.board_plain_text
-            or total_strokes > 0
         )
         if not has_board:
             self.pending_board_image_b64 = ""
@@ -223,6 +244,7 @@ class LiveLectureSession:
             board_plain_text=self.board_plain_text,
             stroke_count=total_strokes,
             board_image_base64=self.pending_board_image_b64,
+            board_summary=board_summary,
         )
         self.round_board_snapshots.append(snap)
         if len(self.round_board_snapshots) > _ROUND_BOARD_KEEP_LAST:
@@ -231,10 +253,11 @@ class LiveLectureSession:
             ]
         self.pending_board_image_b64 = ""
         logger.info(
-            "[live-session] board archived round=%d strokes=%d has_image=%s",
+            "[live-session] board archived round=%d strokes=%d has_image=%s summary=%r",
             snap.round_index,
             snap.stroke_count,
             "yes" if snap.board_image_base64 else "no",
+            snap.board_summary,
         )
 
     # ============================================================== #
@@ -715,7 +738,18 @@ class LiveLectureSession:
         if len(self.history) > _HISTORY_KEEP_LAST:
             del self.history[: len(self.history) - _HISTORY_KEEP_LAST]
 
-        self._archive_current_board_snapshot(completed_round)
+        # 砍 OCR 后 boardSummary 由同伴 multimodal 评估返回，取第一个非空的写入归档
+        # （三个同伴看的是同一张图，描述差不多；取首个非空即够用于 history / 落库）。
+        board_summary = ""
+        for item in assessments:
+            candidate = str(item.get("board_summary") or "").strip()
+            if candidate:
+                board_summary = candidate
+                break
+        self._archive_current_board_snapshot(
+            completed_round,
+            board_summary=board_summary,
+        )
         self.round_index += 1
         self.last_status = status
         self.last_mastery_delta = mastery_delta
@@ -894,6 +928,7 @@ class LiveLectureSession:
         steps_payload = self._llm_steps_payload()
         speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
+        current_board_image = self.pending_board_image_b64
         return await loop.run_in_executor(
             None,
             lambda: teacher_summary_fn(
@@ -907,6 +942,7 @@ class LiveLectureSession:
                 peer_assessments=peer_assessments,
                 standard_answer=self.standard_answer,
                 round_board_snapshots=self._prior_round_board_snapshots_for_prompt(),
+                current_board_image_base64=current_board_image,
             ),
         )
 
@@ -1240,6 +1276,7 @@ class LiveLectureSession:
         steps_payload = self._llm_steps_payload()
         speech = self._current_round_speech()
         loop = asyncio.get_event_loop()
+        current_board_image = self.pending_board_image_b64
         return await loop.run_in_executor(
             None,
             lambda: teacher_hint_fn(
@@ -1251,6 +1288,7 @@ class LiveLectureSession:
                 round_index=self._assessment_round_index(),
                 history=list(self.history),
                 round_board_snapshots=self._prior_round_board_snapshots_for_prompt(),
+                current_board_image_base64=current_board_image,
             ),
         )
 
@@ -1430,25 +1468,19 @@ class LiveLectureSession:
             })
 
     def _append_student_history_snapshot(self) -> None:
+        """把学生本轮的口述 + 笔画粗略摘要写进 history。
+
+        砍 OCR 后这里不再渲染 board_latex / board_plain_text；本轮白板的语义
+        描述由同伴 multimodal 评估返回的 `boardSummary` 在 `_archive_current_board_snapshot`
+        中写入 `round_board_snapshots`，下一轮 LLM 通过 `prior_boards` 段读到。
+        """
         speech = self._current_round_speech()
         steps_summary_bits: list[str] = []
-        if self.board_latex or self.board_plain_text:
-            board_bits: list[str] = []
-            if self.board_plain_text:
-                board_bits.append(self.board_plain_text)
-            if self.board_latex:
-                board_bits.append(f"`{self.board_latex}`")
-            steps_summary_bits.append("整板: " + "; ".join(board_bits))
-        else:
-            for s in self.latest_steps:
-                descr_parts: list[str] = []
-                if s.plain_text:
-                    descr_parts.append(s.plain_text)
-                if s.latex:
-                    descr_parts.append(f"`{s.latex}`")
-                if not descr_parts:
-                    descr_parts.append(f"{s.stroke_count} 笔")
-                steps_summary_bits.append(f"{s.step_id}: " + "; ".join(descr_parts))
+        total_strokes = sum(max(0, s.stroke_count) for s in self.latest_steps)
+        if total_strokes > 0:
+            steps_summary_bits.append(
+                f"白板共 {total_strokes} 笔，详情见各轮整板照片"
+            )
         parts: list[str] = []
         if speech:
             parts.append(speech)
@@ -1551,6 +1583,12 @@ def _sanitize_restored_board_snapshots(value: Any) -> list[_RoundBoardSnapshot]:
                         default=0,
                     ),
                 ),
+                board_image_base64=str(
+                    item.get("boardImageBase64") or item.get("board_image_base64") or ""
+                ),
+                board_summary=str(
+                    item.get("boardSummary") or item.get("board_summary") or ""
+                )[:200],
             )
         )
     out.sort(key=lambda x: x.round_index)

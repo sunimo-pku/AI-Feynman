@@ -125,7 +125,15 @@ API 文档：`http://127.0.0.1:8001/docs`
   都会显式报错；`/lecture/submit` 返回 502，实时讲题发送 WebSocket `error` 事件。
   不再用 Mock 追问或老师通用文案伪装成功。
 - 全册 90 节均可提交讲题，并进入同一套多 Agent 追问链路。16.1 / 16.2 / 16.3 目前额外有本地知识库增强；其余章节同样由 LLM 根据题面、学生口述和手写步骤追问。
-- 同伴评估（小明 / 大雄 / 班长）走 **Qwen-VL multimodal**（默认 `qwen-vl-max-latest`），把每轮整板照片连同 OCR 文字一起发给模型，让它**直接看图**对比"上一轮已写"与"本轮新增"，避免不擦白板续写时被误判为「写了两个答案」。`ALIYUN_API_KEY` 缺失或 Qwen-VL 调用失败时自动回退 DeepSeek 纯文本。李老师收束 / 讲题剧本仍走 DeepSeek-V4-Flash 文本。
+- 同伴评估 + 李老师走 **多模型多样性 + multimodal**（第十二轮第五轮）：
+  小明 / 班长 → **Qwen-VL-Max-latest**（DashScope `ALIYUN_API_KEY`），
+  大雄 → **Kimi-K2.6**（DashScope `KIMI_DASHSCOPE_KEY`，model id `kimi-k2.6` 无前缀），
+  李老师 hint + summary → **Kimi-K2.6 multimodal**。任一 multimodal key 缺失
+  或调用失败时**自动回退到 DeepSeek-V4-Flash 纯文本**，保证讲题闭环不挂。
+- **OCR 已退出讲题主链路**（第十二轮第五轮）：多模态 LLM 直接读
+  `boardImageBase64`，并在响应里输出 `boardSummary`（≤30 字）作为白板的
+  精简文字摘要。`/ocr/ink` 路由仍在线但 deprecated；前端
+  `enrichWithOcr` 已 noop，只负责把 `boardImageBase64` 拼回请求。
 - 旧客户端（不传 `history` / `roundIndex`）继续兼容：默认 `roundIndex=1`、`history=[]`。
 
 ```bash
@@ -373,8 +381,10 @@ Android 权限：`RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` / `WAKE_LOCK`
 - 每日挑战与晶石：`GET /bounty/today` 登录后返回今日 3 道找错题与完成状态；`POST /bounty/submit` 按真实圈选 IoU + 讲解评分幂等发放晶石/战力；`GET /bounty/history` 可回看挑战记录；商城接口为 `GET /shop/catalog`、`POST /shop/redeem`、`GET /shop/orders`。
 - 回放与家长端：`POST /replays`（学生）、`GET /parent/replays`、`GET /replays/{sessionId}`（家长或学生）、`GET /parent/children`（返回唯一绑定孩子）。
 - 识题与知识库：`POST /questions/upload-image`、`POST /knowledge/search`。
-- OCR/HWR：`POST /ocr/ink` 支持 `mode=rule|hwr`；`hwr` 在配置 `ALIYUN_API_KEY`
-  时对 step PNG 调 Qwen-VL，响应 `source=qwen_vl` + `confidence`；失败不编造。
+- OCR/HWR（**已退出讲题主链路**，第十二轮第五轮）：`POST /ocr/ink` 仍在线
+  但 deprecated，前端 `enrichWithOcr` 不再 fetch。讲题主链路改为多模态 LLM
+  直接看图 + 输出 `boardSummary`。该路由保留是为了未来「家长端慢速精校」
+  等异步场景。
 
 Flutter 侧同步完成：
 
@@ -393,6 +403,12 @@ Flutter 侧同步完成：
 - 新增/接线 Flutter 页面：`DailyChallengePage`、`ShopPage`（实物文具兑换）、`LeaderboardPage`、`PhotoQuestionPage`、`PowerProfilePage`、`StudentProfileEditPage`、`ReplayPage`。
 - 回放闭环：`ReplayService` 记录 live 讲题的音频片段、白板时间轴和气泡时间轴，**学生账号**登录后 `POST /replays`；**家长账号**在 dashboard「精彩回放」可点进 `ReplayPage`。
 - 家长账号模型：`User.role` 为 `student` | `parent`；家长注册时绑定唯一孩子用户名，登录需账号密码 + 家长密码；`/parent/*` 仅家长可访问，自动展示绑定孩子学习数据。
+- 可解释长期学习画像：`GET /learning/profile-insights` 与
+  `GET /parent/profile-insights` 先从掌握度、讲题回顾错因、未完成会话中实时聚合
+  `weakKnowledge / learningTraits / strengths / nextActions` 规则骨架，再在
+  DeepSeek 可用时用 AI 在证据范围内提炼 `aiSummary` 与老师式策略建议；
+  LLM 失败自动降级为规则画像。学生端「我的」展示画像预览，家长 dashboard
+  展示完整画像卡。
 - 数据化题库与知识库：`scripts/generate_section_questions.py` 生成 `data/questions/pep-junior-math-questions.json`（90 节 × 基础/巩固/挑战 3 题，共 270 题），几何/坐标/函数/统计类题附带 SVG 题图；`data/knowledge/pep-g8-down-ch16_chunks.json` 由 `knowledge_index` 注入讲题 prompt。
 - HWR / OCR 可观测：白板 step payload 带 `imageBase64`；`DEBUG_OCR=1` 时讲题页展示 `stepId | latex | source | confidence | mode`。
 - 排行榜周结算：`scripts/settle_leaderboard.py` 幂等写入 `LeaderboardSnapshot`，`GET /leaderboard` 优先读 snapshot，缺失时回退实时聚合。

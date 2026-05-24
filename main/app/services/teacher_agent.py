@@ -1,16 +1,29 @@
-"""独立教师 Agent：仅在学生主动请求「提示」时发言。
+"""独立教师 Agent：李老师角色。
 
-与同伴追问 Agent（`lecture_agent`）分离 API 与 System Prompt，避免角色混用。
+- 学生主动「需要提示」 → `generate_teacher_hint`
+- 同伴评估全员听懂时 → `generate_teacher_summary`（含 approved 数学复核）
+
+第十二轮第五轮（砍 OCR + 多模型多样性）：李老师切到 Kimi-K2.6 multimodal
+（DashScope route），能**直接看到本轮整板照片 + 历史轮整板照片**做数学复核，
+不再依赖 OCR LaTeX 文字。与同伴评估里大雄共用 Kimi，形成「Kimi 老师 + Kimi 大雄
++ Qwen 小明 / 班长」的多样性组合。DeepSeek 文本路径保留作 fallback。
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from app.config import Config
-from app.services.kimi import deepseek_api_key_configured, deepseek_client, deepseek_thinking_disabled_extra_body
+from app.services.kimi import (
+    deepseek_api_key_configured,
+    deepseek_client,
+    deepseek_thinking_disabled_extra_body,
+    kimi_dashscope_api_key_configured,
+    kimi_dashscope_client,
+)
 from app.services.lecture_agent import (
     LectureAgentError,
     _build_user_prompt,
@@ -18,14 +31,22 @@ from app.services.lecture_agent import (
     _sanitize_round_board_snapshots,
     _strip_markdown_fence,
 )
+from app.services.peer_assessment_agent import (
+    _VISION_MAX_IMAGE_B64_LEN,
+    _VISION_MAX_IMAGES,
+    _build_vision_user_content,
+    _collect_board_images,
+)
 from app.services.question_bank import resolve_standard_answer
 
 logger = logging.getLogger(__name__)
 
-_TEACHER_MODEL = Config.DEEPSEEK_MODEL
+# 文本兜底用 DeepSeek-V4-Flash；multimodal 主路径用 Kimi-K2.6（via DashScope）。
+_TEACHER_FALLBACK_MODEL = Config.DEEPSEEK_MODEL
+_TEACHER_VISION_MODEL = Config.KIMI_K2_MODEL
 _TEACHER_TEMPERATURE = 0.3
-_TEACHER_EXTRA_BODY: dict[str, Any] = {}  # 见 deepseek_thinking_disabled_extra_body()
 _LLM_TIMEOUT_SECONDS = 6.0
+_VISION_TIMEOUT_SECONDS = 12.0
 _MAX_TEXT_LEN = 220
 _MAX_SUMMARY_TEXT_LEN = 140
 _MAX_METHOD_SUMMARY_LEN = 180
@@ -55,6 +76,97 @@ _TEACHER_SYSTEM_PROMPT = """你是初中数学讲题课的李老师。
 """
 
 
+def _call_teacher_llm(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    board_images: list[dict[str, Any]],
+    max_tokens: int,
+    label: str,
+) -> str:
+    """统一李老师 LLM 调用：优先 Kimi-K2.6 multimodal，失败回 DeepSeek 文本。
+
+    Kimi 在 DashScope 上能真正读 image_url（实测，scripts/test_kimi_vision.py），
+    所以老师也能直接看图独立复核学生白板内容，不需要任何 OCR 文字。
+    """
+    use_vision = (
+        bool(board_images)
+        and kimi_dashscope_api_key_configured()
+    )
+    t0 = time.monotonic()
+    raw = ""
+    if use_vision:
+        user_content = _build_vision_user_content(
+            text_prompt=user_prompt,
+            board_images=board_images,
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+        try:
+            resp = (
+                kimi_dashscope_client.with_options(max_retries=0)
+                .chat.completions.create(
+                    model=_TEACHER_VISION_MODEL,
+                    messages=messages,
+                    temperature=_TEACHER_TEMPERATURE,
+                    max_tokens=max_tokens,
+                    response_format={"type": "json_object"},
+                    timeout=_VISION_TIMEOUT_SECONDS,
+                )
+            )
+            raw = (resp.choices[0].message.content or "") if resp.choices else ""
+        except Exception as e:  # noqa: BLE001
+            logger.exception(
+                "[teacher-agent] %s kimi vision failed: %s (fallback to text)",
+                label,
+                e,
+            )
+            raw = ""
+        if raw:
+            logger.info(
+                "[teacher-agent] %s kimi-vision ms=%.0f images=%d",
+                label,
+                (time.monotonic() - t0) * 1000,
+                len(board_images),
+            )
+            return raw
+
+    # text fallback
+    if not deepseek_api_key_configured():
+        raise LectureAgentError(
+            "no LLM key configured for teacher (need KIMI_DASHSCOPE_KEY or DEEPSEEK_API_KEY)"
+        )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    try:
+        resp = (
+            deepseek_client.with_options(max_retries=0)
+            .chat.completions.create(
+                model=_TEACHER_FALLBACK_MODEL,
+                messages=messages,
+                temperature=_TEACHER_TEMPERATURE,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+                timeout=_LLM_TIMEOUT_SECONDS,
+                extra_body=deepseek_thinking_disabled_extra_body(),
+            )
+        )
+        raw = (resp.choices[0].message.content or "") if resp.choices else ""
+    except Exception as e:  # noqa: BLE001
+        logger.exception("[teacher-agent] %s deepseek fallback failed: %s", label, e)
+        raise LectureAgentError(f"Teacher {label} LLM failed: {e}") from e
+    logger.info(
+        "[teacher-agent] %s deepseek-fallback ms=%.0f",
+        label,
+        (time.monotonic() - t0) * 1000,
+    )
+    return raw
+
+
 def generate_teacher_hint(
     *,
     section_id: str,
@@ -65,8 +177,12 @@ def generate_teacher_hint(
     round_index: int = 1,
     history: list[dict[str, Any]] | None = None,
     round_board_snapshots: list[dict[str, Any]] | None = None,
+    current_board_image_base64: str = "",
 ) -> dict[str, Any]:
-    """生成一条李老师提示 turn。"""
+    """生成一条李老师提示 turn。
+
+    `current_board_image_base64`：本轮整板 PNG，传给 Kimi-K2.6 看图复核。
+    """
 
     allowed_step_ids = [
         str(s.get("stepId") or s.get("step_id") or "").strip() for s in steps
@@ -79,9 +195,11 @@ def generate_teacher_hint(
         round_board_snapshots,
         current_round=safe_round,
     )
-
-    if not deepseek_api_key_configured():
-        raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
+    board_images = _collect_board_images(
+        prior_boards,
+        current_board_image_base64,
+        current_round=safe_round,
+    )
 
     context_prompt = _build_user_prompt(
         section_id=section_id,
@@ -94,6 +212,7 @@ def generate_teacher_hint(
         history=cleaned_history,
         purpose="teacher",
         round_board_snapshots=prior_boards,
+        vision_attached=bool(board_images),
     )
     user_prompt = (
         "【学生请求】学生刚刚主动点击了「需要提示」。请给出一条脚手架式提示，"
@@ -101,26 +220,13 @@ def generate_teacher_hint(
         f"{context_prompt}\n\n"
         "请只输出一个 JSON 对象，符合上面的输出格式。"
     )
-
-    messages = [
-        {"role": "system", "content": _TEACHER_SYSTEM_PROMPT},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    try:
-        resp = deepseek_client.with_options(max_retries=0).chat.completions.create(
-            model=_TEACHER_MODEL,
-            messages=messages,
-            temperature=_TEACHER_TEMPERATURE,
-            max_tokens=600,
-            response_format={"type": "json_object"},
-            timeout=_LLM_TIMEOUT_SECONDS,
-            extra_body=deepseek_thinking_disabled_extra_body(),
-        )
-        raw = (resp.choices[0].message.content or "") if resp.choices else ""
-    except Exception as e:  # noqa: BLE001
-        logger.exception("[teacher-agent] LLM 调用异常：%s", e)
-        raise LectureAgentError(f"Teacher hint LLM request failed: {e}") from e
+    raw = _call_teacher_llm(
+        system_prompt=_TEACHER_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        board_images=board_images,
+        max_tokens=600,
+        label="hint",
+    )
 
     try:
         payload = json.loads(_strip_markdown_fence(raw or ""))
@@ -267,6 +373,7 @@ def generate_teacher_summary(
     peer_assessments: list[dict[str, Any]] | None = None,
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
+    current_board_image_base64: str = "",
 ) -> dict[str, Any]:
     """三名同伴都听懂时，李老师收束小结。"""
 
@@ -280,9 +387,11 @@ def generate_teacher_summary(
         round_board_snapshots,
         current_round=safe_round,
     )
-
-    if not deepseek_api_key_configured():
-        raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
+    board_images = _collect_board_images(
+        prior_boards,
+        current_board_image_base64,
+        current_round=safe_round,
+    )
 
     std = resolve_standard_answer(
         question_id=question_id,
@@ -300,6 +409,7 @@ def generate_teacher_summary(
         purpose="teacher_summary",
         standard_answer=std,
         round_board_snapshots=prior_boards,
+        vision_attached=bool(board_images),
     )
     peer_ack = _peer_understood_ack(peer_assessments)
 
@@ -310,24 +420,13 @@ def generate_teacher_summary(
         f"{context_prompt}\n\n"
         "请只输出一个 JSON 对象（含 approved 字段）。"
     )
-    messages = [
-        {"role": "system", "content": _TEACHER_SUMMARY_PROMPT},
-        {"role": "user", "content": user_prompt},
-    ]
-    try:
-        resp = deepseek_client.with_options(max_retries=0).chat.completions.create(
-            model=_TEACHER_MODEL,
-            messages=messages,
-            temperature=_TEACHER_TEMPERATURE,
-            max_tokens=700,
-            response_format={"type": "json_object"},
-            timeout=_LLM_TIMEOUT_SECONDS,
-            extra_body=deepseek_thinking_disabled_extra_body(),
-        )
-        raw = (resp.choices[0].message.content or "") if resp.choices else ""
-    except Exception as e:  # noqa: BLE001
-        logger.exception("[teacher-agent] summary LLM failed: %s", e)
-        raise LectureAgentError(f"Teacher summary LLM failed: {e}") from e
+    raw = _call_teacher_llm(
+        system_prompt=_TEACHER_SUMMARY_PROMPT,
+        user_prompt=user_prompt,
+        board_images=board_images,
+        max_tokens=700,
+        label="summary",
+    )
 
     try:
         payload = json.loads(_strip_markdown_fence(raw or ""))

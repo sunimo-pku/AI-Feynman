@@ -108,13 +108,20 @@ class LectureHistoryItem(BaseModel):
 
 
 class RoundBoardSnapshotItem(BaseModel):
-    """某一轮讲题结束时的白板 OCR 摘要（可选附带 PNG base64 供回放）。"""
+    """某一轮讲题结束时的整板快照。
+
+    第十二轮第五轮（砍 OCR）后：
+    - `boardImageBase64` 是 multimodal LLM 的主输入（直接看图判断新旧笔迹）；
+    - `boardSummary` 由同伴评估返回（≤30 字），是 history / 落库文字摘要的主来源；
+    - `boardLatex` / `boardPlainText` 保留为旧客户端兼容字段，新链路不再渲染进 prompt。
+    """
 
     round_index: int = Field(..., alias="roundIndex", ge=1, le=20)
     board_latex: str = Field("", alias="boardLatex", max_length=4000)
     board_plain_text: str = Field("", alias="boardPlainText", max_length=4000)
     stroke_count: int = Field(0, alias="strokeCount", ge=0, le=10000)
     board_image_base64: str = Field("", alias="boardImageBase64", max_length=2_000_000)
+    board_summary: str = Field("", alias="boardSummary", max_length=200)
 
     model_config = {
         "populate_by_name": True,
@@ -139,9 +146,9 @@ class LectureSubmitRequest(BaseModel):
         default_factory=list,
         alias="roundBoardSnapshots",
     )
-    # 本轮整板 PNG（base64）。第十二轮第四轮后同伴评估走 Qwen-VL multimodal，
-    # 客户端可以把整板截图带上来给同伴**直接看图**，避免 OCR 文字 diff 把
-    # 「上一轮已写的」与「本轮新增的」混为一谈。旧客户端可不传，留空即走纯文本。
+    # 本轮整板 PNG（base64）。第十二轮第五轮后所有 multimodal LLM（同伴 +
+    # 老师）都**直接看图**判断本轮内容，不再依赖 OCR 文字。空字符串时回退到
+    # DeepSeek 文本路径（兜底）。
     board_image_base64: str = Field(
         "",
         alias="boardImageBase64",
@@ -378,6 +385,7 @@ async def submit_lecture(
             "boardPlainText": s.board_plain_text,
             "strokeCount": s.stroke_count,
             "boardImageBase64": s.board_image_base64,
+            "boardSummary": s.board_summary,
         }
         for s in req.round_board_snapshots
     ]
@@ -408,6 +416,7 @@ async def submit_lecture(
                 peer_assessments=result.get("assessments"),
                 standard_answer=req.standard_answer,
                 round_board_snapshots=round_board_payload,
+                current_board_image_base64=req.board_image_base64,
             )
             result = apply_teacher_completion_gate(result, teacher_summary)
     except LectureAgentError as e:
@@ -501,6 +510,8 @@ async def request_teacher_hint(
             "boardLatex": s.board_latex,
             "boardPlainText": s.board_plain_text,
             "strokeCount": s.stroke_count,
+            "boardImageBase64": s.board_image_base64,
+            "boardSummary": s.board_summary,
         }
         for s in req.round_board_snapshots
     ]
@@ -515,6 +526,7 @@ async def request_teacher_hint(
             round_index=req.round_index,
             history=history_payload,
             round_board_snapshots=round_board_payload,
+            current_board_image_base64=req.board_image_base64,
         )
     except LectureAgentError as e:
         logger.exception(

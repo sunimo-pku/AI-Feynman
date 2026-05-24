@@ -1,12 +1,20 @@
 """白板 OCR / Ink Parser（整板 Qwen-VL HWR）。
 
-V1 白板识别：**整板 PNG 一次 OCR**，不按 step 裁切多次识别。
-`referenceSteps` 仅作 Qwen-VL prompt 里的题型对照 hint，**不得**写入学生字段。
+⚠️ 已在第十二轮第五轮 **退出讲题主链路**：
+- 前端 `enrichWithOcr` 不再调用 `/ocr/ink`；
+- 实时讲题 `lecture_page.dart` 也不再调；
+- 所有 multimodal LLM（同伴 / 老师）直接看整板 PNG（`boardImageBase64`），
+  文字摘要由同伴评估返回的 `boardSummary` 提供。
 
+仍保留本路由是为了：
+- 旧客户端兼容 / debug 面板可视化白板识别效果；
+- 未来若想做异步落库的高精度 OCR（无关讲题闭环延迟）仍可复用。
+
+实现细节：
 - `mode=rule`（默认）：只上报 step 结构（stepId / strokeCount），识别字段留空；
 - `mode=hwr`：有 `boardImageBase64` + `ALIYUN_API_KEY` 时整板走 Qwen-VL；
   失败或未配置时 `board` 留空，不拿 referenceSteps 凑数；
-- 永远返回 200，失败时 latex/plainText 留空，调用方继续走「笔画数 + 音频」。
+- 永远返回 200，失败时 latex/plainText 留空。
 """
 
 from __future__ import annotations

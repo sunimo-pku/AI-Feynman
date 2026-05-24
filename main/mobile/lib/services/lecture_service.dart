@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../data/lecture_models.dart';
 import 'auth_service.dart';
-import 'ocr_service.dart';
 
 /// 调用 `POST /lecture/submit` 的客户端封装。
 ///
@@ -20,9 +19,7 @@ class LectureService {
   LectureService({
     http.Client? client,
     Duration? timeout,
-    OcrService? ocrService,
   }) : _client = client ?? http.Client(),
-       _ocrService = ocrService ?? OcrService(),
        // `/lecture/submit` 走 DeepSeek-V4-Flash 非思考模式的完整 JSON 路径；
        // 实时讲题优先走 `/lecture/live` 流式路径。后端层自己有 6s timeout。
        // 前端 timeout 给 12s，严格大于后端，确保后端能先返回明确错误，
@@ -31,13 +28,12 @@ class LectureService {
 
   final http.Client _client;
   final Duration _timeout;
-  final OcrService _ocrService;
 
-  /// 第十轮：在提交前先调一次 /ocr/ink，把空 latex / plainText 的步骤补上。
+  /// 把 `boardImageBase64` 附到讲题请求上（替代旧 OCR 步骤）。
   ///
-  /// `referenceSteps` 来自当前题目（[LectureQuestion.referenceSteps]），
-  /// 调用方按 `LecturePage._onSubmit` 传入。OCR 失败时返回原 request,
-  /// 不影响主提交。
+  /// 第十二轮第五轮（砍 OCR）：不再调用 `/ocr/ink`。所有 multimodal LLM
+  /// （同伴 + 老师）都直接读 `boardImageBase64`，没有图就走纯文本兜底。
+  /// 该方法仅做字段拼装，保留入参签名是为了让调用方代码不必同步改动。
   Future<LectureSubmitRequest> enrichWithOcr(
     LectureSubmitRequest request, {
     required List<String> referenceSteps,
@@ -46,70 +42,13 @@ class LectureService {
     List<String> knowledgeTags = const <String>[],
   }) async {
     if (boardImageBase64.isEmpty) return request;
-    final totalStrokes = request.steps.fold<int>(
-      0,
-      (sum, s) => sum + s.strokeCount,
-    );
-    final board = await _ocrService.recognizeBoard(
-      sectionId: request.sectionId,
-      questionId: request.questionId,
-      referenceSteps: referenceSteps,
-      boardImageBase64: boardImageBase64,
-      totalStrokeCount: totalStrokes,
-      questionPrompt: request.questionPrompt,
-      sectionLabel: sectionLabel,
-      knowledgeTags: knowledgeTags,
-      steps: request.steps
-          .map(
-            (s) => OcrStepInput(
-              stepId: s.stepId,
-              strokeCount: s.strokeCount,
-              boundingBox: {
-                'x': s.boundingBox.x,
-                'y': s.boundingBox.y,
-                'width': s.boundingBox.width,
-                'height': s.boundingBox.height,
-              },
-            ),
-          )
-          .toList(growable: false),
-    );
-    if (board == null ||
-        (board.latex.trim().isEmpty && board.plainText.trim().isEmpty)) {
-      // OCR 没出文字也仍保留 boardImageBase64：同伴 Qwen-VL 评估可以直接看图，
-      // 不需要等 OCR 文字。但要保留原 steps（含笔画结构）+ 历史 / 标准答案。
-      return LectureSubmitRequest(
-        sectionId: request.sectionId,
-        questionId: request.questionId,
-        questionPrompt: request.questionPrompt,
-        standardAnswer: request.standardAnswer,
-        studentSpeechText: request.studentSpeechText,
-        steps: request.steps,
-        roundIndex: request.roundIndex,
-        history: request.history,
-        roundBoardSnapshots: request.roundBoardSnapshots,
-        boardImageBase64: boardImageBase64,
-      );
-    }
-    final bb =
-        request.steps.isNotEmpty
-            ? request.steps.first.boundingBox
-            : const BoundingBoxPayload(x: 0, y: 0, width: 1, height: 1);
     return LectureSubmitRequest(
       sectionId: request.sectionId,
       questionId: request.questionId,
       questionPrompt: request.questionPrompt,
       standardAnswer: request.standardAnswer,
       studentSpeechText: request.studentSpeechText,
-      steps: [
-        LectureStepPayload(
-          stepId: 'board',
-          latex: board.latex,
-          plainText: board.plainText,
-          strokeCount: totalStrokes,
-          boundingBox: bb,
-        ),
-      ],
+      steps: request.steps,
       roundIndex: request.roundIndex,
       history: request.history,
       roundBoardSnapshots: request.roundBoardSnapshots,
@@ -214,7 +153,6 @@ class LectureService {
 
   void close() {
     _client.close();
-    _ocrService.close();
   }
 
   static String _extractDetail(List<int> bodyBytes) {

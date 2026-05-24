@@ -3,10 +3,16 @@
 P1：学生每提交一轮讲解，三人并行评估「听懂 / 没听懂」及理由。
 全员听懂时由 `teacher_agent.generate_teacher_summary` 收束（在路由层触发）。
 
-第十二轮第四轮（Bug Fix · 多轮白板辨识）：同伴评估已切到 Qwen-VL multimodal，
-让三个同伴**直接看到每一轮的整板照片**（按轮次标注），从图片层面对比上一轮 vs
-本轮新增的笔迹。原因见 AGENTS.md「踩坑记录 · 同伴看不出哪些是本轮新增白板」。
-原 DeepSeek-V4-Flash 纯文本路径作为 fallback 保留（ALIYUN_API_KEY 缺失时）。
+第十二轮第五轮（砍 OCR + 多模型多样性）：
+- 同伴**全员走 multimodal**，直接看每轮整板照片对比新旧笔迹，OCR 文字
+  彻底不再作为同伴的视觉证据来源；
+- **按 role 分发模型**保持多样性：
+  - `xiaoming`、`monitor` → Qwen-VL-Max-latest（验证型追问，更稳重）
+  - `daxiong` → Kimi-K2.6 via DashScope（拓展型追问，更有变化）
+- 每条评估额外返回 `boardSummary` 字段（≤30 字描述本轮新增内容），供
+  `live_lecture_session` 写进 `history` 与回放，**完全取代** OCR 文字摘要；
+- 仅当对应 multimodal key 缺失或调用失败时，最后兜底退到 DeepSeek 文本，
+  不再"先走 DeepSeek 主路径"。
 """
 
 from __future__ import annotations
@@ -21,7 +27,13 @@ from typing import Any
 from openai import OpenAI
 
 from app.config import Config
-from app.services.kimi import deepseek_api_key_configured, deepseek_client, deepseek_thinking_disabled_extra_body
+from app.services.kimi import (
+    deepseek_api_key_configured,
+    deepseek_client,
+    deepseek_thinking_disabled_extra_body,
+    kimi_dashscope_api_key_configured,
+    kimi_dashscope_client,
+)
 from app.services.lecture_agent import (
     LectureAgentError,
     _DEFAULT_DISPLAY_NAME,
@@ -47,33 +59,53 @@ from app.services.peer_personas import (
 
 logger = logging.getLogger(__name__)
 
-_ASSESSMENT_MODEL = Config.DEEPSEEK_MODEL
+_ASSESSMENT_MODEL = Config.DEEPSEEK_MODEL  # 仅作 DeepSeek 兜底使用
 _ASSESSMENT_TEMPERATURE = 0.45
 _ASSESSMENT_EXTRA_BODY: dict[str, Any] = {}  # 见 deepseek_thinking_disabled_extra_body()
 _LLM_TIMEOUT_SECONDS = 5.0
-# 同伴 Qwen-VL multimodal 路径单次需要读多张白板照片，比纯文本慢；放宽一点。
+# 同伴 multimodal 路径单次需要读多张白板照片，比纯文本慢；放宽一点。
 _VISION_TIMEOUT_SECONDS = 12.0
 _MAX_REASON_LEN = 220
-# multimodal 路径单次最多附几张白板图（含本轮整板）。Qwen-VL-Max 单次官方
-# 上限较高，但为了延迟可控限制为最多 4 张（=最近 3 轮历史 + 当前轮）。
+_MAX_BOARD_SUMMARY_LEN = 30
+# multimodal 路径单次最多附几张白板图（含本轮整板）。
 _VISION_MAX_IMAGES = 4
-# 客户端送上来的 PNG 偶尔太大，过 6MB 直接跳过，避免一条 LLM 请求被 base64
-# 撑爆。OCR/同伴评估失败也要让讲题闭环继续。
+# 客户端送上来的 PNG 偶尔太大，过 6MB 直接跳过。
 _VISION_MAX_IMAGE_B64_LEN = 6_000_000
 
+# 按 role 分发 multimodal 模型，保持追问风格多样性：
+#   - xiaoming / monitor：Qwen-VL-Max-latest（验证型，输出风格更稳重）
+#   - daxiong：Kimi-K2.6（拓展型，输出风格更跳跃，专门做验算 / 变式追问）
+# 实测两家延迟都在亚秒到 1.5s，差异不影响 demo 节奏。
+_ROLE_VISION_MODELS: dict[str, str] = {
+    "xiaoming": "qwen",
+    "daxiong": "kimi",
+    "monitor": "qwen",
+}
 
-def _vision_client() -> OpenAI | None:
-    """构造 Qwen-VL OpenAI-compatible client。
 
-    DashScope 既承载 DeepSeek 又承载 Qwen-VL，共用同一 key / base_url。
-    没配 `ALIYUN_API_KEY` 时直接返回 None，让上层回退到纯文本 DeepSeek。
-    """
+def _qwen_vl_client() -> OpenAI | None:
     if not Config.ALIYUN_API_KEY:
         return None
     return OpenAI(
         api_key=Config.ALIYUN_API_KEY,
         base_url=Config.ALIYUN_BASE_URL,
     )
+
+
+def _vision_client_for_role(role: str) -> tuple[OpenAI | None, str, str]:
+    """根据 role 返回 (client, model_id, provider_tag)。
+
+    provider_tag 仅用于日志：``'qwen'`` / ``'kimi'``，方便观测多样性是否真的
+    被分配。client / model_id 为 None / '' 时上层走 DeepSeek 文本兜底。
+    """
+    provider = _ROLE_VISION_MODELS.get(role, "qwen")
+    if provider == "kimi" and kimi_dashscope_api_key_configured():
+        return kimi_dashscope_client, Config.KIMI_K2_MODEL, "kimi"
+    # Kimi 未配置时也回落到 Qwen-VL，保证多模态主路径仍然有效
+    qwen = _qwen_vl_client()
+    if qwen is not None:
+        return qwen, Config.QWEN_VL_MODEL, "qwen"
+    return None, "", ""
 # 与 lecture_agent._HISTORY_KEEP_LAST 对齐（约 10 轮完整闭环）。
 # 不再在 peer 路径做更紧的二次裁切——同伴能看到的跨轮记忆与全局一致，
 # 包括前几轮学生 ASR 全文、三人判断与老师收束。如果未来 prompt 长度
@@ -190,6 +222,12 @@ def _parse_assessment(
         raw_kind=payload.get("questionKind") or payload.get("question_kind"),
     )
 
+    board_summary = str(
+        payload.get("boardSummary") or payload.get("board_summary") or ""
+    ).strip()
+    if len(board_summary) > _MAX_BOARD_SUMMARY_LEN:
+        board_summary = board_summary[:_MAX_BOARD_SUMMARY_LEN].rstrip() + "…"
+
     return {
         "role": role,
         "display_name": _DEFAULT_DISPLAY_NAME[role],
@@ -197,6 +235,7 @@ def _parse_assessment(
         "reason": reason,
         "highlight_step_ids": highlight,
         "question_kind": question_kind,
+        "board_summary": board_summary,
     }
 
 
@@ -347,7 +386,7 @@ def _assess_one_peer(
         current_board_image_base64,
         current_round=round_index,
     )
-    vision_client = _vision_client() if board_images else None
+    vision_client, vision_model, provider = _vision_client_for_role(role)
     use_vision = vision_client is not None and bool(board_images)
 
     context = _build_user_prompt(
@@ -365,11 +404,18 @@ def _assess_one_peer(
         assessing_role=role,
         vision_attached=use_vision,
     )
+    # 多模态路径要求模型额外输出 `boardSummary` —— 用作下一轮 history 与
+    # 家长端落库的文字摘要，替代砍掉的 OCR 文本。
+    board_summary_hint = (
+        '\n额外请求：输出 JSON 时**必须**包含 `boardSummary` 字段，'
+        "≤30 个中文字符，用 1 句口语描述「本轮学生新写或新说的关键内容」；"
+        "若本轮没有新增内容（学生只口述、白板无变化）写 \"本轮无新增笔迹\"。"
+    )
     user_prompt = (
         f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
         f"{PEER_ASSESSMENT_USER_SUFFIX}\n\n"
         f"{context}\n\n"
-        "请只输出一个 JSON 对象。"
+        f"请只输出一个 JSON 对象。{board_summary_hint if use_vision else ''}"
     )
 
     t0 = time.monotonic()
@@ -385,7 +431,7 @@ def _assess_one_peer(
         ]
         try:
             resp = vision_client.with_options(max_retries=0).chat.completions.create(
-                model=Config.QWEN_VL_MODEL,
+                model=vision_model,
                 messages=messages,
                 temperature=_ASSESSMENT_TEMPERATURE,
                 max_tokens=400,
@@ -395,8 +441,9 @@ def _assess_one_peer(
             raw = (resp.choices[0].message.content or "") if resp.choices else ""
         except Exception as e:  # noqa: BLE001
             logger.exception(
-                "[peer-assessment] %s Qwen-VL failed: %s (will fallback to text)",
+                "[peer-assessment] %s %s failed: %s (will fallback to text)",
                 role,
+                provider,
                 e,
             )
             raw = ""
@@ -409,15 +456,17 @@ def _assess_one_peer(
                 steps=steps,
             )
             logger.info(
-                "[peer-assessment] %s vision ms=%.0f images=%d understood=%s kind=%s",
+                "[peer-assessment] %s %s ms=%.0f images=%d understood=%s kind=%s summary=%r",
                 role,
+                provider,
                 (time.monotonic() - t0) * 1000,
                 len(board_images),
                 parsed.get("understood"),
                 parsed.get("question_kind"),
+                parsed.get("board_summary"),
             )
             return parsed
-        # vision 失败 → 重新生成不带 vision_attached 提示的纯文本 context
+        # multimodal 失败 → 重新生成不带 vision_attached 提示的纯文本 context
         context = _build_user_prompt(
             section_id=section_id,
             question_id=question_id,
@@ -456,7 +505,7 @@ def _assess_one_peer(
         )
         raw = (resp.choices[0].message.content or "") if resp.choices else ""
     except Exception as e:  # noqa: BLE001
-        logger.exception("[peer-assessment] %s LLM failed: %s", role, e)
+        logger.exception("[peer-assessment] %s text fallback failed: %s", role, e)
         raise LectureAgentError(f"{role} assessment LLM failed: {e}") from e
 
     parsed = _parse_assessment(
@@ -467,7 +516,7 @@ def _assess_one_peer(
         steps=steps,
     )
     logger.info(
-        "[peer-assessment] %s text ms=%.0f understood=%s kind=%s",
+        "[peer-assessment] %s text-fallback ms=%.0f understood=%s kind=%s",
         role,
         (time.monotonic() - t0) * 1000,
         parsed.get("understood"),
@@ -625,8 +674,16 @@ def generate_peer_assessments(
 ) -> dict[str, Any]:
     """并行评估三名同伴，返回 assessments + all_understood。"""
 
-    if not deepseek_api_key_configured():
-        raise LectureAgentError("DEEPSEEK_API_KEY is not configured")
+    # multimodal 主路径需要 Qwen-VL（ALIYUN_API_KEY）或 Kimi-DashScope key 至少
+    # 有一个；DeepSeek 仅作 fallback。三家全无才彻底跑不动。
+    if (
+        not Config.ALIYUN_API_KEY
+        and not kimi_dashscope_api_key_configured()
+        and not deepseek_api_key_configured()
+    ):
+        raise LectureAgentError(
+            "no LLM key configured (need ALIYUN_API_KEY or KIMI_DASHSCOPE_KEY or DEEPSEEK_API_KEY)"
+        )
 
     allowed_step_ids = [
         str(s.get("stepId") or s.get("step_id") or "").strip() for s in steps

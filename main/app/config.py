@@ -11,7 +11,9 @@ class Config:
     KIMI_BASE_URL = "https://api.moonshot.cn/v1"
     KIMI_MODEL = os.getenv("KIMI_MODEL", "kimi-k2.6")
 
-    # DashScope 兼容 OpenAI SDK；DeepSeek 与 Qwen-VL 共用同一 base_url / key。
+    # DashScope 兼容 OpenAI SDK；DeepSeek、Qwen-VL、Kimi K2.6 都可通过它访问。
+    # 三者既可以共用同一 ALIYUN_API_KEY（同一阿里云账号），也可以为 Kimi 单独
+    # 配 KIMI_DASHSCOPE_KEY（用另一个账号 / 子账号开通 kimi-k2.6 时）。
     ALIYUN_API_KEY = os.getenv("ALIYUN_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
     ALIYUN_BASE_URL = os.getenv(
         "ALIYUN_BASE_URL",
@@ -21,7 +23,15 @@ class Config:
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", ALIYUN_API_KEY)
     DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", ALIYUN_BASE_URL)
     DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-    QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen-vl-plus")
+    QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen-vl-max-latest")
+
+    # Kimi K2.6 via DashScope route（实测能直接读 image_url 多模态）。
+    # 配置缺失时回落到 ALIYUN_API_KEY；模型 id 走 `kimi-k2.6`（不带前缀）。
+    # 用途：大雄同伴评估 + 李老师（提示 / 收束）—— 与小明/班长走 Qwen-VL 形成
+    # 两套不同模型的「多样性」，让追问风格更立体。
+    KIMI_DASHSCOPE_KEY = os.getenv("KIMI_DASHSCOPE_KEY", ALIYUN_API_KEY)
+    KIMI_DASHSCOPE_BASE_URL = os.getenv("KIMI_DASHSCOPE_BASE_URL", ALIYUN_BASE_URL)
+    KIMI_K2_MODEL = os.getenv("KIMI_K2_MODEL", "kimi-k2.6")
 
     VOLC_API_KEY = os.getenv("VOLC_API_KEY", "")
     # Most Volc capabilities in this project share VOLC_API_KEY. New Volc ASR
