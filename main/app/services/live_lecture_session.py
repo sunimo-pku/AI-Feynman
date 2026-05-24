@@ -640,8 +640,12 @@ class LiveLectureSession:
 
         completed_round = self._assessment_round_index()
         self._append_student_history_snapshot()
+        # 只把"没听懂、当众追问"的同伴写进 history。听懂状态走 prompt 的
+        # 「你（{display}）上一轮的追问」自指段（找不到即默认听懂），避免把
+        # `(听懂了) 跟上了。` 这种内部标签喂给下一轮 LLM 当成"同伴台词"。
         for item in assessments:
-            self.history.append(_assessment_to_history_item(item))
+            if not bool(item.get("understood")):
+                self.history.append(_assessment_to_history_item(item))
         for reply in peer_replies:
             self.history.append({
                 "role": str(reply.get("role") or "monitor"),
@@ -1451,14 +1455,18 @@ def _teacher_summary_to_wire(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _assessment_to_history_item(item: dict[str, Any]) -> dict[str, Any]:
-    understood = bool(item.get("understood"))
+    """把一条 understood=False 的 peer assessment 转成 history 项。
+
+    调用方（`_on_pause_detected`）已经过滤掉 understood=True 的项，
+    所以这里只负责把当众追问的 reason 直接落到 history 文本里，
+    不再加 `(听懂了)` 之类的内部标签前缀。
+    """
     reason = str(item.get("reason") or "").strip()
     display = str(item.get("display_name") or "")
-    text = f"（听懂了）{reason}" if understood else reason
     return {
         "role": str(item.get("role") or "xiaoming"),
         "displayName": display,
-        "text": text,
+        "text": reason,
         "highlightStepIds": list(item.get("highlight_step_ids") or []),
     }
 

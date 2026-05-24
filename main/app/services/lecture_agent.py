@@ -194,6 +194,27 @@ def _last_peer_followup(history: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
+def _last_followup_for_role(
+    history: list[dict[str, Any]],
+    role: str,
+) -> dict[str, Any] | None:
+    """找到指定同伴角色最近一条当众发言（即上一轮该角色 understood=False 时的追问）。
+
+    与 `_last_peer_followup` 的区别：本函数只命中**特定角色**自己说过的话，
+    用于在 peer_assessment prompt 里给该同伴注入自指上下文（"你上一轮问的是…"）。
+    history 里 understood=True 的轮次不会留下该同伴发言（见
+    `live_lecture_session._on_pause_detected` 的过滤），所以找不到时即表示
+    "我上一轮要么没参与，要么默认听懂了"。
+    """
+
+    if not role:
+        return None
+    for item in reversed(history):
+        if item["role"] == role:
+            return item
+    return None
+
+
 def _sanitize_round_board_snapshots(
     snapshots: list[dict[str, Any]] | None,
     *,
@@ -282,6 +303,7 @@ def _build_user_prompt(
     purpose: Literal["lecture", "peer_assessment", "teacher", "teacher_summary"] = "lecture",
     standard_answer: str = "",
     round_board_snapshots: list[dict[str, Any]] | None = None,
+    assessing_role: str | None = None,
 ) -> str:
     """把请求里学生这边的所有上下文拼成一段紧凑的 user 提示。
 
@@ -430,6 +452,30 @@ def _build_user_prompt(
             )
     else:
         lines.append("【上一轮追问与回答历史】（本题首轮，没有历史）")
+
+    # peer_assessment 路径下额外注入「你（{display}）上一轮的追问」自指段。
+    # history 里 understood=True 的同伴不会留下发言（见 live_lecture_session
+    # 过滤逻辑），所以找不到 my_last 就明确告诉 LLM"你上一轮没当众发问"。
+    if purpose == "peer_assessment" and assessing_role:
+        my_last = _last_followup_for_role(history, assessing_role)
+        my_display = _DEFAULT_DISPLAY_NAME.get(assessing_role, assessing_role)
+        lines.append("")
+        if my_last is not None:
+            my_text = my_last["text"].replace("\n", " ").strip()
+            lines.append(
+                f'【你（{my_display}）上一轮的追问】"{my_text}"。'
+                "请优先看学生本轮的口述/白板有没有正面回应你这一条："
+                "① 若确实回到了你这条且数学没硬伤 → 可以 `understood:true`；"
+                "② 若他答的是别人的问题、或没答到核心 → 保留 `understood:false`，"
+                "在 reason 里点出还差的那一点（仍按你的专长视角，"
+                "不要替别人评估）。"
+            )
+        else:
+            lines.append(
+                f"【你（{my_display}）上一轮】没在小组里当众发问"
+                "（要么是首轮，要么上一轮你已经听懂了），"
+                "本轮按新观察到的内容独立评估即可。"
+            )
 
     lines.append("")
     if purpose == "peer_assessment":

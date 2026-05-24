@@ -237,6 +237,7 @@ def _assess_one_peer(
         purpose="peer_assessment",
         standard_answer=std,
         round_board_snapshots=prior_boards,
+        assessing_role=role,
     )
     user_prompt = (
         f"【你的身份】{ _DEFAULT_DISPLAY_NAME[role] }（role={role}）\n"
