@@ -872,6 +872,12 @@ class _LecturePageState extends State<LecturePage> {
       }
       if (teacherSummary != null && !omitTeacherTurn) {
         _turns.add(teacherSummary);
+        unawaited(
+          _reasonPlayback.prefetchText(
+            role: AgentRole.teacher,
+            text: teacherSummary.text,
+          ),
+        );
       }
       if (teacherRejected) {
         _turns.add(
@@ -2734,9 +2740,14 @@ class _LecturePageState extends State<LecturePage> {
     final assessment = _assessmentFor(role);
     if (assessment != null) {
       if (!assessment.understood && assessment.reason.trim().isNotEmpty) {
+        final reason = assessment.reason;
         return PeerInlineMessage(
-          text: assessment.reason,
+          text: reason,
           highlightStepIds: assessment.highlightStepIds,
+          showSpeakChip: _reasonPlayback.isSpeakChipReady(
+            role: role,
+            text: reason,
+          ),
         );
       }
       // 当前轮评估已经覆盖该同伴状态；已听懂时不能再回退显示上一轮追问。
@@ -2749,18 +2760,38 @@ class _LecturePageState extends State<LecturePage> {
     }
     final turn = _latestTurnFor(role);
     if (turn != null && turn.text.trim().isNotEmpty) {
+      final text = turn.text;
       return PeerInlineMessage(
-        text: turn.text,
+        text: text,
         highlightStepIds: turn.highlightStepIds,
+        showSpeakChip: _reasonPlayback.isSpeakChipReady(
+          role: role,
+          text: text,
+        ),
       );
     }
     return null;
   }
 
   void _onPeerAvatarTap(AgentRole role) {
-    if (_peerInlineMessage(role) == null) {
+    final msg = _peerInlineMessage(role);
+    if (msg == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${_defaultDisplayName(role)}还没有发言')),
+      );
+      return;
+    }
+    if (!msg.showSpeakChip) {
+      final pending = _reasonPlayback.isPrefetching(
+        role: role,
+        text: msg.text,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            pending ? '语音正在准备，请稍候…' : '${_defaultDisplayName(role)}的语音暂时不可用',
+          ),
+        ),
       );
       return;
     }
@@ -2777,7 +2808,7 @@ class _LecturePageState extends State<LecturePage> {
     unawaited(_playExpandedRoleAudio(role));
   }
 
-  /// 学生点开「有话要说」/ 头像展开后播放预合成语音（未就绪则回退现场合成）。
+  /// 学生点开「有话要说」后播放已预合成的语音（chip 仅在就绪后展示）。
   Future<void> _playExpandedRoleAudio(AgentRole role) async {
     await _liveService.clearPendingTts();
     await _liveService.stopTts();

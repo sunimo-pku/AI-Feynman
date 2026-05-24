@@ -11,16 +11,20 @@ class PeerInlineMessage {
     required this.text,
     this.highlightStepIds = const [],
     this.showPlay = false,
+    this.showSpeakChip = false,
   });
 
   final String text;
   final List<String> highlightStepIds;
   final bool showPlay;
+
+  /// TTS 预合成完成（或已放弃预合成）后才展示「有话要说」入口。
+  final bool showSpeakChip;
 }
 
 /// 讲题页右侧四人头像轨：小明 / 大雄 / 班长 / 李老师。
 ///
-/// 有追问时仅在头像旁显示「有话要说」；点击头像展开全文，同时收起其它人。
+/// 有追问且 TTS 已就绪时在头像旁显示「有话要说」；点击展开全文并播放。
 class LecturePeerRail extends StatelessWidget {
   const LecturePeerRail({
     super.key,
@@ -149,7 +153,7 @@ class _PeerRailRow extends StatelessWidget {
                 msg.highlightStepIds.isNotEmpty ? onHighlightSteps : null,
           ),
           const SizedBox(width: 8),
-        ] else if (hasMessage && !isExpanded) ...[
+        ] else if (hasMessage && msg.showSpeakChip && !isExpanded) ...[
           _PendingMessageChip(
             label: palette.label,
             accent: palette.accent,

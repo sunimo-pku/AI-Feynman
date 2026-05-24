@@ -32,6 +32,7 @@ class PeerReasonPlaybackService extends ChangeNotifier {
   /// 预合成缓存：`roleWire:spokenText` → mp3 bytes。
   final Map<String, Uint8List> _audioCache = {};
   final Set<String> _prefetchInFlight = {};
+  final Set<String> _prefetchFailed = {};
 
   List<PeerAssessment> get queue => _queue;
   bool get isPlaying => _busy;
@@ -68,6 +69,13 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     return _prefetchInFlight.contains(_cacheKey(agentRoleWire(role), text));
   }
 
+  /// 「有话要说」chip 是否应展示：预合成成功；失败则仍展示以便回退现场合成。
+  bool isSpeakChipReady({required AgentRole role, required String text}) {
+    if (text.trim().isEmpty) return false;
+    final key = _cacheKey(agentRoleWire(role), text);
+    return _audioCache.containsKey(key) || _prefetchFailed.contains(key);
+  }
+
   void setQueue(List<PeerAssessment> assessments) {
     _queue =
         assessments
@@ -92,6 +100,7 @@ class PeerReasonPlaybackService extends ChangeNotifier {
   void _clearPrefetchCache() {
     _audioCache.clear();
     _prefetchInFlight.clear();
+    _prefetchFailed.clear();
   }
 
   /// 单条同伴评估到达时预合成（流式 peer_assessment_item 路径）。
@@ -121,10 +130,14 @@ class PeerReasonPlaybackService extends ChangeNotifier {
     notifyListeners();
     try {
       final bytes = await _fetchAudioBytes(text: text, role: roleWire);
-      if (bytes != null && !_disposed) {
+      if (_disposed) return;
+      if (bytes != null) {
         _audioCache[key] = bytes;
-        notifyListeners();
+        _prefetchFailed.remove(key);
+      } else {
+        _prefetchFailed.add(key);
       }
+      notifyListeners();
     } finally {
       _prefetchInFlight.remove(key);
       if (!_disposed) notifyListeners();
