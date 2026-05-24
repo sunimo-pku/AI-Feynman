@@ -9,6 +9,17 @@ from app.services.volc_asr_stream import (
 )
 
 
+def _server_response_frame(body_obj: dict, *, final: bool = True) -> bytes:
+    body = gzip.compress(json.dumps(body_obj, ensure_ascii=False).encode("utf-8"))
+    flags = 0x3 if final else 0x1
+    return (
+        bytes([0x11, 0x90 | flags, 0x11, 0x00])
+        + (1).to_bytes(4, "big")
+        + len(body).to_bytes(4, "big")
+        + body
+    )
+
+
 def test_streaming_asr_returns_none_when_unconfigured(monkeypatch) -> None:
     monkeypatch.setattr("app.services.volc_asr_stream.Config.VOLC_ASR_STREAM_API_KEY", "")
     monkeypatch.setattr("app.services.volc_asr_stream.Config.VOLC_ASR_STREAM_RESOURCE_ID", "")
@@ -54,13 +65,12 @@ def test_streaming_asr_uses_new_console_headers() -> None:
             captured.setdefault("sent", []).append(payload)
 
         def recv(self, timeout: float | None = None) -> bytes:
-            body = gzip.compress(json.dumps({
+            return _server_response_frame({
                 "result": {
                     "text": "我先把根号十二化成二根号三",
                     "utterances": [{"text": "我先把根号十二化成二根号三", "definite": True}],
                 }
-            }, ensure_ascii=False).encode("utf-8"))
-            return bytes([0x11, 0x93, 0x11, 0x00]) + (1).to_bytes(4, "big") + len(body).to_bytes(4, "big") + body
+            })
 
     def fake_connect(url: str, **kwargs):
         captured["url"] = url
@@ -87,6 +97,61 @@ def test_streaming_asr_uses_new_console_headers() -> None:
     assert captured["headers"]["X-Api-Key"] == "volc-key"
     assert captured["headers"]["X-Api-Resource-Id"] == "volc.seedasr.sauc.duration"
     assert len(captured["sent"]) == 2
+
+
+def test_streaming_asr_accumulates_per_utterance_frames() -> None:
+    class FakeWs:
+        def __init__(self) -> None:
+            self.frames = [
+                _server_response_frame({
+                    "result": {
+                        "text": "我先把等式两边同时加三",
+                        "utterances": [
+                            {"text": "我先把等式两边同时加三", "definite": True}
+                        ],
+                    }
+                }, final=False),
+                _server_response_frame({
+                    "result": {
+                        "text": "然后两边除以二",
+                        "utterances": [
+                            {"text": "然后两边除以二", "definite": True}
+                        ],
+                    }
+                }),
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def send(self, payload: bytes) -> None:
+            pass
+
+        def recv(self, timeout: float | None = None) -> bytes:
+            if not self.frames:
+                raise TimeoutError
+            return self.frames.pop(0)
+
+    client = VolcStreamingAsrClient(
+        api_key="volc-key",
+        resource_id="volc.seedasr.sauc.duration",
+        url="wss://example.test/asr",
+        timeout_seconds=0.5,
+        connector=lambda *_args, **_kwargs: FakeWs(),
+    )
+
+    result = client.recognize_window(
+        audio_base64="AAAA",
+        audio_format="pcm",
+        recognize_fallback=lambda _audio, _fmt: {"text": "fallback"},
+    )
+
+    assert result is not None
+    assert result.text == "我先把等式两边同时加三 然后两边除以二"
+    assert result.is_final is True
 
 
 def test_parse_server_error_frame_raises() -> None:

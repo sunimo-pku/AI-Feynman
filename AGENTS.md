@@ -869,6 +869,11 @@ git push origin main
   「先 `_recorder.stop()` flush 末段 PCM，再 cancel stream」，否则句尾 chunk 丢失。
 - **ASR 调试日志**：`pause_detected` 路径应打 `pending_sec` + 转写 preview；
   `asr-buffer` 对 seq 倒退用 warning（非 debug），便于对照「说了多少 vs 识别多少」。
+- **火山流式 ASR 分帧文本必须累积**：`recognize_window` 会在同一段音频里收到
+  多个 server frame，可能每帧只带一个 utterance。不能用最新帧 `text` 直接覆盖
+  之前结果，否则学生开头讲的内容会被吞，只剩后半段；应按「累计全文优先，否则
+  追加新 utterance」合并。`utterance.definite=true` 只表示该小句稳定，不等于
+  整个窗口 final；整窗结束只能看协议帧 final flag，否则第一小句稳定后就会提前停止收包。
 - **完成进度只按 completed + 正 delta 落库**：实时 WS 断连可保存
   `LectureSessionRecord`，但 `LearningProgress` / 作业完成只能在
   `last_status=completed && last_mastery_delta>0` 时更新，避免“没听懂/断线”

@@ -228,7 +228,7 @@ class VolcStreamingAsrClient:
                 break
             parsed = _parse_server_frame(raw)
             if parsed.text:
-                best_text = parsed.text
+                best_text = _merge_stream_text(best_text, parsed.text)
             if parsed.is_final:
                 final_seen = True
                 break
@@ -397,8 +397,8 @@ def _parse_server_frame(raw: bytes | bytearray | str) -> _ParsedServerFrame:
             e,
         )
         return _ParsedServerFrame(text="", is_final=flags in (0x2, 0x3))
-    text, definite = _extract_text(body)
-    return _ParsedServerFrame(text=text, is_final=definite or flags in (0x2, 0x3))
+    text, _has_definite_utterance = _extract_text(body)
+    return _ParsedServerFrame(text=text, is_final=flags in (0x2, 0x3))
 
 
 def _extract_text(body: Any) -> tuple[str, bool]:
@@ -412,11 +412,41 @@ def _extract_text(body: Any) -> tuple[str, bool]:
     text = str(result.get("text") or "").strip()
     definite = False
     utterances = result.get("utterances")
+    definite_texts: list[str] = []
     if isinstance(utterances, list):
         for item in utterances:
             if isinstance(item, dict) and item.get("definite") is True:
                 definite = True
                 item_text = str(item.get("text") or "").strip()
                 if item_text:
-                    text = item_text if not text else text
+                    definite_texts.append(item_text)
+    if definite_texts:
+        joined = " ".join(definite_texts).strip()
+        if joined and (not text or len(joined) >= len(text)):
+            text = joined
     return text, definite
+
+
+def _merge_stream_text(current: str, incoming: str) -> str:
+    """Merge streaming ASR frames without dropping earlier utterances.
+
+    Volc may emit either cumulative full text or per-utterance text. Replacing
+    the previous frame with the latest one loses the student's opening words
+    when frames are per-utterance, while blindly appending duplicates cumulative
+    frames. Keep the longer cumulative candidate when possible; otherwise append
+    the new utterance if it is not already represented.
+    """
+
+    left = current.strip()
+    right = incoming.strip()
+    if not right:
+        return left
+    if not left:
+        return right
+    if right == left or right in left:
+        return left
+    if right.startswith(left):
+        return right
+    if left.startswith(right):
+        return left
+    return f"{left} {right}"
