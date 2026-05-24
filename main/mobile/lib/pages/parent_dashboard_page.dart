@@ -148,7 +148,9 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                     }
                   } else if (key == 'switch_student') {
                     final messenger = ScaffoldMessenger.of(innerCtx);
-                    final result = await AuthService.instance.switchToStudent();
+                    final result = await AuthService.instance.switchToStudent(
+                      notify: false,
+                    );
                     if (!innerCtx.mounted) return;
                     if (!result.ok) {
                       messenger.showSnackBar(
@@ -156,6 +158,9 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
                       );
                       return;
                     }
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      AuthService.instance.notifySessionChanged();
+                    });
                     unawaited(LearningSyncService.instance.pullAndMerge());
                   } else if (key == 'edit_profile') {
                     await _editProfile(innerCtx);
@@ -188,58 +193,130 @@ class _ParentDashboardPageState extends State<ParentDashboardPage> {
     final gradeController = TextEditingController(
       text: payload?.grade ?? '八年级',
     );
-    final ok = await showDialog<bool>(
+    var submitting = false;
+    String? errorMessage;
+    var saved = false;
+
+    await showDialog<void>(
       context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('编辑孩子资料'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: '展示名'),
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            Future<void> submit() async {
+              final displayName = nameController.text.trim();
+              final grade = gradeController.text.trim();
+              if (displayName.isEmpty) {
+                setDialogState(
+                  () => errorMessage = '请填写展示名',
+                );
+                return;
+              }
+              setDialogState(() {
+                submitting = true;
+                errorMessage = null;
+              });
+              try {
+                await _parentService.updateProfile(
+                  displayName: displayName,
+                  grade: grade,
+                );
+                saved = true;
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+              } on ParentApiException catch (e) {
+                if (dialogContext.mounted) {
+                  setDialogState(() {
+                    submitting = false;
+                    errorMessage = e.userMessage;
+                  });
+                }
+              } catch (e) {
+                if (dialogContext.mounted) {
+                  setDialogState(() {
+                    submitting = false;
+                    errorMessage = '保存失败：$e';
+                  });
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('编辑孩子资料'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    enabled: !submitting,
+                    decoration: const InputDecoration(labelText: '展示名'),
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue:
+                        _gradeOptions.contains(gradeController.text)
+                            ? gradeController.text
+                            : '八年级',
+                    decoration: const InputDecoration(labelText: '年级'),
+                    items:
+                        _gradeOptions
+                            .map(
+                              (grade) => DropdownMenuItem(
+                                value: grade,
+                                child: Text(grade),
+                              ),
+                            )
+                            .toList(),
+                    onChanged:
+                        submitting
+                            ? null
+                            : (value) => gradeController.text =
+                                value ?? gradeController.text,
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorMessage!,
+                      style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                        color: AppPalette.error,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed:
+                      submitting ? null : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('取消'),
                 ),
-                DropdownButtonFormField<String>(
-                  initialValue:
-                      _gradeOptions.contains(gradeController.text)
-                          ? gradeController.text
-                          : '八年级',
-                  decoration: const InputDecoration(labelText: '年级'),
-                  items:
-                      _gradeOptions
-                          .map(
-                            (grade) => DropdownMenuItem(
-                              value: grade,
-                              child: Text(grade),
-                            ),
+                FilledButton(
+                  onPressed: submitting ? null : () => unawaited(submit()),
+                  child:
+                      submitting
+                          ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                          .toList(),
-                  onChanged:
-                      (value) =>
-                          gradeController.text = value ?? gradeController.text,
+                          : const Text('保存'),
                 ),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('保存'),
-              ),
-            ],
-          ),
+            );
+          },
+        );
+      },
     );
-    if (ok != true) return;
-    await _parentService.updateProfile(
-      displayName: nameController.text.trim(),
-      grade: gradeController.text.trim(),
-    );
-    if (!mounted) return;
-    await _refresh();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      nameController.dispose();
+      gradeController.dispose();
+    });
+    if (saved && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_refresh());
+      });
+    }
   }
 
   Widget _buildBody(BuildContext context) {

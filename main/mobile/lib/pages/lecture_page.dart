@@ -1634,82 +1634,125 @@ class _LecturePageState extends State<LecturePage> {
 
   Future<void> _showParentFeedbackDialog() async {
     final controller = TextEditingController();
-    final submitted = await showDialog<bool>(
+    var submitting = false;
+    String? errorMessage;
+    var submittedSuccessfully = false;
+
+    await showDialog<void>(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          title: const Text('反馈给家长'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '家长会在学习记录里看到这条反馈，可写下哪里不会、希望家长怎么帮。',
-                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                    color: AppPalette.textSecondary,
-                    height: 1.45,
-                  ),
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            Future<void> submit() async {
+              final note = controller.text.trim();
+              if (note.isEmpty) {
+                setDialogState(
+                  () => errorMessage = '请写一点备注再发送',
+                );
+                return;
+              }
+              setDialogState(() {
+                submitting = true;
+                errorMessage = null;
+              });
+              final service = QuestionEngagementService();
+              try {
+                await service.submitQuestionFeedback(
+                  questionId: _question.questionId,
+                  sectionId: widget.section.id,
+                  questionPrompt: _question.prompt,
+                  note: note,
+                  difficulty: _question.difficulty,
+                );
+                submittedSuccessfully = true;
+                if (ctx.mounted) {
+                  Navigator.of(ctx).pop();
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  setDialogState(() {
+                    submitting = false;
+                    errorMessage = '发送失败：$e';
+                  });
+                }
+              } finally {
+                service.close();
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('反馈给家长'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '家长会在学习记录里看到这条反馈，可写下哪里不会、希望家长怎么帮。',
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: AppPalette.textSecondary,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: controller,
+                      maxLines: 4,
+                      maxLength: 500,
+                      enabled: !submitting,
+                      decoration: const InputDecoration(
+                        hintText: '例如：根号化简总是忘记因式分解…',
+                        border: OutlineInputBorder(),
+                      ),
+                      autofocus: true,
+                      onSubmitted: (_) => unawaited(submit()),
+                    ),
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        errorMessage!,
+                        style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                          color: AppPalette.error,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  maxLines: 4,
-                  maxLength: 500,
-                  decoration: const InputDecoration(
-                    hintText: '例如：根号化简总是忘记因式分解…',
-                    border: OutlineInputBorder(),
-                  ),
-                  autofocus: true,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.of(ctx).pop(),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: submitting ? null : () => unawaited(submit()),
+                  child:
+                      submitting
+                          ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : const Text('发送'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('发送'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
-    if (submitted != true || !mounted) {
+
+    // 等对话框路由完全卸载后再 dispose controller，避免 `_dependents.isEmpty`。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       controller.dispose();
-      return;
-    }
-    final note = controller.text.trim();
-    controller.dispose();
-    if (note.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请写一点备注再发送')),
-      );
-      return;
-    }
-    final service = QuestionEngagementService();
-    try {
-      await service.submitQuestionFeedback(
-        questionId: _question.questionId,
-        sectionId: widget.section.id,
-        questionPrompt: _question.prompt,
-        note: note,
-        difficulty: _question.difficulty,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已发送给家长')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('发送失败：$e')),
-      );
-    } finally {
-      service.close();
+    });
+    if (submittedSuccessfully && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已发送给家长')),
+        );
+      });
     }
   }
 
@@ -1908,6 +1951,14 @@ class _LecturePageState extends State<LecturePage> {
   void _showLiveSnack(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// 等 Dialog / BottomSheet 路由卸载后再操作页面，避免 `_dependents.isEmpty`。
+  void _afterOverlayClosed(VoidCallback action) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      action();
+    });
   }
 
   /// 「讲题结束」按钮：手动触发 AI 追问。
@@ -2656,7 +2707,7 @@ class _LecturePageState extends State<LecturePage> {
                       child: OutlinedButton.icon(
                         onPressed: () {
                           Navigator.of(ctx).pop();
-                          _showStandardAnswerSheet();
+                          _afterOverlayClosed(_showStandardAnswerSheet);
                         },
                         icon: const Icon(Icons.check_circle_outline, size: 18),
                         label: const Text('标准答案'),
@@ -2667,7 +2718,9 @@ class _LecturePageState extends State<LecturePage> {
                       child: OutlinedButton.icon(
                         onPressed: () {
                           Navigator.of(ctx).pop();
-                          unawaited(_onOpenVariantQuestion());
+                          _afterOverlayClosed(
+                            () => unawaited(_onOpenVariantQuestion()),
+                          );
                         },
                         icon: const Icon(Icons.swap_horiz, size: 18),
                         label: const Text('变式题'),
@@ -2684,7 +2737,7 @@ class _LecturePageState extends State<LecturePage> {
                       tooltip: '再讲一遍',
                       onPressed: () {
                         Navigator.of(ctx).pop();
-                        unawaited(_onReplay());
+                        _afterOverlayClosed(() => unawaited(_onReplay()));
                       },
                     ),
                     const SizedBox(width: 16),
@@ -2694,7 +2747,7 @@ class _LecturePageState extends State<LecturePage> {
                       filled: true,
                       onPressed: () {
                         Navigator.of(ctx).pop();
-                        unawaited(_onContinue());
+                        _afterOverlayClosed(() => unawaited(_onContinue()));
                       },
                     ),
                   ],
@@ -2722,7 +2775,7 @@ class _LecturePageState extends State<LecturePage> {
               FilledButton(
                 onPressed: () {
                   Navigator.of(ctx).pop();
-                  _onRetry();
+                  _afterOverlayClosed(() => unawaited(_onRetry()));
                 },
                 child: const Text('重试'),
               ),

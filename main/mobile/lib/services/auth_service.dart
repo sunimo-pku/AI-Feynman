@@ -248,7 +248,7 @@ class AuthService extends ChangeNotifier {
   }
 
   /// 已登录家长端：切回学生会话，无需密码。
-  Future<AuthResult> switchToStudent() async {
+  Future<AuthResult> switchToStudent({bool notify = true}) async {
     if (!isParent) {
       return const AuthResult.failure('当前不是家长端会话。');
     }
@@ -256,7 +256,7 @@ class AuthService extends ChangeNotifier {
     if (outcome is _ApiFailure) {
       return AuthResult.failure(outcome.message);
     }
-    return _applySessionFromBody((outcome as _ApiSuccess).body);
+    return _applySessionFromBody((outcome as _ApiSuccess).body, notify: notify);
   }
 
   void notifySessionChanged() => notifyListeners();

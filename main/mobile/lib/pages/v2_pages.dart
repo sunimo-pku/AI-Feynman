@@ -357,7 +357,9 @@ Future<void> _showSwitchParentDialog(BuildContext context) async {
     },
   );
 
-  parentPasswordController.dispose();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    parentPasswordController.dispose();
+  });
   if (shouldNotifySessionChanged) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AuthService.instance.notifySessionChanged();
